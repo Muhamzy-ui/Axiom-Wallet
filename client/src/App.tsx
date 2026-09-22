@@ -1663,32 +1663,34 @@ function Trade({ flash }: { flash: (x: string) => void }) {
         </div>
 
         {/* ── MOBILE ONLY: DEXSCREENER STICKY QUICK ACTION DUAL BAR ── */}
-        <div className="dex-floating-trade-bar">
-          <div className="dex-floating-presets">
-            <button type="button" onClick={() => { setAmountInput("0.1"); setSide("Buy"); setMobileSubTab("order"); flash("Set 0.1 SOL Buy"); }}>0.1 SOL</button>
-            <button type="button" onClick={() => { setAmountInput("0.5"); setSide("Buy"); setMobileSubTab("order"); flash("Set 0.5 SOL Buy"); }}>0.5 SOL</button>
-            <button type="button" onClick={() => { setAmountInput("1"); setSide("Buy"); setMobileSubTab("order"); flash("Set 1.0 SOL Buy"); }}>1.0 SOL</button>
-            <button type="button" onClick={() => { setAmountInput("5"); setSide("Buy"); setMobileSubTab("order"); flash("Set 5.0 SOL Buy"); }}>5.0 SOL</button>
+        {mobileSubTab !== "order" && (
+          <div className="dex-floating-trade-bar">
+            <div className="dex-floating-presets">
+              <button type="button" onClick={() => { setAmountInput("0.1"); setSide("Buy"); setMobileSubTab("order"); flash("Set 0.1 SOL Buy"); }}>0.1 SOL</button>
+              <button type="button" onClick={() => { setAmountInput("0.5"); setSide("Buy"); setMobileSubTab("order"); flash("Set 0.5 SOL Buy"); }}>0.5 SOL</button>
+              <button type="button" onClick={() => { setAmountInput("1"); setSide("Buy"); setMobileSubTab("order"); flash("Set 1.0 SOL Buy"); }}>1.0 SOL</button>
+              <button type="button" onClick={() => { setAmountInput("5"); setSide("Buy"); setMobileSubTab("order"); flash("Set 5.0 SOL Buy"); }}>5.0 SOL</button>
+            </div>
+            <div className="dex-floating-buttons">
+              <button
+                type="button"
+                className="dex-float-btn buy"
+                onClick={() => { setSide("Buy"); setMobileSubTab("order"); }}
+              >
+                <Zap size={15} />
+                <span>Buy {m.sym}</span>
+              </button>
+              <button
+                type="button"
+                className="dex-float-btn sell"
+                onClick={() => { setSide("Sell"); setMobileSubTab("order"); }}
+              >
+                <Coins size={15} />
+                <span>Sell {m.sym}</span>
+              </button>
+            </div>
           </div>
-          <div className="dex-floating-buttons">
-            <button
-              type="button"
-              className="dex-float-btn buy"
-              onClick={() => { setSide("Buy"); setMobileSubTab("order"); }}
-            >
-              <Zap size={15} />
-              <span>Buy {m.sym}</span>
-            </button>
-            <button
-              type="button"
-              className="dex-float-btn sell"
-              onClick={() => { setSide("Sell"); setMobileSubTab("order"); }}
-            >
-              <Coins size={15} />
-              <span>Sell {m.sym}</span>
-            </button>
-          </div>
-        </div>
+        )}
 
         {/* ── MOBILE ONLY: DEX PAIR SEARCH / SWITCHER MODAL ── */}
         {showPairModal && (
