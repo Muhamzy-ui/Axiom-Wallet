@@ -38,121 +38,7 @@ const COIN_IMGS: Record<string, string> = {
   BONK: "https://coin-images.coingecko.com/coins/images/28600/large/bonk.jpg",
   WIF: "https://coin-images.coingecko.com/coins/images/33566/large/dogwifhat.jpg",
   POPCAT: "https://coin-images.coingecko.com/coins/images/33890/large/popcat.png",
-  BATON: "https://coin-images.coingecko.com/coins/images/33890/large/popcat.png",
 };
-
-const MARKET_DATA = [
-  {
-    sym: "POPCAT",
-    name: "Popcat",
-    price: "$0.2717",
-    solPrice: "0.002669 SOL",
-    change: "-6.10%",
-    cap: "$232.4M",
-    fdv: "$271.7M",
-    liq: "$1.4M",
-    pos: false,
-    m5: { val: "0%", up: false, zero: true },
-    h1: { val: "3.37%", up: false },
-    h6: { val: "7.52%", up: false },
-    h24: { val: "6.10%", up: false },
-    txns: 8447,
-    buys: 5054,
-    sells: 3393,
-    vol: 8.5,
-    buyVol: 4.1,
-    sellVol: 4.3,
-    traders: 2623,
-    buyers: 1719,
-    sellers: 1367,
-  },
-  {
-    sym: "BONK",
-    name: "Bonk",
-    price: "$0.00002510",
-    solPrice: "0.00000014 SOL",
-    change: "+12.64%",
-    cap: "$1.87B",
-    fdv: "$2.24B",
-    liq: "$18.4M",
-    pos: true,
-    m5: { val: "1.36%", up: true },
-    h1: { val: "3.37%", up: true },
-    h6: { val: "18.16%", up: true },
-    h24: { val: "12.64%", up: true },
-    txns: 10386,
-    buys: 5769,
-    sells: 4617,
-    vol: 10.0,
-    buyVol: 5.8,
-    sellVol: 4.2,
-    traders: 2841,
-    buyers: 1634,
-    sellers: 1207,
-  },
-  {
-    sym: "SOL",
-    name: "Solana",
-    price: "$179.84",
-    solPrice: "1.0000 SOL",
-    change: "+4.82%",
-    cap: "$82.6B",
-    fdv: "$102.1B",
-    liq: "$240.5M",
-    pos: true,
-    m5: { val: "0.45%", up: true },
-    h1: { val: "1.12%", up: true },
-    h6: { val: "3.80%", up: true },
-    h24: { val: "4.82%", up: true },
-    txns: 42180,
-    buys: 23410,
-    sells: 18770,
-    vol: 160.5,
-    buyVol: 88.4,
-    sellVol: 72.1,
-    traders: 16060,
-    buyers: 8940,
-    sellers: 7120,
-  },
-  {
-    sym: "WIF",
-    name: "dogwifhat",
-    price: "$2.349",
-    solPrice: "0.01306 SOL",
-    change: "-2.13%",
-    cap: "$2.35B",
-    fdv: "$2.35B",
-    liq: "$24.1M",
-    pos: false,
-    m5: { val: "0.28%", up: false },
-    h1: { val: "1.10%", up: false },
-    h6: { val: "3.45%", up: false },
-    h24: { val: "2.13%", up: false },
-    txns: 14210,
-    buys: 6920,
-    sells: 7290,
-    vol: 26.4,
-    buyVol: 12.3,
-    sellVol: 14.1,
-    traders: 6570,
-    buyers: 3120,
-    sellers: 3450,
-  },
-];
-
-const BALANCES = [
-  { sym: "SOL", name: "Solana", bal: "42.801", usd: "$7,697.38", chg: "+4.82%", pos: true },
-  { sym: "USDC", name: "USD Coin", bal: "4,250.00", usd: "$4,250.00", chg: "+0.00%", pos: true },
-  { sym: "BONK", name: "Bonk", bal: "18.42M", usd: "$462.34", chg: "+12.64%", pos: true },
-  { sym: "WIF", name: "dogwifhat", bal: "105.50", usd: "$247.92", chg: "-2.13%", pos: false },
-];
-
-const FEATURED = [
-  { sym: "BONK", profit: "+$284.60", sub: "Top gainer 24h" },
-  { sym: "SOL", profit: "+$1,203", sub: "Portfolio star" },
-  { sym: "WIF", profit: "+$42.88", sub: "Trending now" },
-  { sym: "POPCAT", profit: "+$96.20", sub: "New listing" },
-];
 
 /* ── Utility components ─────────────────────────────────────────── */
 import { Sparkline } from "./components/common/Sparkline";
@@ -926,7 +812,7 @@ function Trade({ flash }: { flash: (x: string) => void }) {
     if (marketTab === "Favs") {
       list = tokens.filter(t => favorites.includes(t.sym));
     } else if (marketTab === "New") {
-      const memeOrNew = ["POPCAT", "BONK", "WIF", "PEPE", "TRUMP", "DOGE", "BATON"];
+      const memeOrNew = ["POPCAT", "BONK", "WIF", "PEPE", "TRUMP", "DOGE"];
       list = tokens.filter(t => t.isNew || memeOrNew.includes(t.sym) || !["BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "AVAX", "SUI"].includes(t.sym));
       // Put newly deployed coins at the top of the New tab
       list = list.slice().sort((a, b) => {
@@ -4443,15 +4329,14 @@ function ProfileView({
   const cashBal = (balances["USDT"]?.bal || 0) + (balances["USDC"]?.bal || 0);
   const userOrders = marketStore.getUserOrders();
 
-  const cleanFullName = (authUser.full_name && !authUser.full_name.toLowerCase().includes("mahmud"))
-    ? authUser.full_name
-    : "Alex";
-  const userInitials = cleanFullName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "AL";
+  const cleanFullName = authUser.full_name || authUser.email?.split("@")[0] || "Account 1";
+  const userInitials = cleanFullName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "A1";
   const displayName = cleanFullName;
 
-  const solAddress = authUser.wallet_address || "4C8pYgtNBqX2k9xQ2kP3NZkqR9m";
+  const solAddress = authUser.wallet_address || "";
 
   const handleCopyAddress = () => {
+    if (!solAddress) return;
     copyToClipboard(solAddress);
     setCopiedAddr(true);
     flash("Solana deposit address copied to clipboard!");
@@ -4624,36 +4509,40 @@ function ProfileView({
           onClick={handleCopyAddress}
           title="Click to copy full address"
         >
-          <span style={{ fontFamily: "monospace", fontSize: 13, wordBreak: "break-all" }}>
-            {solAddress}
+          <span style={{ fontFamily: "monospace", fontSize: 13, wordBreak: "break-all", color: solAddress ? "inherit" : "var(--muted)" }}>
+            {solAddress || "No wallet address generated yet"}
           </span>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            {copiedAddr ? (
-              <span style={{ color: "var(--green)", fontSize: 11, fontWeight: 700 }}>Copied!</span>
-            ) : (
-              <Copy size={15} />
-            )}
-          </div>
+          {solAddress && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {copiedAddr ? (
+                <span style={{ color: "var(--green)", fontSize: 11, fontWeight: 700 }}>Copied!</span>
+              ) : (
+                <Copy size={15} />
+              )}
+            </div>
+          )}
         </div>
 
-        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-          <a
-            href={`https://solscan.io/account/${solAddress}`}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              fontSize: 11,
-              color: "#A78BFA",
-              textDecoration: "none",
-              fontWeight: 700
-            }}
-          >
-            <ExternalLink size={12} /> View on Solscan Explorer
-          </a>
-        </div>
+        {solAddress && (
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <a
+              href={`https://solscan.io/account/${solAddress}`}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                fontSize: 11,
+                color: "#A78BFA",
+                textDecoration: "none",
+                fontWeight: 700
+              }}
+            >
+              <ExternalLink size={12} /> View on Solscan Explorer
+            </a>
+          </div>
+        )}
       </div>
 
       {/* ── 4 Quick Actions ── */}
@@ -4969,10 +4858,8 @@ function AppShell({
     ["profile", "Profile", Users],
   ];
 
-  const cleanFullName = (authUser.full_name && !authUser.full_name.toLowerCase().includes("mahmud"))
-    ? authUser.full_name
-    : "Alex";
-  const userInitials = cleanFullName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "AL";
+  const cleanFullName = authUser.full_name || authUser.email?.split("@")[0] || "Account 1";
+  const userInitials = cleanFullName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "A1";
   const displayName = cleanFullName;
 
   return (

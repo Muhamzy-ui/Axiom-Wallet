@@ -112,13 +112,36 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'axiom_core.wsgi.application'
 
-# Database
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+from urllib.parse import urlparse
+
+# Database — PostgreSQL on Render (falls back to local SQLite if DATABASE_URL unset)
+DATABASE_URL = os.environ.get(
+    'DATABASE_URL',
+    'postgresql://axiomdb_0iwa_user:woiJxKHDSJv0xkZC1VS53BTN5M40fTAN@dpg-dap8k5id0e5s73f3gvqg-a.oregon-postgres.render.com/axiomdb_0iwa'
+)
+
+if DATABASE_URL:
+    db_url = urlparse(DATABASE_URL)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': db_url.path[1:],
+            'USER': db_url.username,
+            'PASSWORD': db_url.password,
+            'HOST': db_url.hostname,
+            'PORT': db_url.port or 5432,
+            'OPTIONS': {
+                'sslmode': 'require',
+            } if db_url.hostname and ('render.com' in db_url.hostname or 'dpg-' in db_url.hostname) else {},
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # ─────────────────────────────────────────────
 # Cookie / Session Security

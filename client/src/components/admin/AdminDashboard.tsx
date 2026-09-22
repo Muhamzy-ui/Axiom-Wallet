@@ -36,63 +36,24 @@ const C = {
   text:    'var(--text)',
 };
 
-/* ── Stub data ─────────────────────────────────────────────────── */
-const STUB_METRICS: AdminMetrics = {
+/* ── Clean Initial State (Real Data Only) ────────────────────────── */
+const CLEAN_METRICS: AdminMetrics = {
   kpis: {
-    total_volume_usd: '1,428,500',
-    active_traders: 1186,
-    pending_withdrawals: 18,
-    platform_fees_usd: '42,850',
+    total_volume_usd: '0.00',
+    active_traders: 0,
+    pending_withdrawals: 0,
+    platform_fees_usd: '0.00',
   },
-  asset_distribution: [
-    { name: 'SOL',  percentage: 48, amount_usd: 686568, color: '#7C3AED' },
-    { name: 'USDT', percentage: 32, amount_usd: 457120, color: '#10B981' },
-    { name: 'ETH',  percentage: 20, amount_usd: 285700, color: '#22D1F8' },
-  ],
-  volume_trend: Array.from({ length: 30 }, (_, i) => ({
-    date: new Date(Date.now() - (29 - i) * 86400000).toLocaleDateString('en', { month: 'short', day: 'numeric' }),
-    volume: 30000 + Math.random() * 90000,
-  })),
+  asset_distribution: [],
+  volume_trend: [],
 };
 
-const STUB_WITHDRAWALS: WithdrawalRequest[] = [
-  { id: 1, user_address: '0xdd33ee...#4d2343', currency: 'SOL',  amount: '0.0000', network_fee: '0.001', destination_address: '0xAbCd...1234', status: 'APPROVED', created_at: '2024-01-15T10:30:00Z', updated_at: '2024-01-15T11:00:00Z' },
-  { id: 2, user_address: '0xdd34ee...#462206', currency: 'USDT', amount: '5000',   network_fee: '2.50',  destination_address: '0xEfGh...5678', status: 'PENDING',  created_at: '2024-01-15T09:15:00Z', updated_at: '2024-01-15T09:15:00Z' },
-  { id: 3, user_address: '0xdd34ee...#4d2305', currency: 'ETH',  amount: '0.00',   network_fee: '0.005', destination_address: '0xIjKl...9012', status: 'PENDING',  created_at: '2024-01-15T08:45:00Z', updated_at: '2024-01-15T08:45:00Z' },
-  { id: 4, user_address: '0xabc1de...#9f3421', currency: 'SOL',  amount: '125.50', network_fee: '0.001', destination_address: '0xMnOp...3456', status: 'PENDING',  created_at: '2024-01-14T22:10:00Z', updated_at: '2024-01-14T22:10:00Z' },
-  { id: 5, user_address: '0xbba2ef...#7c1298', currency: 'USDT', amount: '3200',   network_fee: '2.50',  destination_address: '0xQrSt...7890', status: 'REJECTED', rejection_reason: 'KYC mismatch', created_at: '2024-01-14T18:00:00Z', updated_at: '2024-01-14T18:30:00Z' },
-];
-
-const STUB_TOKENS: MemeToken[] = [
-  { id: 1, name: 'BONK',    symbol: 'BONK',  logo_url: '', description: 'The dog coin of Solana', total_supply: '100000000000000', current_price_usd: '0.00002510', market_cap_usd: '1870000000', liquidity_usd: '18400000', change_24h: '+12.64', is_active: true,  is_rugged: false, created_at: '2024-01-01T00:00:00Z' },
-  { id: 2, name: 'WIF',     symbol: 'WIF',   logo_url: '', description: 'dogwifhat',               total_supply: '998926392',       current_price_usd: '0.8720',      market_cap_usd: '871000000',   liquidity_usd: '45000000',  change_24h: '-6.08',  is_active: true,  is_rugged: false, created_at: '2024-01-05T00:00:00Z' },
-  { id: 3, name: 'POPCAT',  symbol: 'POPCAT',logo_url: '', description: 'Pop the cat',             total_supply: '979964160',       current_price_usd: '0.6240',      market_cap_usd: '611000000',   liquidity_usd: '28000000',  change_24h: '+3.21',  is_active: true,  is_rugged: false, created_at: '2024-01-10T00:00:00Z' },
-  { id: 4, name: 'RUGTOKEN',symbol: 'RUGT',  logo_url: '', description: 'Rugged token',            total_supply: '1000000000',      current_price_usd: '0.00000001',  market_cap_usd: '10',          liquidity_usd: '100',       change_24h: '-99.9',  is_active: false, is_rugged: true,  created_at: '2024-01-12T00:00:00Z' },
-];
-
-const STUB_USERS = [
-  { id: 1, address: '0xdd33ee...#4d2343', username: 'CryptoWhale', balance: '$48,230', joined: '2023-11-01', status: 'active'    },
-  { id: 2, address: '0xdd34ee...#462206', username: 'MoonBoy99',   balance: '$12,840', joined: '2023-12-15', status: 'active'    },
-  { id: 3, address: '0xabc1de...#9f3421', username: 'DeFiDegen',   balance: '$3,210',  joined: '2024-01-02', status: 'suspended' },
-  { id: 4, address: '0xbba2ef...#7c1298', username: 'SolanaKing',  balance: '$91,000', joined: '2023-10-20', status: 'active'    },
-  { id: 5, address: '0xccd3ff...#2b5512', username: 'MemeLord',    balance: '$780',    joined: '2024-01-10', status: 'active'    },
-];
-
-const STUB_DEPOSITS = [
-  { id: 1, user: '0xdd33ee...#4d2343', amount: '$5,000',  token: 'USDT', date: '2024-01-15 10:30', status: 'completed' },
-  { id: 2, user: '0xbba2ef...#7c1298', amount: '$22,400', token: 'SOL',  date: '2024-01-15 09:15', status: 'completed' },
-  { id: 3, user: '0xccd3ff...#2b5512', amount: '$780',    token: 'ETH',  date: '2024-01-15 08:45', status: 'pending'   },
-  { id: 4, user: '0xabc1de...#9f3421', amount: '$1,200',  token: 'USDT', date: '2024-01-14 22:10', status: 'failed'    },
-  { id: 5, user: '0xdd34ee...#462206', amount: '$8,750',  token: 'SOL',  date: '2024-01-14 18:00', status: 'completed' },
-];
-
-const STUB_TRADES = [
-  { id: 1, trader: '0xdd33ee...#4d2343', pair: 'BONK/USDT',  side: 'BUY',  amount: '2,450,000 BONK', price: '$0.000025', time: '2024-01-15 10:32' },
-  { id: 2, trader: '0xbba2ef...#7c1298', pair: 'WIF/SOL',    side: 'SELL', amount: '1,200 WIF',      price: '$0.872',    time: '2024-01-15 10:28' },
-  { id: 3, trader: '0xccd3ff...#2b5512', pair: 'SOL/USDT',   side: 'BUY',  amount: '45 SOL',         price: '$179.84',   time: '2024-01-15 10:15' },
-  { id: 4, trader: '0xabc1de...#9f3421', pair: 'POPCAT/SOL', side: 'BUY',  amount: '800 POPCAT',     price: '$0.624',    time: '2024-01-15 10:05' },
-  { id: 5, trader: '0xdd34ee...#462206', pair: 'ETH/USDT',   side: 'SELL', amount: '2.5 ETH',        price: '$3,240',    time: '2024-01-15 09:58' },
-];
+const STUB_METRICS = CLEAN_METRICS;
+const STUB_WITHDRAWALS: WithdrawalRequest[] = [];
+const STUB_TOKENS: MemeToken[] = [];
+const STUB_USERS: any[] = [];
+const STUB_DEPOSITS: any[] = [];
+const STUB_TRADES: any[] = [];
 
 /* ── Shared UI primitives ──────────────────────────────────────── */
 function Badge({ status }: { status: string }) {
@@ -487,8 +448,8 @@ function DashboardPage({ metrics, withdrawals, onApprove, onReject, loading, sea
   const [rowsLimit, setRowsLimit] = useState<number>(5);
 
   if (loading) return <LoadingSpinner />;
-  const k = metrics?.kpis || (STUB_METRICS.kpis as any);
-  const rawTrend = Array.isArray(metrics?.volume_trend) && metrics.volume_trend.length > 0 ? metrics.volume_trend : STUB_METRICS.volume_trend;
+  const k = metrics?.kpis || CLEAN_METRICS.kpis;
+  const rawTrend = Array.isArray(metrics?.volume_trend) ? metrics.volume_trend : [];
   const trend = range === '7' ? rawTrend.slice(-7) : rawTrend;
 
   const wList = Array.isArray(withdrawals) ? withdrawals : [];
@@ -591,9 +552,14 @@ function DashboardPage({ metrics, withdrawals, onApprove, onReject, loading, sea
         <Card>
           <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Asset Distribution</div>
           {(() => {
-            const assetDist = Array.isArray(metrics?.asset_distribution) && metrics.asset_distribution.length > 0
-              ? metrics.asset_distribution
-              : STUB_METRICS.asset_distribution;
+            const assetDist = Array.isArray(metrics?.asset_distribution) ? metrics.asset_distribution : [];
+            if (assetDist.length === 0) {
+              return (
+                <div style={{ padding: '36px 12px', textAlign: 'center', color: C.muted, fontSize: 12 }}>
+                  No platform balances yet
+                </div>
+              );
+            }
             return (
               <>
                 <ResponsiveContainer width="100%" height={160}>
@@ -2533,7 +2499,7 @@ function MemeCoinsPage({ search }: { search: string }) {
 
 /* ══════════════════════ PAGE 3: USERS & WALLETS ══════════════════ */
 function UsersPage({ metrics, loading, search }: { metrics: AdminMetrics; loading: boolean; search: string }) {
-  const [users, setUsers] = useState<any[]>(STUB_USERS);
+  const [users, setUsers] = useState<any[]>([]);
   const [localSearch, setLocalSearch] = useState('');
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [sel, setSel] = useState<any | null>(null);
@@ -2544,11 +2510,11 @@ function UsersPage({ metrics, loading, search }: { metrics: AdminMetrics; loadin
     let isMounted = true;
     setLoadingUsers(true);
     api.getAdminUsers().then(data => {
-      if (isMounted && data && data.length > 0) {
+      if (isMounted && Array.isArray(data)) {
         setUsers(data);
       }
     }).catch(() => {
-      // keep fallback
+      if (isMounted) setUsers([]);
     }).finally(() => {
       if (isMounted) setLoadingUsers(false);
     });
@@ -2763,18 +2729,18 @@ function UsersPage({ metrics, loading, search }: { metrics: AdminMetrics; loadin
 function DepositsPage({ metrics, loading, search }: { metrics: AdminMetrics; loading: boolean; search: string }) {
   const [sf, setSf] = useState('all');
   const [localSearch, setLocalSearch] = useState('');
-  const [deposits, setDeposits] = useState<any[]>(STUB_DEPOSITS);
+  const [deposits, setDeposits] = useState<any[]>([]);
   const [loadingDeposits, setLoadingDeposits] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
     setLoadingDeposits(true);
     api.getAdminDeposits().then(data => {
-      if (isMounted && data && data.length > 0) {
+      if (isMounted && Array.isArray(data)) {
         setDeposits(data);
       }
     }).catch(() => {
-      // keep fallback
+      if (isMounted) setDeposits([]);
     }).finally(() => {
       if (isMounted) setLoadingDeposits(false);
     });
@@ -3213,7 +3179,7 @@ function DepositWalletsPage({ loading: parentLoading }: { loading: boolean }) {
 
 /* ══════════════════════ PAGE 5: PENDING WITHDRAWALS ═════════════ */
 function WithdrawalsPage({ loading: initialLoading, search }: { loading: boolean; search: string }) {
-  const [ws, setWs] = useState<WithdrawalRequest[]>(STUB_WITHDRAWALS);
+  const [ws, setWs] = useState<WithdrawalRequest[]>([]);
   const [localSearch, setLocalSearch] = useState('');
   const [loading, setLoading] = useState(initialLoading);
   const [toast, setToast] = useState<string | null>(null);
@@ -3230,11 +3196,11 @@ function WithdrawalsPage({ loading: initialLoading, search }: { loading: boolean
   const fetchWs = useCallback(async () => {
     try {
       const data = await api.getAdminWithdrawals();
-      if (data && data.length > 0) {
+      if (Array.isArray(data)) {
         setWs(data);
       }
     } catch {
-      // fallback to stubs
+      setWs([]);
     } finally {
       setLoading(false);
     }
@@ -4590,9 +4556,9 @@ const NAV: { id: Page; label: string; icon: React.ReactElement }[] = [
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) => {
   const [page,           setPage]           = useState<Page>('dashboard');
-  const [metrics,        setMetrics]        = useState<AdminMetrics>(STUB_METRICS);
-  const [ws,             setWs]             = useState<WithdrawalRequest[]>(STUB_WITHDRAWALS);
-  const [tokens,         setTokens]         = useState<MemeToken[]>(STUB_TOKENS);
+  const [metrics,        setMetrics]        = useState<AdminMetrics>(CLEAN_METRICS);
+  const [ws,             setWs]             = useState<WithdrawalRequest[]>([]);
+  const [tokens,         setTokens]         = useState<MemeToken[]>([]);
   const [loading,        setLoading]        = useState(false);
   const [search,         setSearch]         = useState('');
   const [bell,           setBell]           = useState(false);
@@ -4606,8 +4572,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
     setLoading(true);
     try {
       const [m, w, t] = await Promise.all([api.getAdminMetrics(), api.getAdminWithdrawals(), api.getTokens()]);
-      setMetrics(m); setWs(w); setTokens(t);
-    } catch { /* keep stubs on API error */ }
+      if (m) setMetrics(m);
+      if (Array.isArray(w)) setWs(w);
+      if (Array.isArray(t)) setTokens(t);
+    } catch { /* clean zero state maintained */ }
     finally { setLoading(false); }
   }, []);
 

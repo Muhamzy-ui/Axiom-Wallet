@@ -10,7 +10,7 @@ import math
 import bcrypt
 import jwt as pyjwt
 from decimal import Decimal
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from mnemonic import Mnemonic
 
 from django.conf import settings as django_settings
@@ -303,50 +303,9 @@ def derive_solana_address(seed_phrase: str) -> str:
     return "Ax" + encoded[:42]
 
 def ensure_initial_seed_data():
-    """Seed flagship meme coins and platform settings if empty."""
+    """Seed platform settings and deposit vaults if empty."""
     if not PlatformSettings.objects.exists():
         PlatformSettings.objects.create(admin_pin='admin123', trading_fee_pct=Decimal('1.0'))
-
-    if not MemeToken.objects.filter(symbol='AXIOM').exists():
-        axiom_token = MemeToken.objects.create(
-            name="Axiom Protocol",
-            symbol="AXIOM",
-            logo_url="https://images.unsplash.com/photo-1622979135225-d2ba269bc1df?w=128&auto=format&fit=crop&q=80",
-            description="The premier community meme utility token powering Axiom Wallet ecosystem.",
-            total_supply=Decimal('1000000000.00'),
-            current_price_usd=Decimal('0.00420000'),
-            market_cap_usd=Decimal('4200000.00'),
-            liquidity_usd=Decimal('850000.00'),
-            change_24h=Decimal('34.80'),
-            is_active=True,
-            is_rugged=False
-        )
-        now = timezone.now()
-        points = [
-            Decimal('0.00312'), Decimal('0.00325'), Decimal('0.00318'),
-            Decimal('0.00340'), Decimal('0.00335'), Decimal('0.00362'),
-            Decimal('0.00355'), Decimal('0.00388'), Decimal('0.00379'),
-            Decimal('0.00412'), Decimal('0.00405'), Decimal('0.00420')
-        ]
-        for p in points:
-            PricePoint.objects.create(token=axiom_token, price=p, timeframe='24H')
-
-    if not MemeToken.objects.filter(symbol='PEPE2').exists():
-        pepe_token = MemeToken.objects.create(
-            name="Pepe 2.0 Genesis",
-            symbol="PEPE2",
-            logo_url="https://images.unsplash.com/photo-1621416894569-0f39ed31d247?w=128&auto=format&fit=crop&q=80",
-            description="Next generation frog meme token with viral velocity.",
-            total_supply=Decimal('420690000000.00'),
-            current_price_usd=Decimal('0.00001850'),
-            market_cap_usd=Decimal('7782765.00'),
-            liquidity_usd=Decimal('620000.00'),
-            change_24h=Decimal('18.40'),
-            is_active=True,
-            is_rugged=False
-        )
-        for p in [Decimal('0.0000155'), Decimal('0.0000162'), Decimal('0.0000170'), Decimal('0.0000185')]:
-            PricePoint.objects.create(token=pepe_token, price=p, timeframe='24H')
 
     if not PlatformDepositWallet.objects.exists():
         wallets_init = {
@@ -490,7 +449,7 @@ def auth_signup(request):
 
         # Initialize zero balances
         ensure_initial_seed_data()
-        for curr in ['SOL', 'ETH', 'USDT', 'AXIOM', 'PEPE2']:
+        for curr in ['SOL', 'ETH', 'USDT', 'USDC', 'BTC']:
             get_or_create_balance(user, curr)
 
         # Create email verification token (expires 24h)
@@ -907,7 +866,7 @@ def register_wallet(request):
     DepositAddress.objects.get_or_create(user=user, currency='ETH', defaults={'address': '0x' + wallet_address[2:42]})
     DepositAddress.objects.get_or_create(user=user, currency='USDT', defaults={'address': wallet_address})
 
-    for curr in ['SOL', 'ETH', 'USDT', 'AXIOM', 'PEPE2']:
+    for curr in ['SOL', 'ETH', 'USDT', 'USDC', 'BTC']:
         get_or_create_balance(user, curr)
 
     access_token = issue_access_token(user)
@@ -2052,11 +2011,9 @@ def admin_metrics(request):
     # Strict isolation: Super Admin ONLY sees direct platform trades & users
     direct_users_qs = WalletUser.objects.filter(junior_admin__isnull=True)
     trades = Trade.objects.filter(user__junior_admin__isnull=True)
-    total_volume_usd = sum([t.price_usd * t.token_amount for t in trades], Decimal('1428500.00'))
-    total_fees_usd = sum([t.fee_usd for t in trades], Decimal('42850.00'))
+    total_volume_usd = sum([t.price_usd * t.token_amount for t in trades], Decimal('0.0'))
+    total_fees_usd = sum([t.fee_usd for t in trades], Decimal('0.0'))
     active_traders = direct_users_qs.count()
-    if active_traders == 0:
-        active_traders = 1186
 
     # 1. Deposits breakdown
     deposits_all = PlatformDeposit.objects.filter(status='CONFIRMED', user__junior_admin__isnull=True)
@@ -2112,21 +2069,41 @@ def admin_metrics(request):
     trades_month_qs = trades.filter(created_at__gte=month_start)
     trades_month_usd = sum([t.price_usd * t.token_amount for t in trades_month_qs], Decimal('0.0'))
 
-    asset_distribution = [
-        {'name': 'SOL', 'percentage': 48, 'amount_usd': 685000, 'color': '#0088fe'},
-        {'name': 'USDT', 'percentage': 32, 'amount_usd': 457000, 'color': '#00c49f'},
-        {'name': 'ETH', 'percentage': 20, 'amount_usd': 286000, 'color': '#a855f7'},
-    ]
+    # Dynamic asset distribution from actual user balances
+    asset_totals = {}
+    for b in user_balances:
+        cur = b.currency.upper()
+        rate = RATE_MAP.get(cur, Decimal('1.0'))
+        usd = b.available_amount * rate
+        asset_totals[cur] = asset_totals.get(cur, Decimal('0.0')) + usd
 
-    volume_trend = [
-        {'date': 'Day 1', 'volume': 140000},
-        {'date': 'Day 2', 'volume': 220000},
-        {'date': 'Day 3', 'volume': 190000},
-        {'date': 'Day 4', 'volume': 310000},
-        {'date': 'Day 5', 'volume': 280000},
-        {'date': 'Day 6', 'volume': 420000},
-        {'date': 'Day 7', 'volume': 490000},
-    ]
+    total_asset_usd = sum(asset_totals.values())
+    colors = {'SOL': '#7C3AED', 'USDT': '#10B981', 'ETH': '#22D1F8', 'BTC': '#F59E0B', 'USDC': '#3B82F6'}
+    if total_asset_usd > 0:
+        asset_distribution = [
+            {
+                'name': cur,
+                'percentage': float(round((amt / total_asset_usd) * 100, 1)),
+                'amount_usd': float(round(amt, 2)),
+                'color': colors.get(cur, '#6366F1')
+            }
+            for cur, amt in asset_totals.items()
+        ]
+    else:
+        asset_distribution = []
+
+    # Dynamic 7-day volume trend from actual trades
+    volume_trend = []
+    for i in range(7):
+        day_date = (now - timedelta(days=6 - i)).date()
+        day_start = timezone.make_aware(datetime.combine(day_date, time.min))
+        day_end = timezone.make_aware(datetime.combine(day_date, time.max))
+        day_trades = trades.filter(created_at__gte=day_start, created_at__lte=day_end)
+        day_vol = sum([t.price_usd * t.token_amount for t in day_trades], Decimal('0.0'))
+        volume_trend.append({
+            'date': day_date.strftime('%b %d'),
+            'volume': float(round(day_vol, 2))
+        })
 
     return Response({
         'kpis': {

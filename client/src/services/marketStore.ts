@@ -521,38 +521,6 @@ const INITIAL_TOKENS: MarketToken[] = [
     isMajor: false,
     sparkline: generateSparkline(2.349, false),
   },
-  {
-    sym: "BATON",
-    name: "Baton",
-    price: "$0.003420",
-    numericPrice: 0.003420,
-    solPrice: "0.0000335 SOL",
-    change: "+14.80%",
-    changeNum: 14.80,
-    cap: "$3.42M",
-    fdv: "$3.42M",
-    liq: "$420.5K",
-    pos: true,
-    supply: 1000000000,
-    m5: { val: "0.85%", up: true },
-    h1: { val: "2.40%", up: true },
-    h6: { val: "8.15%", up: true },
-    h24: { val: "14.80%", up: true },
-    txns: 5120,
-    buys: 3100,
-    sells: 2020,
-    vol: 2.8,
-    buyVol: 1.7,
-    sellVol: 1.1,
-    traders: 1840,
-    buyers: 1120,
-    sellers: 720,
-    network: "solana",
-    poolAddress: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
-    imageUrl: "https://coin-images.coingecko.com/coins/images/33890/large/popcat.png",
-    isMajor: false,
-    sparkline: generateSparkline(0.003420, true),
-  },
 ];
 
 // User portfolio initializes to strictly $0.00 until they make a deposit
@@ -862,12 +830,6 @@ class MarketStore {
       if (majors && majors.length > 0) {
         hasUpdates = true;
         majors.forEach(m => {
-          if (m.sym === "SOL" && m.numericPrice < 150) {
-            m.numericPrice = 179.84;
-            m.price = "$179.84";
-            m.cap = "$82.6B";
-            m.fdv = "$105.8B";
-          }
           const idx = this.tokens.findIndex(t => t.sym === m.sym);
           if (idx >= 0) {
             const current = this.tokens[idx];
@@ -1173,7 +1135,7 @@ class MarketStore {
         }
       }
 
-      // Guarantee all initial major tokens + BATON are present and CANNOT be rugged or corrupted
+      // Guarantee all initial tokens are present and valid
       INITIAL_TOKENS.forEach(it => {
         let exists = this.tokens.find(t => t.sym === it.sym);
         if (!exists) {
