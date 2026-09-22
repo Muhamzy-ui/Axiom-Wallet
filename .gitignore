@@ -17,6 +17,8 @@ db.sqlite3
 .venv/
 venv/
 ENV/
+staticfiles/
+*/staticfiles/
 
 # Environment files
 .env

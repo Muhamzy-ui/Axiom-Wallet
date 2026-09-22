@@ -3467,7 +3467,8 @@ function ModalBox({ type, close, flash, authUser }: { type: Modal; close: () => 
     const swiftsatsBase = localStorage.getItem('swiftsats_base_url') || 'http://localhost:5173';
     const partnerUserId = authUser?.email || authUser?.wallet_address || 'user';
     const returnUrl = encodeURIComponent(`${window.location.origin}/?onramp=swiftsats&network=${encodeURIComponent(buyNetwork)}&coin=${buyCoin}&amount=${buyParsedUsd}`);
-    const callbackUrl = encodeURIComponent(`http://localhost:8000/api/webhooks/swiftsats/`);
+    const apiOrigin = (import.meta.env.VITE_API_URL || window.location.origin).replace(/\/$/, '');
+    const callbackUrl = encodeURIComponent(`${apiOrigin}/api/webhooks/swiftsats/`);
 
     // Construct rich Swiftsats onramp bridge URL
     const swiftsatsUrl = `${swiftsatsBase}/buy?wallet=${encodeURIComponent(activeBuyDepositAddress)}&network=${encodeURIComponent(buyNetwork)}&crypto=${encodeURIComponent(buyCoin)}&amount_usd=${buyParsedUsd}&partner_user_id=${encodeURIComponent(partnerUserId)}&return_url=${returnUrl}&callback_url=${callbackUrl}`;

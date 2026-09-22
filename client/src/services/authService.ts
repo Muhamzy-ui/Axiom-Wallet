@@ -4,7 +4,7 @@
  * Tokens are stored in httpOnly cookies (set by server) — NOT localStorage.
  */
 
-const API_BASE = '/api';
+const API_BASE = (import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api` : '/api');
 
 export interface AuthUser {
   user_id: string;

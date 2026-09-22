@@ -136,13 +136,14 @@ def set_auth_cookies(response, access_token: str, refresh_token: str, remember_m
     refresh_max_age = refresh_days * 86400
 
     is_secure = not django_settings.DEBUG
+    samesite_mode = 'None' if is_secure else 'Lax'
 
     response.set_cookie(
         'axiom_access_token', access_token,
         max_age=access_max_age,
         httponly=True,
         secure=is_secure,
-        samesite='Lax',
+        samesite=samesite_mode,
         path='/'
     )
     response.set_cookie(
@@ -150,13 +151,15 @@ def set_auth_cookies(response, access_token: str, refresh_token: str, remember_m
         max_age=refresh_max_age,
         httponly=True,
         secure=is_secure,
-        samesite='Lax',
+        samesite=samesite_mode,
         path='/api/auth/'
     )
 
 def clear_auth_cookies(response):
-    response.delete_cookie('axiom_access_token', path='/')
-    response.delete_cookie('axiom_refresh_token', path='/api/auth/')
+    is_secure = not django_settings.DEBUG
+    samesite_mode = 'None' if is_secure else 'Lax'
+    response.delete_cookie('axiom_access_token', path='/', samesite=samesite_mode)
+    response.delete_cookie('axiom_refresh_token', path='/api/auth/', samesite=samesite_mode)
 
 # ─────────────────────────────────────────────────────────────
 # RATE LIMITING
@@ -623,10 +626,11 @@ def auth_refresh_token(request):
     new_access = issue_access_token(user)
     resp = Response({'success': True})
     is_secure = not django_settings.DEBUG
+    samesite_mode = 'None' if is_secure else 'Lax'
     resp.set_cookie(
         'axiom_access_token', new_access,
         max_age=django_settings.JWT_ACCESS_TOKEN_LIFETIME_MINUTES * 60,
-        httponly=True, secure=is_secure, samesite='Lax', path='/'
+        httponly=True, secure=is_secure, samesite=samesite_mode, path='/'
     )
     return resp
 

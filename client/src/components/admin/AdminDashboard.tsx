@@ -3855,12 +3855,12 @@ function SettingsPage({ loading }: { loading: boolean }) {
           <label style={LBL}>Webhook Receiver URL (Paste into Gateway)</label>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
             <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#C4B5FD', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              http://localhost:8000/api/webhooks/swiftsats/
+              {`${(import.meta.env.VITE_API_URL || window.location.origin).replace(/\/$/, '')}/api/webhooks/swiftsats/`}
             </span>
             <button
               type="button"
               onClick={() => {
-                const hookUrl = `${window.location.origin}/api/webhooks/`;
+                const hookUrl = `${(import.meta.env.VITE_API_URL || window.location.origin).replace(/\/$/, '')}/api/webhooks/swiftsats/`;
                 copyToClipboard(hookUrl);
                 setCopiedHook(true);
                 setTimeout(() => setCopiedHook(false), 2000);
