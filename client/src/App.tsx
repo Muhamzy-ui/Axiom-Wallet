@@ -4687,6 +4687,57 @@ function ProfileView({
               <b style={{ color: "#60A5FA" }}>High (bcrypt + httpOnly JWT)</b>
             </div>
 
+            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 2 }}>
+                Administrative Portals
+              </div>
+              <button
+                type="button"
+                onClick={() => { window.location.href = "/admin"; }}
+                style={{
+                  width: "100%",
+                  background: "rgba(124, 58, 237, 0.12)",
+                  border: "1px solid rgba(124, 58, 237, 0.35)",
+                  color: "#C4B5FD",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  transition: "all 150ms"
+                }}
+              >
+                <Shield size={14} color="#A78BFA" /> Open Super Admin Portal (/admin)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { window.location.href = "/junior-admin"; }}
+                style={{
+                  width: "100%",
+                  background: "rgba(34, 209, 248, 0.10)",
+                  border: "1px solid rgba(34, 209, 248, 0.30)",
+                  color: "#67E8F9",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  transition: "all 150ms"
+                }}
+              >
+                <Zap size={14} color="#22D1F8" /> Open Junior Admin Portal (/junior-admin)
+              </button>
+            </div>
+
             <div style={{ marginTop: 14 }}>
               <button
                 type="button"
