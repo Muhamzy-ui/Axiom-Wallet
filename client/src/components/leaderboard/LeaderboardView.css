@@ -1,0 +1,1259 @@
+/* ==========================================================================
+   AXIOM LIVE LEADERBOARD STYLES
+   Responsive Dark & Light Mode Glassmorphism Design
+   ========================================================================== */
+
+.leaderboard-view {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px 20px 80px;
+  animation: lbFadeIn 250ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes lbFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Header Banner ──────────────────────────────────────────────────────── */
+.lb-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 28px 32px;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.16) 0%, rgba(17, 18, 30, 0.95) 60%, rgba(16, 185, 129, 0.08) 100%);
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  border-radius: var(--r-card, 16px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  position: relative;
+  overflow: hidden;
+}
+
+.lb-hero::before {
+  content: "";
+  position: absolute;
+  top: -50px;
+  right: -50px;
+  width: 240px;
+  height: 240px;
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.25) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.lb-hero-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1;
+}
+
+.lb-badge-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #10B981;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 999px;
+  width: fit-content;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.lb-live-pulse-dot {
+  width: 7px;
+  height: 7px;
+  background: #10B981;
+  border-radius: 50%;
+  animation: lbPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes lbPulse {
+  0% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+  100% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.lb-hero-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: -0.6px;
+  color: #FFFFFF;
+  margin: 0;
+}
+
+.lb-hero-title svg {
+  color: #F59E0B;
+  filter: drop-shadow(0 0 10px rgba(245, 158, 11, 0.4));
+}
+
+.lb-hero-desc {
+  color: var(--muted, #8B8B99);
+  font-size: 13.5px;
+  margin: 0;
+  max-width: 600px;
+  line-height: 1.5;
+}
+
+.lb-hero-stats {
+  display: flex;
+  gap: 20px;
+  z-index: 1;
+}
+
+.lb-stat-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 10px 16px;
+  min-width: 120px;
+}
+
+.lb-stat-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted, #8B8B99);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.lb-stat-val {
+  font-size: 18px;
+  font-weight: 850;
+  color: #FFFFFF;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Live Ticker Strip ──────────────────────────────────────────────────── */
+.lb-ticker-wrap {
+  display: flex;
+  align-items: center;
+  background: var(--surface, #13131F);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: 12px;
+  padding: 8px 14px;
+  overflow: hidden;
+  gap: 12px;
+}
+
+.lb-ticker-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 850;
+  color: #DDD6FE;
+  background: rgba(124, 58, 237, 0.22);
+  border: 1px solid rgba(124, 58, 237, 0.4);
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.lb-ticker-scroll {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+}
+
+.lb-ticker-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.lb-ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition: all 140ms ease;
+}
+
+.lb-ticker-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.lb-ticker-user {
+  font-weight: 800;
+  color: #fff;
+}
+
+.lb-ticker-pnl.profit {
+  color: #10B981;
+  font-weight: 800;
+}
+
+.lb-ticker-pnl.loss {
+  color: #EF4444;
+  font-weight: 800;
+}
+
+.lb-ticker-token {
+  color: #DDD6FE;
+  font-weight: 750;
+  background: rgba(124, 58, 237, 0.18);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.lb-ticker-time {
+  font-size: 10.5px;
+  color: var(--muted, #8B8B99);
+}
+
+/* ── Podium Showcase (Top 3) ────────────────────────────────────────────── */
+.lb-podium-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.08fr 1fr;
+  gap: 20px;
+  align-items: flex-end;
+  margin-top: 10px;
+}
+
+.lb-podium-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface, #13131F);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: 18px;
+  padding: 24px 20px;
+  position: relative;
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+  overflow: hidden;
+}
+
+.lb-podium-card:hover {
+  transform: translateY(-4px);
+}
+
+/* Rank 1 (Gold) */
+.lb-podium-card.rank-1 {
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.12) 0%, rgba(19, 19, 31, 0.98) 45%);
+  border: 2px solid rgba(245, 158, 11, 0.6);
+  box-shadow: 0 16px 40px rgba(245, 158, 11, 0.15), 0 0 30px rgba(245, 158, 11, 0.1);
+  order: 2;
+  padding-top: 32px;
+}
+
+/* Rank 2 (Silver) */
+.lb-podium-card.rank-2 {
+  background: linear-gradient(180deg, rgba(148, 163, 184, 0.1) 0%, rgba(19, 19, 31, 0.98) 45%);
+  border: 1.5px solid rgba(148, 163, 184, 0.45);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  order: 1;
+}
+
+/* Rank 3 (Bronze) */
+.lb-podium-card.rank-3 {
+  background: linear-gradient(180deg, rgba(217, 119, 6, 0.1) 0%, rgba(19, 19, 31, 0.98) 45%);
+  border: 1.5px solid rgba(217, 119, 6, 0.4);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  order: 3;
+}
+
+.lb-podium-crown-badge {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 900;
+  padding: 3px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+
+.rank-1 .lb-podium-crown-badge {
+  background: #F59E0B;
+  color: #000;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.5);
+}
+
+.rank-2 .lb-podium-crown-badge {
+  background: #CBD5E1;
+  color: #0F172A;
+}
+
+.rank-3 .lb-podium-crown-badge {
+  background: #D97706;
+  color: #FFFFFF;
+}
+
+.lb-podium-trader-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.lb-avatar-wrap {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: #1E1F30;
+  font-size: 20px;
+  font-weight: 900;
+  color: #fff;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  flex-shrink: 0;
+}
+
+.rank-1 .lb-avatar-wrap {
+  border-color: #F59E0B;
+  box-shadow: 0 0 16px rgba(245, 158, 11, 0.4);
+}
+
+.lb-rank-num-badge {
+  position: absolute;
+  bottom: -6px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 900;
+  color: #000;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.rank-1 .lb-rank-num-badge { background: #F59E0B; }
+.rank-2 .lb-rank-num-badge { background: #CBD5E1; }
+.rank-3 .lb-rank-num-badge { background: #D97706; color: #fff; }
+
+.lb-podium-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.lb-trader-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lb-trader-name {
+  font-size: 16px;
+  font-weight: 850;
+  color: #FFFFFF;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lb-tag-pill {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.lb-tag-pill.whale {
+  background: rgba(14, 165, 233, 0.2);
+  color: #38BDF8;
+  border: 1px solid rgba(14, 165, 233, 0.4);
+}
+
+.lb-tag-pill.sniper {
+  background: rgba(245, 158, 11, 0.2);
+  color: #FCD34D;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.lb-tag-pill.pro {
+  background: rgba(124, 58, 237, 0.2);
+  color: #C084FC;
+  border: 1px solid rgba(124, 58, 237, 0.4);
+}
+
+.lb-trader-wallet-addr {
+  font-size: 11px;
+  color: var(--muted, #8B8B99);
+  font-family: monospace;
+}
+
+/* Main Podium Metrics */
+.lb-podium-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.lb-metric-row-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.lb-pnl-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted, #8B8B99);
+  text-transform: uppercase;
+}
+
+.lb-pnl-values {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.lb-big-pnl {
+  font-size: 22px;
+  font-weight: 900;
+  color: #10B981;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+}
+
+.lb-big-roi {
+  font-size: 12px;
+  font-weight: 800;
+  color: #10B981;
+  background: rgba(16, 185, 129, 0.12);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* Win Rate Bar */
+.lb-winrate-container {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.lb-winrate-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted, #8B8B99);
+}
+
+.lb-winrate-labels b {
+  color: #FFFFFF;
+}
+
+.lb-progress-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.lb-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #10B981 0%, #059669 100%);
+  transition: width 400ms ease;
+}
+
+/* Top Coins Chips */
+.lb-podium-coins {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.lb-coins-label {
+  font-size: 10.5px;
+  color: var(--muted, #8B8B99);
+  font-weight: 700;
+  margin-right: 2px;
+}
+
+.lb-coin-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #E2E8F0;
+  cursor: pointer;
+  transition: all 120ms;
+}
+
+.lb-coin-tag:hover {
+  background: rgba(124, 58, 237, 0.2);
+  border-color: rgba(124, 58, 237, 0.5);
+  color: #fff;
+}
+
+/* Podium Action Buttons */
+.lb-podium-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.lb-btn-copy {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 850;
+  background: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%);
+  color: #FFFFFF;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);
+  transition: all 140ms ease;
+}
+
+.lb-btn-copy:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.lb-btn-copy.is-copying {
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(16, 185, 129, 0.5);
+  color: #10B981;
+  box-shadow: none;
+}
+
+.lb-btn-inspect {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--muted, #8B8B99);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: all 140ms;
+}
+
+.lb-btn-inspect:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+/* ── Filter & Search Controls Bar ────────────────────────────────────────── */
+.lb-controls-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  background: var(--surface, #13131F);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: 14px;
+  padding: 12px 16px;
+}
+
+.lb-timeframe-group {
+  display: flex;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 3px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  gap: 2px;
+}
+
+.lb-tf-btn {
+  padding: 6px 12px;
+  font-size: 11.5px;
+  font-weight: 750;
+  border-radius: 7px;
+  background: transparent;
+  border: none;
+  color: var(--muted, #8B8B99);
+  cursor: pointer;
+  transition: all 140ms;
+}
+
+.lb-tf-btn:hover {
+  color: #fff;
+}
+
+.lb-tf-btn.active {
+  background: var(--violet, #7C3AED);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
+}
+
+.lb-category-group {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.lb-category-group::-webkit-scrollbar {
+  display: none;
+}
+
+.lb-cat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  color: var(--muted, #8B8B99);
+  font-size: 11.5px;
+  font-weight: 750;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 140ms;
+}
+
+.lb-cat-pill:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.lb-cat-pill.active {
+  background: rgba(124, 58, 237, 0.18);
+  border-color: rgba(124, 58, 237, 0.5);
+  color: #DDD6FE;
+}
+
+.lb-search-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 6px 12px;
+  min-width: 220px;
+}
+
+.lb-search-input-wrap input {
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 12px;
+  color: #fff;
+  width: 100%;
+}
+
+.lb-search-input-wrap input::placeholder {
+  color: #64748B;
+}
+
+/* ── Full Rankings Table ─────────────────────────────────────────────────── */
+.lb-table-card {
+  background: var(--surface, #13131F);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.lb-table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.lb-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  min-width: 880px;
+}
+
+.lb-table th {
+  padding: 13px 16px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted, #8B8B99);
+  background: rgba(0, 0, 0, 0.22);
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.lb-table th:hover {
+  color: #fff;
+}
+
+.lb-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+.lb-row {
+  transition: background 120ms;
+  cursor: pointer;
+}
+
+.lb-row:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.lb-row.highlighted {
+  background: rgba(124, 58, 237, 0.08);
+  border-left: 3px solid var(--violet, #7C3AED);
+}
+
+.lb-rank-col {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 850;
+  color: var(--muted, #8B8B99);
+  width: 50px;
+}
+
+.lb-rank-col.podium-1 { color: #F59E0B; }
+.lb-rank-col.podium-2 { color: #CBD5E1; }
+.lb-rank-col.podium-3 { color: #D97706; }
+
+.lb-trader-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lb-table-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: #1C1D2C;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  font-weight: 850;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.lb-table-trader-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lb-table-name {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #FFFFFF;
+}
+
+.lb-table-addr {
+  font-size: 10.5px;
+  color: var(--muted, #8B8B99);
+  font-family: monospace;
+}
+
+.lb-pnl-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.lb-table-pnl {
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+}
+
+.lb-table-pnl.profit { color: #10B981; }
+.lb-table-pnl.loss { color: #EF4444; }
+
+.lb-table-roi {
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.lb-table-roi.profit { color: #10B981; }
+.lb-table-roi.loss { color: #EF4444; }
+
+.lb-table-wr-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 100px;
+}
+
+.lb-wr-text {
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+  display: flex;
+  justify-content: space-between;
+}
+
+.lb-table-vol {
+  font-weight: 750;
+  color: #E2E8F0;
+  font-variant-numeric: tabular-nums;
+}
+
+.lb-coins-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lb-table-btn-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 800;
+  background: rgba(124, 58, 237, 0.16);
+  border: 1px solid rgba(124, 58, 237, 0.4);
+  color: #DDD6FE;
+  cursor: pointer;
+  transition: all 130ms;
+}
+
+.lb-table-btn-copy:hover {
+  background: var(--violet, #7C3AED);
+  color: #fff;
+}
+
+.lb-table-btn-copy.is-copying {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.5);
+  color: #10B981;
+}
+
+/* ── Interactive Copy Modal ──────────────────────────────────────────────── */
+.lb-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  animation: lbFadeIn 180ms ease;
+}
+
+.lb-modal-card {
+  width: 100%;
+  max-width: 480px;
+  background: #12131F;
+  border: 1px solid rgba(124, 58, 237, 0.35);
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(124, 58, 237, 0.15);
+  overflow: hidden;
+  animation: lbSlideUp 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes lbSlideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.lb-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.lb-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 850;
+  color: #fff;
+}
+
+.lb-modal-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--muted, #8B8B99);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.lb-modal-body {
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.lb-target-trader-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.lb-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lb-input-group label {
+  font-size: 11.5px;
+  font-weight: 750;
+  color: #CBD5E1;
+  display: flex;
+  justify-content: space-between;
+}
+
+.lb-input-wrap {
+  display: flex;
+  align-items: center;
+  background: #090A10;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.lb-input-wrap:focus-within {
+  border-color: var(--violet, #7C3AED);
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2);
+}
+
+.lb-input-wrap input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 800;
+  width: 100%;
+}
+
+.lb-input-denom {
+  font-weight: 850;
+  color: #DDD6FE;
+  font-size: 13px;
+}
+
+.lb-presets-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.lb-preset-btn {
+  flex: 1;
+  padding: 5px 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--muted, #8B8B99);
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+  transition: all 120ms;
+}
+
+.lb-preset-btn:hover {
+  background: rgba(124, 58, 237, 0.2);
+  border-color: rgba(124, 58, 237, 0.4);
+  color: #fff;
+}
+
+.lb-modal-footer {
+  padding: 16px 22px 22px;
+  display: flex;
+  gap: 10px;
+}
+
+.lb-confirm-btn {
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 850;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4);
+  transition: all 140ms;
+}
+
+.lb-confirm-btn:hover {
+  filter: brightness(1.1);
+}
+
+/* ── Light Theme Overrides ───────────────────────────────────────────────── */
+[data-theme="light"] .leaderboard-view {
+  color: #0F172A;
+}
+
+[data-theme="light"] .lb-hero {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.08) 0%, #FFFFFF 60%, rgba(16, 185, 129, 0.06) 100%);
+  border-color: #E2E8F0;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .lb-hero-title {
+  color: #0F172A;
+}
+
+[data-theme="light"] .lb-hero-desc {
+  color: #64748B;
+}
+
+[data-theme="light"] .lb-stat-box {
+  background: #F8FAFC;
+  border-color: #E2E8F0;
+}
+
+[data-theme="light"] .lb-stat-val {
+  color: #0F172A;
+}
+
+[data-theme="light"] .lb-ticker-wrap {
+  background: #FFFFFF;
+  border-color: #E2E8F0;
+}
+
+[data-theme="light"] .lb-ticker-item {
+  background: #F8FAFC;
+  border-color: #E2E8F0;
+}
+
+[data-theme="light"] .lb-ticker-user {
+  color: #0F172A;
+}
+
+[data-theme="light"] .lb-podium-card {
+  background: #FFFFFF;
+  border-color: #E2E8F0;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="light"] .lb-podium-card.rank-1 {
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.1) 0%, #FFFFFF 45%);
+}
+
+[data-theme="light"] .lb-podium-card.rank-2 {
+  background: linear-gradient(180deg, rgba(148, 163, 184, 0.12) 0%, #FFFFFF 45%);
+}
+
+[data-theme="light"] .lb-podium-card.rank-3 {
+  background: linear-gradient(180deg, rgba(217, 119, 6, 0.1) 0%, #FFFFFF 45%);
+}
+
+[data-theme="light"] .lb-avatar-wrap {
+  background: #F1F5F9;
+  color: #0F172A;
+  border-color: #CBD5E1;
+}
+
+[data-theme="light"] .lb-trader-name {
+  color: #0F172A;
+}
+
+[data-theme="light"] .lb-podium-metrics {
+  border-color: #F1F5F9;
+}
+
+[data-theme="light"] .lb-winrate-labels b {
+  color: #0F172A;
+}
+
+[data-theme="light"] .lb-progress-track {
+  background: #E2E8F0;
+}
+
+[data-theme="light"] .lb-coin-tag {
+  background: #F1F5F9;
+  border-color: #E2E8F0;
+  color: #334155;
+}
+
+[data-theme="light"] .lb-controls-bar {
+  background: #FFFFFF;
+  border-color: #E2E8F0;
+}
+
+[data-theme="light"] .lb-timeframe-group,
+[data-theme="light"] .lb-search-input-wrap {
+  background: #F8FAFC;
+  border-color: #E2E8F0;
+}
+
+[data-theme="light"] .lb-search-input-wrap input {
+  color: #0F172A;
+}
+
+[data-theme="light"] .lb-cat-pill {
+  background: #F8FAFC;
+  border-color: #E2E8F0;
+  color: #475569;
+}
+
+[data-theme="light"] .lb-cat-pill.active {
+  background: #EDE9FE;
+  border-color: #C4B5FD;
+  color: #6D28D9;
+}
+
+[data-theme="light"] .lb-table-card {
+  background: #FFFFFF;
+  border-color: #E2E8F0;
+}
+
+[data-theme="light"] .lb-table th {
+  background: #F8FAFC;
+  border-bottom-color: #E2E8F0;
+  color: #475569;
+}
+
+[data-theme="light"] .lb-table td {
+  border-bottom-color: #F1F5F9;
+}
+
+[data-theme="light"] .lb-row:hover {
+  background: #F8FAFC;
+}
+
+[data-theme="light"] .lb-table-name {
+  color: #0F172A;
+}
+
+[data-theme="light"] .lb-table-avatar {
+  background: #F1F5F9;
+  border-color: #E2E8F0;
+  color: #0F172A;
+}
+
+[data-theme="light"] .lb-modal-card {
+  background: #FFFFFF;
+  border-color: #E2E8F0;
+}
+
+[data-theme="light"] .lb-modal-header {
+  border-bottom-color: #F1F5F9;
+}
+
+[data-theme="light"] .lb-modal-title {
+  color: #0F172A;
+}
+
+[data-theme="light"] .lb-target-trader-box {
+  background: #F8FAFC;
+  border-color: #E2E8F0;
+}
+
+[data-theme="light"] .lb-input-wrap {
+  background: #F8FAFC;
+  border-color: #CBD5E1;
+}
+
+[data-theme="light"] .lb-input-wrap input {
+  color: #0F172A;
+}
+
+/* ── Responsive Mobile & Tablet Tweaks ───────────────────────────────────── */
+@media (max-width: 1024px) {
+  .leaderboard-view {
+    padding: 16px 12px 100px;
+    gap: 16px;
+  }
+
+  .lb-podium-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .lb-podium-card.rank-1 {
+    order: 1;
+    padding-top: 24px;
+  }
+
+  .lb-podium-card.rank-2 {
+    order: 2;
+  }
+
+  .lb-podium-card.rank-3 {
+    order: 3;
+  }
+
+  .lb-hero {
+    padding: 20px 18px;
+  }
+
+  .lb-hero-title {
+    font-size: 24px;
+  }
+
+  .lb-hero-stats {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .lb-stat-box {
+    flex: 1;
+    min-width: 0;
+  }
+}
