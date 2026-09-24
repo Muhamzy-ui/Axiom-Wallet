@@ -9,7 +9,14 @@ import { copyToClipboard } from "../../services/clipboard";
 import { type AuthUser } from "../../services/authService";
 import { CountrySelectModal } from "./CountrySelectModal";
 import { CountryInfo, DEFAULT_COUNTRY, getCountryByCode } from "../../constants/countries";
+import { CountryFlag } from "../common/CountryFlag";
 import "./Modals.css";
+
+const POPULAR_COUNTRY_CODES = [
+  "NG", "US", "GB", "EU", "CA", "GH", "KE", "ZA", "AE", "IN",
+  "BR", "AU", "JP", "CN", "SG", "PH", "MY", "CH", "SA", "TR",
+  "CM", "CI", "EG", "RW", "UG", "TZ", "SN", "MX", "AR", "CO"
+];
 
 interface WithdrawPageProps {
   onClose: () => void;
@@ -519,21 +526,61 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
                       1. Payout Country & Currency
                     </span>
                     <span style={{ fontSize: 11, color: "var(--violet, #7C3AED)", fontWeight: 700 }}>
-                      Change
+                      190+ Countries Live
                     </span>
+                  </div>
+
+                  {/* Fast Flags Scroll Rail */}
+                  <div className="popular-flags-rail-wrap">
+                    <div className="popular-flags-rail-label">
+                      <span>Quick Select Country Flag:</span>
+                      <span>Tap to Switch</span>
+                    </div>
+                    <div className="popular-flags-rail">
+                      {POPULAR_COUNTRY_CODES.map((code) => {
+                        const c = getCountryByCode(code);
+                        const isActive = selectedCountry.code === c.code;
+                        return (
+                          <button
+                            key={code}
+                            type="button"
+                            className={`flag-chip-pill ${isActive ? "active" : ""}`}
+                            onClick={() => handleSelectCountry(c)}
+                            title={`${c.name} (${c.currency})`}
+                          >
+                            <CountryFlag code={c.code} flag={c.flag} size={15} />
+                            <span>{c.code}</span>
+                            <span className="flag-chip-sub">({c.currencySymbol})</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <button
                     type="button"
                     className="country-pill-btn"
                     onClick={() => setIsCountryModalOpen(true)}
+                    style={{ marginTop: 10 }}
                   >
-                    <span className="country-pill-flag">{selectedCountry.flag}</span>
+                    <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={28} />
                     <div style={{ flex: 1 }}>
                       <div className="country-pill-name">{selectedCountry.name}</div>
                       <div className="country-pill-currency">
                         Payout in {selectedCountry.currency} ({selectedCountry.currencySymbol}) · 1 USD = {selectedCountry.rateToUsd >= 100 ? selectedCountry.rateToUsd.toLocaleString() : selectedCountry.rateToUsd} {selectedCountry.currency}
                       </div>
+                    </div>
+                    <div
+                      style={{
+                        padding: "5px 10px",
+                        borderRadius: 8,
+                        background: "rgba(124, 58, 237, 0.18)",
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        color: "#C4B5FD",
+                      }}
+                    >
+                      Change
                     </div>
                   </button>
                 </div>
@@ -695,15 +742,17 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
               </div>
             )}
 
-            {/* Submit CTA */}
-            <button
-              type="button"
-              className="pro-submit-btn"
-              onClick={handleReview}
-            >
-              <Send size={16} />
-              <span>Review & Withdraw {sendAmt ? `$${sendAmt}` : "0.00"}</span>
-            </button>
+            {/* Submit CTA with Mobile Sticky Bar */}
+            <div className="mobile-sticky-action-bar">
+              <button
+                type="button"
+                className="pro-submit-btn"
+                onClick={handleReview}
+              >
+                <Send size={16} />
+                <span>Review & Withdraw {sendAmt ? `$${sendAmt}` : "0.00"}</span>
+              </button>
+            </div>
           </>
         )}
       </div>

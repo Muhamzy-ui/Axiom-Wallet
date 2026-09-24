@@ -540,3 +540,354 @@
   color: #7C3AED;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Country Flags Quick-Rail & Inline Flags Browser (Buy Page)
+   ───────────────────────────────────────────────────────────────────────────── */
+.popular-flags-rail-wrap {
+  margin-top: 10px;
+  position: relative;
+}
+
+.popular-flags-rail-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted, #8B8B99);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.popular-flags-rail {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.popular-flags-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.flag-chip-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  padding: 5px 10px;
+  border-radius: 20px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text, #FFFFFF);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.flag-chip-pill:hover {
+  background: rgba(124, 58, 237, 0.15);
+  border-color: rgba(124, 58, 237, 0.35);
+}
+
+.flag-chip-pill:active {
+  transform: scale(0.96);
+}
+
+.flag-chip-pill.active {
+  background: rgba(124, 58, 237, 0.28);
+  border-color: var(--violet, #7C3AED);
+  color: #FFFFFF;
+  box-shadow: 0 0 12px rgba(124, 58, 237, 0.4);
+}
+
+.flag-chip-sub {
+  font-size: 10px;
+  color: #C4B5FD;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+/* Inline All 190+ Countries & Flags Drawer */
+.all-flags-drawer {
+  margin-top: 10px;
+  background: rgba(10, 11, 20, 0.9);
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  border-radius: 14px;
+  padding: 12px;
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+.all-flags-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 0 10px;
+  margin-bottom: 10px;
+}
+
+.all-flags-search-input {
+  width: 100%;
+  height: 38px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text, #FFFFFF);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.all-flags-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+}
+
+.all-flags-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text, #FFFFFF);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.all-flags-item:hover {
+  background: rgba(124, 58, 237, 0.18);
+  border-color: rgba(124, 58, 237, 0.3);
+}
+
+.all-flags-item.active {
+  background: rgba(124, 58, 237, 0.25);
+  border-color: var(--violet, #7C3AED);
+}
+
+.all-flags-name {
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.all-flags-curr {
+  font-size: 10px;
+  color: #C4B5FD;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Native Mobile Bottom Sheet Behavior (React Native feel)
+   ───────────────────────────────────────────────────────────────────────────── */
+.mobile-sheet-handle {
+  display: none;
+  width: 38px;
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.25);
+  margin: 10px auto 4px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .country-modal-overlay {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+
+  .country-modal-sheet {
+    border-bottom-left-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+    border-top-left-radius: 24px !important;
+    border-top-right-radius: 24px !important;
+    max-height: 85vh !important;
+    max-width: 100% !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-bottom: none !important;
+    animation: sheetSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    padding-bottom: env(safe-area-inset-bottom, 16px) !important;
+  }
+
+  .mobile-sheet-handle {
+    display: block !important;
+  }
+
+  @keyframes sheetSlideUp {
+    from {
+      transform: translateY(100%);
+      opacity: 0.6;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Comprehensive Mobile App Responsiveness (<= 640px & <= 400px)
+   ───────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .fullpage-modal-wrap {
+    height: 100dvh;
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .fullpage-modal-header {
+    padding: 0.75rem 0.9rem;
+    min-height: 52px;
+  }
+
+  .fullpage-header-title h1 {
+    font-size: 15px;
+  }
+
+  .fullpage-header-title span {
+    font-size: 10px;
+  }
+
+  .fullpage-modal-body {
+    padding: 0.85rem 0.85rem calc(5.5rem + env(safe-area-inset-bottom, 0px));
+    gap: 12px;
+  }
+
+  .pro-card {
+    padding: 13px 12px;
+    border-radius: 14px;
+  }
+
+  .asset-selector-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .asset-pill {
+    padding: 8px 2px;
+    border-radius: 10px;
+  }
+
+  .asset-pill img {
+    width: 20px !important;
+    height: 20px !important;
+  }
+
+  .asset-pill-sym {
+    font-size: 11px;
+  }
+
+  .asset-pill-price {
+    font-size: 8.5px;
+  }
+
+  .network-pills-row {
+    gap: 4px;
+  }
+
+  .network-pill {
+    padding: 4px 9px;
+    font-size: 10px;
+  }
+
+  .converter-input {
+    font-size: 22px;
+  }
+
+  .pro-submit-btn {
+    padding: 13px;
+    font-size: 14px;
+    border-radius: 14px;
+  }
+
+  /* Fixed Mobile Sticky Action Bar at bottom */
+  .mobile-sticky-action-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 80;
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: rgba(9, 10, 16, 0.94);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    justify-content: center;
+  }
+
+  .mobile-sticky-action-bar .pro-submit-btn {
+    width: 100%;
+    max-width: 500px;
+    margin: 0;
+    box-shadow: 0 4px 20px rgba(124, 58, 237, 0.55);
+  }
+
+  /* Prevent text selection and zoom on buttons */
+  button, input, select {
+    touch-action: manipulation;
+  }
+
+  input[type="number"],
+  input[type="text"],
+  select {
+    font-size: 16px !important; /* Prevents auto-zoom on iOS Safari */
+  }
+
+  .address-monospace-text {
+    font-size: 10.5px;
+  }
+
+  .qr-frame {
+    padding: 8px;
+    border-radius: 12px;
+  }
+
+  .qr-frame img {
+    width: 125px !important;
+    height: 125px !important;
+  }
+
+  .all-flags-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 380px) {
+  .asset-pill-sym {
+    font-size: 10px;
+  }
+
+  .asset-pill-price {
+    display: none; /* Hide small price text on tiny screens to avoid overflow */
+  }
+
+  .converter-input {
+    font-size: 19px;
+  }
+
+  .all-flags-grid {
+    grid-template-columns: 1fr;
+  }
+}
+

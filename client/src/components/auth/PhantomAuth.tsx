@@ -14,6 +14,7 @@ import { useTheme } from "../../services/themeContext";
 import { copyToClipboard } from "../../services/clipboard";
 import { CountrySelectModal } from "../modals/CountrySelectModal";
 import { getCountryByCode, CountryInfo } from "../../constants/countries";
+import { CountryFlag } from "../common/CountryFlag";
 import "./PhantomAuth.css";
 
 type PhantomView =
@@ -786,7 +787,7 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
                     }}
                     onClick={() => setIsCountryModalOpen(true)}
                   >
-                    <span style={{ fontSize: "1.2rem", lineHeight: 1 }}>{selectedCountry.flag}</span>
+                    <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={20} />
                     <span style={{ flex: 1, fontWeight: 600, color: "inherit" }}>{selectedCountry.name}</span>
                     <span style={{ fontSize: 11, color: "var(--muted, #94A3B8)", fontWeight: 700 }}>
                       {selectedCountry.currency}

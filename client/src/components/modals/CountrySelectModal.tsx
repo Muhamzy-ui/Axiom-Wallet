@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { Search, X, Check, Globe, Sparkles } from "lucide-react";
 import { COUNTRIES, CountryInfo, searchCountries } from "../../constants/countries";
+import { CountryFlag } from "../common/CountryFlag";
 
 interface CountrySelectModalProps {
   isOpen: boolean;
@@ -62,6 +63,7 @@ export const CountrySelectModal: React.FC<CountrySelectModalProps> = ({
 
   return (
     <div
+      className="country-modal-overlay"
       style={{
         position: "fixed",
         inset: 0,
@@ -80,6 +82,7 @@ export const CountrySelectModal: React.FC<CountrySelectModalProps> = ({
       }}
     >
       <div
+        className="country-modal-sheet"
         style={{
           background: "var(--card-bg, #13131F)",
           border: "1px solid rgba(255, 255, 255, 0.12)",
@@ -93,6 +96,9 @@ export const CountrySelectModal: React.FC<CountrySelectModalProps> = ({
           overflow: "hidden",
         }}
       >
+        {/* Mobile Drag Indicator */}
+        <div className="mobile-sheet-handle" />
+
         {/* Modal Header */}
         <div
           style={{
@@ -308,8 +314,8 @@ export const CountrySelectModal: React.FC<CountrySelectModalProps> = ({
                     }
                   }}
                 >
-                  {/* Flag Emoji */}
-                  <span style={{ fontSize: 24, lineHeight: 1, flexShrink: 0 }}>{c.flag}</span>
+                  {/* Crisp Universal Country Flag Graphic */}
+                  <CountryFlag code={c.code} flag={c.flag} size={22} />
 
                   {/* Country Name & Currency Tag */}
                   <div style={{ flex: 1, minWidth: 0 }}>

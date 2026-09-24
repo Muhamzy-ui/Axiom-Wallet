@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   ChevronLeft, Globe, ShieldCheck, Zap, RefreshCw, ExternalLink,
   CreditCard, Building2, CheckCircle2, ArrowRight, Shield, Clock,
-  Smartphone, Copy, Check
+  Smartphone, Copy, Check, Search, Sparkles, ChevronDown, ChevronUp
 } from "lucide-react";
 import { api } from "../../services/api";
 import { type PlatformDepositWallet } from "../../types";
@@ -11,6 +11,7 @@ import { copyToClipboard } from "../../services/clipboard";
 import { type AuthUser } from "../../services/authService";
 import { CountrySelectModal } from "./CountrySelectModal";
 import { COUNTRIES, CountryInfo, DEFAULT_COUNTRY, getCountryByCode } from "../../constants/countries";
+import { CountryFlag } from "../common/CountryFlag";
 import "./Modals.css";
 
 interface BuyPageProps {
@@ -52,6 +53,12 @@ const COIN_NETWORKS: Record<BuyCoin, { label: string; networkKey: string; note: 
   ],
 };
 
+const POPULAR_COUNTRY_CODES = [
+  "NG", "US", "GB", "EU", "CA", "GH", "KE", "ZA", "AE", "IN",
+  "BR", "AU", "JP", "CN", "SG", "PH", "MY", "CH", "SA", "TR",
+  "CM", "CI", "EG", "RW", "UG", "TZ", "SN", "MX", "AR", "CO"
+];
+
 export const BuyPage: React.FC<BuyPageProps> = ({
   onClose,
   onDone,
@@ -64,6 +71,44 @@ export const BuyPage: React.FC<BuyPageProps> = ({
     return getCountryByCode(savedCode);
   });
   const [isCountryModalOpen, setIsCountryModalOpen] = useState(false);
+
+  // Inline Country Flags Drawer & Search
+  const [showAllFlags, setShowAllFlags] = useState(false);
+  const [inlineFlagSearch, setInlineFlagSearch] = useState("");
+  const [flagRegionFilter, setFlagRegionFilter] = useState<"ALL" | "AFRICA" | "AMERICAS" | "EUROPE" | "ASIA">("ALL");
+
+  const inlineFilteredCountries = useMemo(() => {
+    if (inlineFlagSearch.trim()) {
+      const q = inlineFlagSearch.toLowerCase().trim();
+      return COUNTRIES.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          c.code.toLowerCase().includes(q) ||
+          c.currency.toLowerCase().includes(q)
+      );
+    }
+    if (flagRegionFilter === "AFRICA") {
+      return COUNTRIES.filter((c) =>
+        ["NG", "GH", "KE", "ZA", "EG", "DZ", "MA", "ET", "RW", "UG", "TZ", "CM", "CI", "SN", "ZM", "ZW", "AO", "BW", "CD", "CG", "GA", "GM", "GN", "LR", "MW", "ML", "MR", "MU", "MZ", "NA", "NE", "SL", "SO", "SD", "SZ", "TG"].includes(c.code)
+      );
+    }
+    if (flagRegionFilter === "AMERICAS") {
+      return COUNTRIES.filter((c) =>
+        ["US", "CA", "BR", "MX", "AR", "CO", "CL", "PE", "VE", "EC", "GT", "CR", "PA", "DO", "JM", "TT", "BS", "BB", "BZ", "BO", "CU", "GY", "HT", "HN", "NI", "PY", "SV", "UY"].includes(c.code)
+      );
+    }
+    if (flagRegionFilter === "EUROPE") {
+      return COUNTRIES.filter((c) =>
+        ["GB", "EU", "DE", "FR", "IT", "ES", "NL", "CH", "SE", "NO", "DK", "PL", "PT", "BE", "AT", "IE", "FI", "CZ", "RO", "GR", "HU", "UA", "HR", "BG", "SK", "SI", "LT", "LV", "EE", "IS", "LU"].includes(c.code)
+      );
+    }
+    if (flagRegionFilter === "ASIA") {
+      return COUNTRIES.filter((c) =>
+        ["AE", "IN", "JP", "CN", "SG", "PH", "MY", "SA", "TR", "KR", "ID", "TH", "VN", "PK", "BD", "IL", "QA", "KW", "OM", "BH", "JO", "LB", "KZ", "UZ", "LK", "NP"].includes(c.code)
+      );
+    }
+    return COUNTRIES;
+  }, [inlineFlagSearch, flagRegionFilter]);
 
   // Buy Crypto Form State
   const [buyCoin, setBuyCoin] = useState<BuyCoin>("USDT");
@@ -472,24 +517,53 @@ export const BuyPage: React.FC<BuyPageProps> = ({
         ) : (
           /* Step 1: Form View */
           <>
-            {/* 1. Country & Fiat Currency Picker */}
+            {/* 1. Country & Fiat Currency Picker with All Flags */}
             <div className="pro-card">
               <div className="pro-card-header">
                 <span className="pro-card-label">
                   <Globe size={13} />
-                  1. Your Country & Currency
+                  1. Country & Fiat Currency
                 </span>
                 <span style={{ fontSize: 11, color: "var(--violet, #7C3AED)", fontWeight: 700 }}>
-                  Tap to change
+                  190+ Countries Live
                 </span>
               </div>
 
+              {/* Fast Flags Scroll Rail */}
+              <div className="popular-flags-rail-wrap">
+                <div className="popular-flags-rail-label">
+                  <span>Popular Country Flags:</span>
+                  <span>Tap to Switch</span>
+                </div>
+                <div className="popular-flags-rail">
+                  {POPULAR_COUNTRY_CODES.map((code) => {
+                    const c = getCountryByCode(code);
+                    const isActive = selectedCountry.code === c.code;
+                    return (
+                      <button
+                        key={code}
+                        type="button"
+                        className={`flag-chip-pill ${isActive ? "active" : ""}`}
+                        onClick={() => handleSelectCountry(c)}
+                        title={`${c.name} (${c.currency})`}
+                      >
+                        <CountryFlag code={c.code} flag={c.flag} size={15} />
+                        <span>{c.code}</span>
+                        <span className="flag-chip-sub">({c.currencySymbol})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Active Selected Country Card */}
               <button
                 type="button"
                 className="country-pill-btn"
                 onClick={() => setIsCountryModalOpen(true)}
+                style={{ marginTop: 10 }}
               >
-                <span className="country-pill-flag">{selectedCountry.flag}</span>
+                <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={28} />
                 <div style={{ flex: 1 }}>
                   <div className="country-pill-name">{selectedCountry.name}</div>
                   <div className="country-pill-currency">
@@ -498,17 +572,125 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                 </div>
                 <div
                   style={{
-                    padding: "4px 8px",
-                    borderRadius: 6,
-                    background: "rgba(124, 58, 237, 0.15)",
-                    fontSize: 11,
+                    padding: "5px 10px",
+                    borderRadius: 8,
+                    background: "rgba(124, 58, 237, 0.18)",
+                    fontSize: 11.5,
                     fontWeight: 700,
                     color: "#C4B5FD",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
                   }}
                 >
-                  Change
+                  <span>Change</span>
                 </div>
               </button>
+
+              {/* Inline All 190+ Flags & Drawer Toggle */}
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAllFlags(!showAllFlags)}
+                  style={{
+                    flex: 1,
+                    background: showAllFlags ? "rgba(124, 58, 237, 0.2)" : "rgba(255, 255, 255, 0.04)",
+                    border: showAllFlags ? "1px solid rgba(124, 58, 237, 0.4)" : "1px solid rgba(255, 255, 255, 0.08)",
+                    color: showAllFlags ? "#C4B5FD" : "var(--muted)",
+                    borderRadius: 8,
+                    padding: "7px 10px",
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <Globe size={13} />
+                  <span>{showAllFlags ? "▲ Hide 190+ Flags" : "▼ Show All 190+ Country Flags & Currencies"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsCountryModalOpen(true)}
+                  style={{
+                    background: "rgba(255, 255, 255, 0.04)",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                    color: "var(--muted)",
+                    borderRadius: 8,
+                    padding: "7px 12px",
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Full Modal ↗
+                </button>
+              </div>
+
+              {/* Expandable Inline All 190+ Countries & Flags Drawer */}
+              {showAllFlags && (
+                <div className="all-flags-drawer">
+                  <div className="all-flags-search-box">
+                    <Search size={14} color="#94A3B8" />
+                    <input
+                      type="text"
+                      className="all-flags-search-input"
+                      placeholder="Search 190+ countries or currencies..."
+                      value={inlineFlagSearch}
+                      onChange={(e) => setInlineFlagSearch(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+
+                  {!inlineFlagSearch.trim() && (
+                    <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 6, marginBottom: 8, scrollbarWidth: "none" }}>
+                      {(["ALL", "AFRICA", "AMERICAS", "EUROPE", "ASIA"] as const).map((r) => (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => setFlagRegionFilter(r)}
+                          style={{
+                            padding: "3px 9px",
+                            borderRadius: 12,
+                            fontSize: 10,
+                            fontWeight: 700,
+                            border: flagRegionFilter === r ? "1px solid var(--violet)" : "1px solid rgba(255,255,255,0.08)",
+                            background: flagRegionFilter === r ? "rgba(124,58,237,0.25)" : "transparent",
+                            color: flagRegionFilter === r ? "#C4B5FD" : "var(--muted)",
+                            cursor: "pointer",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="all-flags-grid">
+                    {inlineFilteredCountries.map((c) => (
+                      <button
+                        key={c.code}
+                        type="button"
+                        className={`all-flags-item ${selectedCountry.code === c.code ? "active" : ""}`}
+                        onClick={() => {
+                          handleSelectCountry(c);
+                          setShowAllFlags(false);
+                        }}
+                      >
+                        <CountryFlag code={c.code} flag={c.flag} size={16} />
+                        <div className="all-flags-name">{c.name}</div>
+                        <div className="all-flags-curr">{c.currency}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 2. Crypto Asset Selector */}
@@ -598,7 +780,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                     />
                   </div>
                   <div className="converter-badge">
-                    <span style={{ fontSize: 16 }}>{selectedCountry.flag}</span>
+                    <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={18} />
                     <span>{selectedCountry.currency}</span>
                   </div>
                 </div>
@@ -728,15 +910,17 @@ export const BuyPage: React.FC<BuyPageProps> = ({
               </div>
             </div>
 
-            {/* Action CTA */}
-            <button
-              type="button"
-              className="pro-submit-btn"
-              onClick={handleStartCheckout}
-            >
-              <span>Continue to Pay {selectedCountry.currencySymbol}{parsedFiat.toLocaleString()} {selectedCountry.currency}</span>
-              <ArrowRight size={16} />
-            </button>
+            {/* Action CTA with Mobile Sticky Bar */}
+            <div className="mobile-sticky-action-bar">
+              <button
+                type="button"
+                className="pro-submit-btn"
+                onClick={handleStartCheckout}
+              >
+                <span>Continue to Pay {selectedCountry.currencySymbol}{parsedFiat.toLocaleString()} {selectedCountry.currency}</span>
+                <ArrowRight size={16} />
+              </button>
+            </div>
           </>
         )}
       </div>

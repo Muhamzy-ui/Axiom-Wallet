@@ -500,7 +500,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
                 After submitting the transfer from your external wallet or exchange, paste the Transaction ID (TxID/Signature) below to credit your account immediately.
               </p>
 
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <input
                   type="text"
                   value={txHash}
@@ -510,7 +510,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
                   }}
                   placeholder="Paste TxID / signature hash..."
                   style={{
-                    flex: 1,
+                    flex: "1 1 200px",
                     background: "rgba(10, 11, 20, 0.85)",
                     border: "1px solid rgba(255, 255, 255, 0.12)",
                     borderRadius: 10,
@@ -519,6 +519,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
                     fontFamily: "monospace",
                     color: "var(--text, #fff)",
                     outline: "none",
+                    minHeight: 44,
                   }}
                 />
                 <button
@@ -526,7 +527,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
                   className="pro-submit-btn"
                   onClick={handleVerifyOnChainDeposit}
                   disabled={isVerifying || !txHash.trim()}
-                  style={{ width: "auto", padding: "0 18px", height: 42, fontSize: 12.5 }}
+                  style={{ flex: "1 1 140px", padding: "0 18px", minHeight: 44, fontSize: 13, margin: 0 }}
                 >
                   {isVerifying ? (
                     <>

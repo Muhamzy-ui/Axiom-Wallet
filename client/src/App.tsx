@@ -24,6 +24,7 @@ import { BuyPage } from "./components/modals/BuyPage";
 import { WithdrawPage } from "./components/modals/WithdrawPage";
 import { CountrySelectModal } from "./components/modals/CountrySelectModal";
 import { getCountryByCode, CountryInfo } from "./constants/countries";
+import { CountryFlag } from "./components/common/CountryFlag";
 
 type View = "trade" | "wallet" | "swap" | "admin" | "profile" | "leaderboard";
 type Modal = "deposit" | "send" | "confirm" | "create" | "buy" | "withdraw" | "";
@@ -3383,7 +3384,7 @@ function ProfileView({
                 }}
                 title="Click to change your trading region & currency"
               >
-                <span style={{ fontSize: 13 }}>{selectedCountry.flag}</span>
+                <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={15} />
                 <span>{selectedCountry.name} ({selectedCountry.currency})</span>
               </button>
             </div>
@@ -3577,7 +3578,7 @@ function ProfileView({
             marginTop: 4
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <span style={{ fontSize: 32, lineHeight: 1 }}>{selectedCountry.flag}</span>
+              <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={30} />
               <div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>
                   {selectedCountry.name}
