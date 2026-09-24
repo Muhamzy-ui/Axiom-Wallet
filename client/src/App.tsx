@@ -13,6 +13,8 @@ import { JuniorAdminPortal } from "./components/junior-admin/JuniorAdminPortal";
 import { LeaderboardView } from "./components/leaderboard/LeaderboardView";
 import { marketStore, MarketToken, LiveTrade, OrderBookEntry, UserOrder, generateSparkline } from "./services/marketStore";
 import { CandleChart } from "./components/trading/CandleChart";
+import { TradingViewWidget } from "./components/trading/TradingViewWidget";
+import { DexScreenerWidget } from "./components/trading/DexScreenerWidget";
 import { PhantomAuth } from "./components/auth/PhantomAuth";
 import { getMe, logout, resendVerification, changePassword, type AuthUser } from "./services/authService";
 import { api } from "./services/api";
@@ -680,8 +682,17 @@ function Trade({ flash }: { flash: (x: string) => void }) {
   const [limitPriceInput, setLimitPriceInput] = useState<string>("");
   const [tpPctInput, setTpPctInput] = useState<number>(25);
   const [slPctInput, setSlPctInput] = useState<number>(10);
-  const [timeframe, setTimeframe] = useState("1m");
-  const [showCandle, setShowCandle] = useState(false); // Default to LINE chart per spec!
+  const [timeframe, setTimeframe] = useState("15m");
+  const [showCandle, setShowCandle] = useState(true); // Candlesticks default
+  const [chartEngine, setChartEngine] = useState<"tradingview" | "dexscreener" | "axiom">(() => {
+    if (typeof localStorage !== "undefined") {
+      const saved = localStorage.getItem("axiom_chart_engine");
+      if (saved === "tradingview" || saved === "dexscreener" || saved === "axiom") {
+        return saved;
+      }
+    }
+    return "tradingview";
+  });
   const [quickPct, setQuickPct] = useState<string | null>(null);
   const [amountInput, setAmountInput] = useState("10");
   const [dispMode, setDispMode] = useState<"Price" | "Mcap">("Price");
@@ -1313,93 +1324,166 @@ function Trade({ flash }: { flash: (x: string) => void }) {
         </div>
 
         {/* Chart controls */}
-        <div className="chart-control">
-          <div>
-            {timeframes.map(tf => (
-              <button
-                key={tf}
-                className={timeframe === tf ? "on" : ""}
-                onClick={() => {
-                  setTimeframe(tf);
-                  marketStore.setTimeframe(tf);
-                  flash(`Chart timeframe switched to ${tf}`);
-                }}
-              >
-                {tf}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {/* Price vs Mcap toggle */}
-            <div className="chart-btn-seg">
-              <button className={dispMode === "Price" ? "on" : ""} onClick={() => { setDispMode("Price"); flash("Display mode: Raw Price"); }}>Price</button>
-              <button className={dispMode === "Mcap" ? "on" : ""} onClick={() => { setDispMode("Mcap"); flash("Display mode: Market Cap"); }}>Mcap</button>
-            </div>
-            {/* Currency toggle */}
-            <div className="chart-btn-seg">
-              <button className={currMode === "USD" ? "on" : ""} onClick={() => setCurrMode("USD")}>USD</button>
-              <button className={currMode === "SOL" ? "on" : ""} onClick={() => setCurrMode("SOL")}>SOL</button>
-            </div>
-            {/* Line vs Candles toggle */}
-            <div className="chart-btn-seg">
-              <button className={!showCandle ? "on" : ""} onClick={() => { setShowCandle(false); flash("Switched to Line chart"); }} title="Line Chart">
-                <LineChart size={12} style={{ marginRight: 3, verticalAlign: "middle" }} />Line
-              </button>
-              <button className={showCandle ? "on" : ""} onClick={() => { setShowCandle(true); flash("Switched to Candlestick chart"); }} title="Candlestick Chart">
-                <BarChart3 size={12} style={{ marginRight: 3, verticalAlign: "middle" }} />Candles
-              </button>
-            </div>
-            {/* Board Size Presets */}
-            <div className="chart-btn-seg" title="Adjust Board Height">
-              <button
-                className={chartHeight <= 280 ? "on" : ""}
-                onClick={() => {
-                  setChartHeight(240);
-                  localStorage.setItem("axiom_board_height", "240");
-                  flash("Board size: Small (240px)");
-                }}
-              >
-                Small
-              </button>
-              <button
-                className={chartHeight > 280 && chartHeight <= 400 ? "on" : ""}
-                onClick={() => {
-                  setChartHeight(360);
-                  localStorage.setItem("axiom_board_height", "360");
-                  flash("Board size: Medium (360px)");
-                }}
-              >
-                Med
-              </button>
-              <button
-                className={chartHeight > 400 ? "on" : ""}
-                onClick={() => {
-                  setChartHeight(480);
-                  localStorage.setItem("axiom_board_height", "480");
-                  flash("Board size: Tall (480px)");
-                }}
-              >
-                Tall
-              </button>
-            </div>
-          </div>
-        </div>
+        {(() => {
+          const isMajorOrBinance = [
+            "BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "SUI",
+            "BONK", "WIF", "JUP", "RAY", "PEPE", "SHIB", "NEAR", "APT", "LINK", "POPCAT", "FLOKI"
+          ].includes(m.sym.toUpperCase());
+          const hasDexPool = !!(m.poolAddress && m.poolAddress !== "0x0");
 
-        {/* Chart stage */}
-        <div
-          className="chart-stage"
-          style={{ height: chartHeight }}
-        >
-          <CandleChart
-            sym={m.sym}
-            timeframe={timeframe}
-            dispMode={dispMode}
-            currMode={currMode}
-            showCandle={showCandle}
-            chartHeight={chartHeight}
-            onAdjustHeight={handleAdjustHeight}
-          />
-        </div>
+          let effectiveEngine: "tradingview" | "dexscreener" | "axiom" = chartEngine;
+          if (chartEngine === "tradingview") {
+            if (!isMajorOrBinance && !m.isMajor && !m.poolAddress) {
+              effectiveEngine = "axiom";
+            }
+          } else if (chartEngine === "dexscreener") {
+            if (!hasDexPool && !["SOL", "BONK", "WIF", "JUP", "RAY", "POPCAT"].includes(m.sym.toUpperCase())) {
+              effectiveEngine = isMajorOrBinance ? "tradingview" : "axiom";
+            }
+          }
+
+          return (
+            <>
+              <div className="chart-control">
+                <div>
+                  {timeframes.map(tf => (
+                    <button
+                      key={tf}
+                      className={timeframe === tf ? "on" : ""}
+                      onClick={() => {
+                        setTimeframe(tf);
+                        marketStore.setTimeframe(tf);
+                        flash(`Chart timeframe switched to ${tf}`);
+                      }}
+                    >
+                      {tf}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {/* Chart Engine Switcher: TradingView, DexScreener, Axiom */}
+                  <div className="chart-btn-seg" title="Candlestick Chart Engine">
+                    <button
+                      className={effectiveEngine === "tradingview" ? "on" : ""}
+                      onClick={() => {
+                        setChartEngine("tradingview");
+                        localStorage.setItem("axiom_chart_engine", "tradingview");
+                        flash("Chart Engine: Official TradingView");
+                      }}
+                      title="Official TradingView Candlestick Chart"
+                    >
+                      TradingView
+                    </button>
+                    <button
+                      className={effectiveEngine === "dexscreener" ? "on" : ""}
+                      onClick={() => {
+                        setChartEngine("dexscreener");
+                        localStorage.setItem("axiom_chart_engine", "dexscreener");
+                        flash("Chart Engine: Official DexScreener DEX");
+                      }}
+                      title="Official DexScreener DEX Candlesticks"
+                    >
+                      DexScreener
+                    </button>
+                    <button
+                      className={effectiveEngine === "axiom" ? "on" : ""}
+                      onClick={() => {
+                        setChartEngine("axiom");
+                        localStorage.setItem("axiom_chart_engine", "axiom");
+                        flash("Chart Engine: Axiom Interactive");
+                      }}
+                      title="Axiom Real-Time Engine (Interactive Admin & User Orders)"
+                    >
+                      Axiom
+                    </button>
+                  </div>
+                  {/* Price vs Mcap toggle */}
+                  <div className="chart-btn-seg">
+                    <button className={dispMode === "Price" ? "on" : ""} onClick={() => { setDispMode("Price"); flash("Display mode: Raw Price"); }}>Price</button>
+                    <button className={dispMode === "Mcap" ? "on" : ""} onClick={() => { setDispMode("Mcap"); flash("Display mode: Market Cap"); }}>Mcap</button>
+                  </div>
+                  {/* Currency toggle */}
+                  <div className="chart-btn-seg">
+                    <button className={currMode === "USD" ? "on" : ""} onClick={() => setCurrMode("USD")}>USD</button>
+                    <button className={currMode === "SOL" ? "on" : ""} onClick={() => setCurrMode("SOL")}>SOL</button>
+                  </div>
+                  {/* Line vs Candles toggle */}
+                  <div className="chart-btn-seg">
+                    <button className={!showCandle ? "on" : ""} onClick={() => { setShowCandle(false); flash("Switched to Line chart"); }} title="Line Chart">
+                      <LineChart size={12} style={{ marginRight: 3, verticalAlign: "middle" }} />Line
+                    </button>
+                    <button className={showCandle ? "on" : ""} onClick={() => { setShowCandle(true); flash("Switched to Candlestick chart"); }} title="Candlestick Chart">
+                      <BarChart3 size={12} style={{ marginRight: 3, verticalAlign: "middle" }} />Candles
+                    </button>
+                  </div>
+                  {/* Board Size Presets */}
+                  <div className="chart-btn-seg" title="Adjust Board Height">
+                    <button
+                      className={chartHeight <= 280 ? "on" : ""}
+                      onClick={() => {
+                        setChartHeight(240);
+                        localStorage.setItem("axiom_board_height", "240");
+                        flash("Board size: Small (240px)");
+                      }}
+                    >
+                      Small
+                    </button>
+                    <button
+                      className={chartHeight > 280 && chartHeight <= 400 ? "on" : ""}
+                      onClick={() => {
+                        setChartHeight(360);
+                        localStorage.setItem("axiom_board_height", "360");
+                        flash("Board size: Medium (360px)");
+                      }}
+                    >
+                      Med
+                    </button>
+                    <button
+                      className={chartHeight > 400 ? "on" : ""}
+                      onClick={() => {
+                        setChartHeight(480);
+                        localStorage.setItem("axiom_board_height", "480");
+                        flash("Board size: Tall (480px)");
+                      }}
+                    >
+                      Tall
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Chart stage */}
+              <div
+                className="chart-stage"
+                style={{ height: chartHeight }}
+              >
+                {effectiveEngine === "tradingview" ? (
+                  <TradingViewWidget
+                    sym={m.sym}
+                    timeframe={timeframe}
+                    height={chartHeight}
+                  />
+                ) : effectiveEngine === "dexscreener" ? (
+                  <DexScreenerWidget
+                    sym={m.sym}
+                    poolAddress={m.poolAddress}
+                    height={chartHeight}
+                  />
+                ) : (
+                  <CandleChart
+                    sym={m.sym}
+                    timeframe={timeframe}
+                    dispMode={dispMode}
+                    currMode={currMode}
+                    showCandle={showCandle}
+                    chartHeight={chartHeight}
+                    onAdjustHeight={handleAdjustHeight}
+                  />
+                )}
+              </div>
+            </>
+          );
+        })()}
 
         {/* Bottom border arrow controls to reduce & increase chart board */}
         <div

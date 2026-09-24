@@ -43,7 +43,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   timeframe = '1s',
   dispMode = 'Price',
   currMode = 'USD',
-  showCandle = false, // Line view is the default shown when a user opens Trade page
+  showCandle = true, // Candlestick view is the default
   chartHeight,
   onAdjustHeight,
 }) => {
@@ -297,14 +297,14 @@ export const CandleChart: React.FC<CandleChartProps> = ({
 
     chartRef.current = chart;
 
-    // Candlestick Series (#10B981 emerald up, #DC2626 / #EF4444 crimson down)
+    // Candlestick Series (Official TradingView Pine Green #089981 up, Crimson #F23645 down)
     const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: isLight ? '#059669' : '#10B981',
-      downColor: isLight ? '#DC2626' : '#EF4444',
-      borderUpColor: isLight ? '#059669' : '#10B981',
-      borderDownColor: isLight ? '#DC2626' : '#EF4444',
-      wickUpColor: isLight ? '#059669' : '#10B981',
-      wickDownColor: isLight ? '#DC2626' : '#EF4444',
+      upColor: '#089981',
+      downColor: '#F23645',
+      borderUpColor: '#089981',
+      borderDownColor: '#F23645',
+      wickUpColor: '#089981',
+      wickDownColor: '#F23645',
       priceLineVisible: true,
       priceLineColor: '#7C3AED',
       priceLineWidth: 1,
