@@ -15,8 +15,8 @@ SECRET_KEY = os.environ.get(
     'django-insecure-x5j&_qh@j_rcc%!44cg^&$v5&ywd)@43+_qj%m*)3q(dl_911='
 )
 
-# In production, DJANGO_DEBUG=False by default unless explicitly enabled
-DEBUG = os.environ.get('DJANGO_DEBUG', 'False').lower() in ('true', '1')
+IS_RENDER = os.environ.get('RENDER', '').lower() == 'true' or bool(os.environ.get('RENDER_SERVICE_ID'))
+DEBUG = os.environ.get('DJANGO_DEBUG', 'False' if IS_RENDER else 'True').lower() in ('true', '1')
 
 ALLOWED_HOSTS = ['*']
 

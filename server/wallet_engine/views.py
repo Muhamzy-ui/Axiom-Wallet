@@ -129,13 +129,15 @@ def get_current_user(request) -> WalletUser | None:
     except Exception:
         return None
 
-def set_auth_cookies(response, access_token: str, refresh_token: str, remember_me: bool = False):
+def set_auth_cookies(response, access_token: str, refresh_token: str, remember_me: bool = False, request=None):
     """Set httpOnly, Secure, SameSite cookies for both tokens."""
     access_max_age = django_settings.JWT_ACCESS_TOKEN_LIFETIME_MINUTES * 60
     refresh_days = django_settings.JWT_REMEMBER_ME_LIFETIME_DAYS if remember_me else django_settings.JWT_REFRESH_TOKEN_LIFETIME_DAYS
     refresh_max_age = refresh_days * 86400
 
     is_secure = not django_settings.DEBUG
+    if request and any(request.get_host().startswith(h) for h in ('localhost', '127.0.0.1')):
+        is_secure = False
     samesite_mode = 'None' if is_secure else 'Lax'
 
     response.set_cookie(
@@ -943,7 +945,7 @@ def unlock_wallet(request):
         'is_admin': user.is_admin,
         'is_email_verified': user.is_email_verified,
     })
-    set_auth_cookies(resp, access_token, refresh_token)
+    set_auth_cookies(resp, access_token, refresh_token, request=request)
     return resp
 
 

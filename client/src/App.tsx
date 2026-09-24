@@ -4078,7 +4078,9 @@ function AppShell({
       </main>
 
       {!modal && (
-        <nav className="phone-nav" aria-label="Floating Mobile Navigation">
+        <>
+          <div className="phone-nav-scrim" aria-hidden="true" />
+          <nav className="phone-nav" aria-label="Floating Mobile Navigation">
           {links.map(([id, label, Icon]) => {
             const isActive = view === id;
             return (
@@ -4096,7 +4098,8 @@ function AppShell({
               </button>
             );
           })}
-        </nav>
+          </nav>
+        </>
       )}
 
       {modal && <ModalBox authUser={authUser} type={modal} close={() => setModal("")} flash={flash} />}

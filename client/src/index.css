@@ -350,34 +350,39 @@ select:focus-visible {
   color: #fff;
 }
 
-/* ─── Bottom Phone Nav (Solid, Flush Native Mobile Tab Bar) ─── */
+/* ─── Bottom Phone Nav (Floating Liquid Glass Dock) ─── */
 .phone-nav {
   display: none;
   position: fixed;
   z-index: 1000;
-  bottom: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  transform: none !important;
-  width: 100% !important;
-  max-width: 100% !important;
-  height: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
-  background: rgba(14, 11, 26, 0.96) !important;
-  backdrop-filter: blur(28px) saturate(210%) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(210%) !important;
-  border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
-  border-left: none !important;
-  border-right: none !important;
-  border-bottom: none !important;
-  border-radius: 0 !important;
-  box-shadow: 0 -4px 28px rgba(0, 0, 0, 0.6) !important;
-  padding: 4px 8px max(4px, env(safe-area-inset-bottom, 4px)) !important;
+  bottom: max(10px, env(safe-area-inset-bottom, 10px));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(calc(100% - 24px), 430px);
+  max-width: 430px;
+  height: 60px;
+  background: rgba(14, 11, 26, 0.85);
+  backdrop-filter: blur(28px) saturate(210%);
+  -webkit-backdrop-filter: blur(28px) saturate(210%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 9999px;
+  box-shadow: 
+    0 16px 40px -6px rgba(0, 0, 0, 0.85),
+    0 4px 18px rgba(124, 58, 237, 0.22),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -1px 2px 0 rgba(0, 0, 0, 0.4);
+  padding: 4px 8px;
   align-items: center;
   justify-content: space-around;
   box-sizing: border-box;
   touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* Bottom Soft Fade Scrim to prevent content peeking beneath floating nav */
+.phone-nav-scrim {
+  display: none;
 }
 
 .phone-nav-btn {
@@ -1997,7 +2002,7 @@ select:focus-visible {
 .wallet-screen {
   width: min(900px, 100%);
   margin: 0 auto;
-  padding: 24px 16px 100px;
+  padding: 24px 16px 32px;
 }
 
 /* Hero Balance - Trust Wallet Style Left-Aligned to the Side */
@@ -3283,7 +3288,7 @@ select:focus-visible {
 /* ─── Swap Screen ──────────────────────────────────────────────────── */
 .swap-screen {
   width: min(480px, 100%);
-  margin: 28px auto 100px;
+  margin: 28px auto 28px;
   padding: 0 16px;
 }
 
@@ -4460,28 +4465,28 @@ select:focus-visible {
   background: #10111D;
 }
 
-/* Bottom Sticky Dual Action Bar for Trade */
+/* Floating Bottom Sticky Dual Action Bar for Trade */
 .dex-floating-trade-bar {
   display: none;
   position: fixed;
-  bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
-  left: 0 !important;
-  right: 0 !important;
-  transform: none !important;
-  width: 100% !important;
+  bottom: calc(max(10px, env(safe-area-inset-bottom, 10px)) + 66px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(calc(100% - 24px), 430px);
+  max-width: 430px;
   z-index: 990;
-  background: rgba(14, 11, 26, 0.96) !important;
+  background: rgba(14, 11, 26, 0.90);
   backdrop-filter: blur(28px) saturate(200%);
   -webkit-backdrop-filter: blur(28px) saturate(200%);
-  border-top: 1px solid rgba(255, 255, 255, 0.16) !important;
-  border-left: none !important;
-  border-right: none !important;
-  border-bottom: none !important;
-  border-radius: 16px 16px 0 0 !important;
-  padding: 8px 12px !important;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 18px;
+  padding: 8px 10px;
   flex-direction: column;
   gap: 6px;
-  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.75) !important;
+  box-shadow: 
+    0 16px 36px rgba(0, 0, 0, 0.8),
+    0 2px 10px rgba(0, 0, 0, 0.5),
+    inset 0 1px 1px rgba(255, 255, 255, 0.25);
   box-sizing: border-box;
 }
 
@@ -4785,13 +4790,25 @@ select:focus-visible {
     display: inline-flex !important;
   }
 
+  .phone-nav-scrim {
+    display: block !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: calc(85px + env(safe-area-inset-bottom, 0px)) !important;
+    background: linear-gradient(to top, rgba(9, 10, 16, 0.96) 0%, rgba(9, 10, 16, 0.82) 45%, rgba(9, 10, 16, 0) 100%) !important;
+    pointer-events: none !important;
+    z-index: 980 !important;
+  }
+
   .phone-nav {
     display: flex !important;
     z-index: 1000 !important;
   }
 
   .app-main {
-    padding-bottom: calc(105px + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
   /* Trade: DexScreener Mobile Layout */
@@ -4801,11 +4818,11 @@ select:focus-visible {
     border: none !important;
     border-radius: 0 !important;
     min-height: auto !important;
-    padding-bottom: calc(185px + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: calc(160px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
   .dex-mobile-tab-pane {
-    padding-bottom: calc(140px + env(safe-area-inset-bottom, 0px)) !important;
+    padding: 8px 10px 12px !important;
   }
 
   .market-rail {
@@ -4867,7 +4884,7 @@ select:focus-visible {
 
   /* Wallet */
   .wallet-screen {
-    padding: 16px 14px 100px;
+    padding: 16px 14px 16px !important;
   }
 
   .wallet-hero-amount {
@@ -5359,7 +5376,7 @@ select:focus-visible {
 /* ─── Profile Screen Styles ────────────────────────────────────────── */
 .profile-screen {
   width: min(920px, 100%);
-  margin: 24px auto 100px;
+  margin: 24px auto 28px;
   padding: 0 16px;
   display: flex;
   flex-direction: column;
@@ -5712,6 +5729,10 @@ select:focus-visible {
 [data-theme="light"] .menu-pop button:hover {
   background: #F1F5F9;
   color: #0F172A;
+}
+
+[data-theme="light"] .phone-nav-scrim {
+  background: linear-gradient(to top, rgba(248, 249, 251, 0.96) 0%, rgba(248, 249, 251, 0.82) 45%, rgba(248, 249, 251, 0) 100%) !important;
 }
 
 [data-theme="light"] .phone-nav {

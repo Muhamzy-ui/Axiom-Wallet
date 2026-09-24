@@ -10,7 +10,7 @@
   width: 100%;
   max-width: 1400px;
   margin: 0 auto;
-  padding: 24px 20px 80px;
+  padding: 24px 20px 24px;
   animation: lbFadeIn 250ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -1359,7 +1359,7 @@
 /* ── Responsive Mobile & Tablet Tweaks ───────────────────────────────────── */
 @media (max-width: 768px) {
   .leaderboard-view {
-    padding: 12px 10px calc(80px + env(safe-area-inset-bottom, 0px));
+    padding: 12px 10px 16px;
     gap: 14px;
     overflow-x: hidden;
   }
