@@ -3,7 +3,7 @@ import {
   ChevronLeft, ChevronRight, Eye, EyeOff, Copy, Check, ShieldAlert,
   Sparkles, KeyRound, ArrowRight, Loader2, CheckCircle2,
   Lock, Zap, Shield, TrendingUp, Activity, Sun, Moon, Wallet,
-  ShieldCheck, Cpu, Flame, Layers
+  ShieldCheck, Cpu, Flame, Layers, ChevronDown
 } from "lucide-react";
 import {
   generateSeedPhrase, registerPhantomWallet, unlockPhantomWallet,
@@ -12,6 +12,8 @@ import {
 } from "../../services/authService";
 import { useTheme } from "../../services/themeContext";
 import { copyToClipboard } from "../../services/clipboard";
+import { CountrySelectModal } from "../modals/CountrySelectModal";
+import { getCountryByCode, CountryInfo } from "../../constants/countries";
 import "./PhantomAuth.css";
 
 type PhantomView =
@@ -279,6 +281,11 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(true);
+  const [selectedCountry, setSelectedCountry] = useState<CountryInfo>(() => {
+    const saved = localStorage.getItem("axiom_user_country") || "NG";
+    return getCountryByCode(saved);
+  });
+  const [isCountryModalOpen, setIsCountryModalOpen] = useState(false);
 
   // Secret recovery phrase state
   const [seedPhrase, setSeedPhrase] = useState("");
@@ -763,6 +770,31 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
                   </div>
                 </div>
 
+                <div className="phantom-field">
+                  <label className="phantom-field-label">Country of Residence</label>
+                  <button
+                    type="button"
+                    className="phantom-input"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      textAlign: "left",
+                      cursor: "pointer",
+                      padding: "0 14px",
+                      background: "rgba(10, 11, 20, 0.85)",
+                    }}
+                    onClick={() => setIsCountryModalOpen(true)}
+                  >
+                    <span style={{ fontSize: "1.2rem", lineHeight: 1 }}>{selectedCountry.flag}</span>
+                    <span style={{ flex: 1, fontWeight: 600, color: "inherit" }}>{selectedCountry.name}</span>
+                    <span style={{ fontSize: 11, color: "var(--muted, #94A3B8)", fontWeight: 700 }}>
+                      {selectedCountry.currency}
+                    </span>
+                    <ChevronDown size={15} color="#94A3B8" />
+                  </button>
+                </div>
+
                 <label className="phantom-checkbox-label" onClick={() => setAgreeTerms(!agreeTerms)}>
                   <div className={`phantom-checkbox-custom ${agreeTerms ? "checked" : ""}`}>
                     {agreeTerms && <Check size={12} strokeWidth={3} />}
@@ -1183,6 +1215,17 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
           )}
         </div>
       </main>
+
+      <CountrySelectModal
+        isOpen={isCountryModalOpen}
+        onClose={() => setIsCountryModalOpen(false)}
+        onSelect={(c) => {
+          setSelectedCountry(c);
+          localStorage.setItem("axiom_user_country", c.code);
+        }}
+        selectedCode={selectedCountry.code}
+        title="Select Country of Residence"
+      />
     </div>
   );
 }

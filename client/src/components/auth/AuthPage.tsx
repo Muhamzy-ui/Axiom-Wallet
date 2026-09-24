@@ -12,6 +12,7 @@ import {
 import { useTheme } from "../../services/themeContext";
 import { copyToClipboard } from "../../services/clipboard";
 import "./AuthPage.css";
+import { CountrySelectModal } from "../modals/CountrySelectModal";
 
 // ─────────────────────────────────────────────────────────────
 // Country data with flag emoji
@@ -222,105 +223,52 @@ function CountrySelector({
   onChange: (v: string) => void;
   error?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-
+  const [modalOpen, setModalOpen] = useState(false);
   const selected = COUNTRIES.find((c) => c.code === value);
-  const filtered = search
-    ? COUNTRIES.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
-    : COUNTRIES;
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setSearch("");
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   return (
-    <div className={`auth-field ${error ? "has-error" : ""}`} ref={ref}>
+    <div className={`auth-field ${error ? "has-error" : ""}`}>
       <div className="auth-field-header">
-        <label className="auth-field-label">Country</label>
+        <label className="auth-field-label">Country of Residence</label>
       </div>
       <div className="auth-input-wrap" style={{ position: "relative" }}>
         <Globe size={18} className="auth-field-icon" />
         <button
           type="button"
           className="auth-input country-selector-btn"
-          style={{ textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, paddingRight: 36 }}
-          onClick={() => setOpen(!open)}
-          aria-haspopup="listbox"
-          aria-expanded={open}
+          style={{
+            textAlign: "left",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            paddingLeft: 44,
+            paddingRight: 36,
+            height: 48,
+          }}
+          onClick={() => setModalOpen(true)}
+          aria-haspopup="dialog"
         >
           {selected ? (
-            <><span style={{ fontSize: "1.1rem" }}>{selected.flag}</span><span>{selected.name}</span></>
+            <>
+              <span style={{ fontSize: "1.2rem", lineHeight: 1 }}>{selected.flag}</span>
+              <span style={{ fontWeight: 600 }}>{selected.name}</span>
+            </>
           ) : (
-            <span style={{ color: "var(--text-muted)" }}>Select your country</span>
+            <span style={{ color: "#94A3B8" }}>Select your country</span>
           )}
         </button>
         <ChevronDown
           size={16}
           style={{
-            position: "absolute", right: 12, top: "50%", transform: open ? "translateY(-50%) rotate(180deg)" : "translateY(-50%)",
-            color: "var(--text-muted)", transition: "transform 0.2s", pointerEvents: "none",
+            position: "absolute",
+            right: 14,
+            top: "50%",
+            transform: "translateY(-50%)",
+            color: "#94A3B8",
+            pointerEvents: "none",
           }}
         />
-        {open && (
-          <div
-            style={{
-              position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0,
-              background: "var(--card-bg)", border: "1px solid var(--border-dark)",
-              borderRadius: "var(--radius-md)", zIndex: 9999,
-              boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-              overflow: "hidden",
-            }}
-            role="listbox"
-          >
-            <div style={{ padding: "0.5rem", borderBottom: "1px solid var(--border-dark)" }}>
-              <input
-                type="text"
-                className="auth-input"
-                placeholder="Search country..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={{ fontSize: "0.85rem", padding: "0.4rem 0.7rem", margin: 0 }}
-                autoFocus
-              />
-            </div>
-            <div style={{ maxHeight: "200px", overflowY: "auto" }}>
-              {filtered.length === 0 ? (
-                <div style={{ padding: "0.75rem", color: "var(--text-muted)", fontSize: "0.85rem", textAlign: "center" }}>No results</div>
-              ) : (
-                filtered.map((c) => (
-                  <button
-                    key={c.code}
-                    type="button"
-                    role="option"
-                    aria-selected={value === c.code}
-                    onClick={() => { onChange(c.code); setOpen(false); setSearch(""); }}
-                    style={{
-                      width: "100%", textAlign: "left", background: value === c.code ? "rgba(124,58,237,0.15)" : "transparent",
-                      border: "none", color: "var(--text-primary)", padding: "0.5rem 0.85rem",
-                      cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
-                      fontSize: "0.875rem", fontFamily: "inherit",
-                    }}
-                    onMouseOver={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(124,58,237,0.1)"; }}
-                    onMouseOut={(e) => { (e.currentTarget as HTMLElement).style.background = value === c.code ? "rgba(124,58,237,0.15)" : "transparent"; }}
-                  >
-                    <span style={{ fontSize: "1.1rem", lineHeight: 1 }}>{c.flag}</span>
-                    <span>{c.name}</span>
-                    {value === c.code && <Check size={14} style={{ marginLeft: "auto", color: "var(--accent-phantom)" }} />}
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        )}
       </div>
       {error && (
         <div className="auth-field-error">
@@ -328,6 +276,13 @@ function CountrySelector({
           <span>{error}</span>
         </div>
       )}
+      <CountrySelectModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSelect={(c) => onChange(c.code)}
+        selectedCode={value}
+        title="Select Country of Residence"
+      />
     </div>
   );
 }

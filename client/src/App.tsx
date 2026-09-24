@@ -19,9 +19,14 @@ import { api } from "./services/api";
 import { PlatformDepositWallet } from "./types";
 import { ThemeProvider, useTheme } from "./services/themeContext";
 import { copyToClipboard } from "./services/clipboard";
+import { DepositPage } from "./components/modals/DepositPage";
+import { BuyPage } from "./components/modals/BuyPage";
+import { WithdrawPage } from "./components/modals/WithdrawPage";
+import { CountrySelectModal } from "./components/modals/CountrySelectModal";
+import { getCountryByCode, CountryInfo } from "./constants/countries";
 
 type View = "trade" | "wallet" | "swap" | "admin" | "profile" | "leaderboard";
-type Modal = "deposit" | "send" | "confirm" | "create" | "buy" | "";
+type Modal = "deposit" | "send" | "confirm" | "create" | "buy" | "withdraw" | "";
 
 const COIN_IMGS: Record<string, string> = {
   BTC: "https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png",
@@ -3147,1147 +3152,31 @@ function SwapView({ modal, flash }: { modal: (m: Modal) => void; flash?: (msg: s
 function ModalBox({ type, close, flash, authUser }: { type: Modal; close: () => void; flash: (x: string) => void; authUser?: AuthUser }) {
   const done = (x: string) => { close(); flash(x); };
 
-  // Deposit state: 5-wallet platform pool & automated on-chain verification
-  const [depositWallets, setDepositWallets] = useState<PlatformDepositWallet[]>([]);
-  const [assignedWallet, setAssignedWallet] = useState<PlatformDepositWallet | null>(null);
-  const [selectedVaultIdx, setSelectedVaultIdx] = useState<number>(0);
-  const [depositCoin, setDepositCoin] = useState<"USDT" | "SOL" | "USDC" | "BTC" | "ETH">("USDT");
-  const [depositAmt, setDepositAmt] = useState<string>("50");
-  const [txHash, setTxHash] = useState<string>("");
-  const [isVerifying, setIsVerifying] = useState<boolean>(false);
-  const [verifyError, setVerifyError] = useState<string | null>(null);
-  const [verifySuccess, setVerifySuccess] = useState<{ amount: string; usdAmount?: string; currency: string; newBalance: string; txHash: string } | null>(null);
-  const [copiedAddr, setCopiedAddr] = useState<boolean>(false);
+  if (type === "deposit") {
+    return <DepositPage onClose={close} onDone={done} flash={flash} authUser={authUser} />;
+  }
 
-  const COIN_NETWORKS: Record<string, { label: string; networkKey: string; note: string }[]> = {
-    USDT: [
-      { label: "TRC-20", networkKey: "TRON (TRC-20)", note: "Tron TRC-20 • Low Fee & Fast" },
-      { label: "BEP-20", networkKey: "BNB Chain (BEP-20)", note: "BNB Smart Chain • Low Fee" },
-      { label: "Solana", networkKey: "Solana (SPL)", note: "Solana SPL • Instant Settlement" },
-      { label: "ERC-20", networkKey: "Ethereum (ERC-20)", note: "Ethereum ERC-20 • High Security" },
-    ],
-    SOL: [
-      { label: "Solana Native", networkKey: "Solana (SPL)", note: "Solana Mainnet" },
-    ],
-    USDC: [
-      { label: "Solana (SPL)", networkKey: "Solana (SPL)", note: "Solana SPL Circle USD Coin" },
-      { label: "ERC-20", networkKey: "Ethereum (ERC-20)", note: "Ethereum ERC-20 USD Coin" },
-    ],
-    BTC: [
-      { label: "Bitcoin Native", networkKey: "Bitcoin (BTC)", note: "Bitcoin SegWit (bc1) & Legacy" },
-    ],
-    ETH: [
-      { label: "ERC-20", networkKey: "Ethereum (ERC-20)", note: "Ethereum Mainnet Native" },
-    ],
-  };
+  if (type === "buy") {
+    return <BuyPage onClose={close} onDone={done} flash={flash} authUser={authUser} />;
+  }
 
-  const [depositNetwork, setDepositNetwork] = useState<string>("TRON (TRC-20)");
-
-  const handleSelectCoin = (sym: "USDT" | "SOL" | "USDC" | "BTC" | "ETH") => {
-    setDepositCoin(sym);
-    const availableNets = COIN_NETWORKS[sym];
-    if (availableNets && availableNets.length > 0) {
-      setDepositNetwork(availableNets[0].networkKey);
-    }
-  };
-
-  const depositTokenObj = marketStore.getToken(depositCoin);
-  const depositPriceUsd = (depositCoin === "USDT" || depositCoin === "USDC")
-    ? 1.0
-    : depositTokenObj && depositTokenObj.numericPrice > 0
-      ? depositTokenObj.numericPrice
-      : (depositCoin === "SOL" ? 179.84 : depositCoin === "BTC" ? 77724.0 : depositCoin === "ETH" ? 2650.0 : 1.0);
-  const depositUsdNum = parseFloat(depositAmt) || 0;
-  const cryptoEquivalent = depositPriceUsd > 0 ? (depositUsdNum / depositPriceUsd) : depositUsdNum;
-
-  // Load platform deposit wallets for the selected network without showing any dropdown
-  useEffect(() => {
-    if (type === "deposit") {
-      const userAddr = authUser?.wallet_address || "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
-      api.getDepositWallets(userAddr, depositNetwork, depositCoin).then(res => {
-        if (res && res.wallets && res.wallets.length > 0) {
-          setDepositWallets(res.wallets);
-          const initial = res.assigned_wallet || res.wallets[0];
-          setAssignedWallet(initial);
-        }
-      }).catch(() => {
-        // Offline fallback
-      });
-    }
-  }, [type, depositCoin, depositNetwork, authUser?.wallet_address]);
-
-  const getFallbackAddress = (net: string) => {
-    if (net.includes("TRON")) return "TYD9yZ7G8gM2tY9vK8nP7wE6rT5yU4iO3p";
-    if (net.includes("BNB") || net.includes("Ethereum")) return "0x71C836e522F5b8Fbe40d34341A5a507E78e1215B";
-    if (net.includes("Bitcoin")) return "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq";
-    return "8ZgC8Q3f8sC9b9T4vB2nK8mP7wE6rT5yU4iO3pA2sD1f";
-  };
-
-  const activeDepositAddress = assignedWallet?.address || getFallbackAddress(depositNetwork);
-  const activeVaultLabel = assignedWallet ? `${assignedWallet.label}` : "Platform Hot Vault";
-
-  const handleCopyDepositAddress = () => {
-    copyToClipboard(activeDepositAddress);
-    setCopiedAddr(true);
-    flash(`✅ Copied ${depositCoin} (${depositNetwork.split(" ")[0]}) address!`);
-    setTimeout(() => setCopiedAddr(false), 2200);
-  };
-
-  const handleVerifyOnChainDeposit = async () => {
-    const cleanHash = txHash.trim();
-    if (!cleanHash) {
-      setVerifyError("Please enter your transaction hash (TxID) to verify.");
-      return;
-    }
-    const amtNum = parseFloat(depositAmt) || 0;
-    if (isNaN(amtNum) || amtNum < 5.0) {
-      setVerifyError("Minimum deposit is $5.00 USD.");
-      return;
-    }
-
-    setIsVerifying(true);
-    setVerifyError(null);
-
-    try {
-      const userAddr = authUser?.wallet_address || "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
-      const res = await api.verifyOnChainDeposit(
-        userAddr,
-        cleanHash,
-        depositCoin,
-        activeDepositAddress,
-        String(amtNum)
-      );
-
-      if (res.success) {
-        const creditedTokenAmt = parseFloat(res.credited_amount);
-        marketStore.depositFunds(depositCoin, creditedTokenAmt);
-        setVerifySuccess({
-          amount: res.credited_amount,
-          usdAmount: res.usd_amount || amtNum.toFixed(2),
-          currency: res.currency,
-          newBalance: res.new_balance,
-          txHash: cleanHash
-        });
-        flash(`🎉 Verified! +$${amtNum.toFixed(2)} USD credited immediately!`);
-      }
-    } catch (err: any) {
-      setVerifyError(err.message || "Failed to verify transaction signature.");
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
-  // Send / Withdrawal state
-  const [sendCoin, setSendCoin] = useState<"USDT" | "USDC">("USDT");
-  const [sendNetwork, setSendNetwork] = useState<string>("TRON (TRC-20)");
-  const [sendRecipient, setSendRecipient] = useState<string>("");
-  const [sendAmt, setSendAmt] = useState<string>("");
-  const [isSubmittingSend, setIsSubmittingSend] = useState<boolean>(false);
-  const [sendError, setSendError] = useState<string | null>(null);
-  const [withdrawalEligibility, setWithdrawalEligibility] = useState<{
-    is_instant_eligible: boolean;
-    has_trading_activity: boolean;
-    trades_count: number;
-    swaps_count: number;
-    is_within_24h: boolean;
-    hours_remaining: number;
-    last_deposit_amount: number;
-    last_deposit_time: string | null;
-    reason: string;
-  } | null>(null);
-  const [checkingEligibility, setCheckingEligibility] = useState<boolean>(false);
-  const [withdrawalResult, setWithdrawalResult] = useState<{
-    is_instant: boolean;
-    status: string;
-    withdrawal_id: number;
-    tx_hash?: string;
-    amount: string;
-    currency: string;
-    network: string;
-    destination_address: string;
-    message: string;
-  } | null>(null);
-  const [sendStep, setSendStep] = useState<"form" | "result">("form");
-
-  const availableSendBalance = marketStore.getBalances()[sendCoin]?.bal || 0;
-
-  const SEND_NETWORKS: Record<"USDT" | "USDC", { label: string; networkKey: string; note: string }[]> = {
-    USDT: [
-      { label: "TRC-20", networkKey: "TRON (TRC-20)", note: "Tron TRC-20 • Fast & Low Fee" },
-      { label: "BEP-20", networkKey: "BNB Chain (BEP-20)", note: "BNB Smart Chain" },
-      { label: "Solana", networkKey: "Solana (SPL)", note: "Solana SPL • Instant Settlement" },
-      { label: "ERC-20", networkKey: "Ethereum (ERC-20)", note: "Ethereum ERC-20" },
-    ],
-    USDC: [
-      { label: "Solana", networkKey: "Solana (SPL)", note: "Solana SPL Circle USD Coin" },
-      { label: "ERC-20", networkKey: "Ethereum (ERC-20)", note: "Ethereum ERC-20 USD Coin" },
-    ],
-  };
-
-  useEffect(() => {
-    if (type === "send") {
-      const userAddr = authUser?.wallet_address || "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
-      setCheckingEligibility(true);
-      setSendStep("form");
-      setWithdrawalResult(null);
-      setSendError(null);
-      api.getWithdrawalEligibility(userAddr).then(res => {
-        setWithdrawalEligibility(res);
-      }).catch(err => {
-        console.warn("Could not fetch withdrawal eligibility:", err);
-      }).finally(() => {
-        setCheckingEligibility(false);
-      });
-    }
-  }, [type, authUser]);
-
-  const handleSelectSendCoin = (sym: "USDT" | "USDC") => {
-    setSendCoin(sym);
-    const nets = SEND_NETWORKS[sym];
-    if (nets && nets.length > 0) {
-      setSendNetwork(nets[0].networkKey);
-    }
-  };
-
-  const handleExecuteSend = async () => {
-    setSendError(null);
-    const val = parseFloat(sendAmt);
-    if (isNaN(val) || val <= 0) {
-      setSendError("Please enter a valid withdrawal amount");
-      return;
-    }
-    if (val < 10.0) {
-      setSendError("Minimum withdrawal is $10.00");
-      return;
-    }
-    if (val > availableSendBalance) {
-      setSendError(`Insufficient cash balance! Available: $${availableSendBalance.toFixed(2)} ${sendCoin}`);
-      return;
-    }
-    if (!sendRecipient.trim()) {
-      setSendError("Please enter a valid destination address");
-      return;
-    }
-
-    const userAddr = authUser?.wallet_address || "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
-    const userTradeCount = marketStore.getUserTradeCount();
-    const hasTraded = Boolean(withdrawalEligibility?.has_trading_activity || userTradeCount > 0);
-
-    setIsSubmittingSend(true);
-    try {
-      const res = await api.requestWithdrawal({
-        address: userAddr,
-        currency: sendCoin,
-        amount: val.toFixed(2),
-        destination_address: sendRecipient.trim(),
-        network: sendNetwork,
-        has_traded: hasTraded,
-        trade_count: (withdrawalEligibility?.trades_count || 0) + userTradeCount,
-      });
-
-      // Deduct funds from local balance
-      marketStore.withdrawFunds(val, sendCoin);
-
-      setWithdrawalResult({
-        is_instant: res.is_instant,
-        status: res.status,
-        withdrawal_id: res.withdrawal_id,
-        tx_hash: res.tx_hash,
-        amount: res.amount,
-        currency: res.currency,
-        network: res.network,
-        destination_address: res.destination_address,
-        message: res.message,
-      });
-      setSendStep("result");
-      if (res.is_instant) {
-        flash(`Withdrawal processed successfully! +$${val.toFixed(2)} ${sendCoin} sent`);
-      } else {
-        flash(`Withdrawal #${res.withdrawal_id} submitted successfully`);
-      }
-    } catch (err: any) {
-      setSendError(err.message || "Failed to process withdrawal request. Please try again.");
-    } finally {
-      setIsSubmittingSend(false);
-    }
-  };
-
-  // Buy Crypto via Swiftsats (Naira Onramp) state
-  const [buyCoin, setBuyCoin] = useState<"USDT" | "SOL" | "USDC" | "BTC" | "ETH">("USDT");
-  const [buyNetwork, setBuyNetwork] = useState<string>("TRON (TRC-20)");
-  const [buyUsdAmount, setBuyUsdAmount] = useState<string>("50");
-  const [assignedBuyWallet, setAssignedBuyWallet] = useState<PlatformDepositWallet | null>(null);
-  const [buyStep, setBuyStep] = useState<"form" | "awaiting" | "success">("form");
-  const [swiftsatsOrderId, setSwiftsatsOrderId] = useState<string>("");
-  const [swiftsatsTxHash, setSwiftsatsTxHash] = useState<string>("");
-  const [isVerifyingBuy, setIsVerifyingBuy] = useState<boolean>(false);
-  const [buyVerifyError, setBuyVerifyError] = useState<string | null>(null);
-  const [buySuccessData, setBuySuccessData] = useState<any>(null);
-
-  // Switch network when buyCoin changes
-  const handleSelectBuyCoin = (sym: "USDT" | "SOL" | "USDC" | "BTC" | "ETH") => {
-    setBuyCoin(sym);
-    const availableNets = COIN_NETWORKS[sym];
-    if (availableNets && availableNets.length > 0) {
-      setBuyNetwork(availableNets[0].networkKey);
-    }
-  };
-
-  // Fetch assigned platform vault wallet for the selected buy network
-  useEffect(() => {
-    if (type === "buy") {
-      const userAddr = authUser?.wallet_address || "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
-      api.getDepositWallets(userAddr, buyNetwork, buyCoin).then(res => {
-        if (res && res.wallets && res.wallets.length > 0) {
-          const initial = res.assigned_wallet || res.wallets[0];
-          setAssignedBuyWallet(initial);
-        }
-      }).catch(() => { });
-    }
-  }, [type, buyCoin, buyNetwork, authUser?.wallet_address]);
-
-  const activeBuyDepositAddress = assignedBuyWallet?.address || getFallbackAddress(buyNetwork);
-
-  const buyTokenObj = marketStore.getToken(buyCoin);
-  const buyPriceUsd = (buyCoin === "USDT" || buyCoin === "USDC")
-    ? 1.0
-    : buyTokenObj && buyTokenObj.numericPrice > 0
-      ? buyTokenObj.numericPrice
-      : (buyCoin === "SOL" ? 179.84 : buyCoin === "BTC" ? 77724.0 : buyCoin === "ETH" ? 2650.0 : 1.0);
-  const buyParsedUsd = parseFloat(buyUsdAmount) || 0;
-  const buyTokensReceived = buyPriceUsd > 0 ? buyParsedUsd / buyPriceUsd : 0;
-
-  // Live USD to NGN exchange rate (admin configurable, default 1600)
-  const usdNgnRate = parseFloat(localStorage.getItem('swiftsats_usd_ngn_rate') || '1600') || 1600;
-  const buyNairaAmount = Math.round(buyParsedUsd * usdNgnRate);
-
-  const handleLaunchSwiftsats = () => {
-    if (isNaN(buyParsedUsd) || buyParsedUsd < 5.0) {
-      flash("Minimum purchase is $5.00 USD");
-      return;
-    }
-    const swiftsatsBase = localStorage.getItem('swiftsats_base_url') || 'http://localhost:5173';
-    const partnerUserId = authUser?.email || authUser?.wallet_address || 'user';
-    const returnUrl = encodeURIComponent(`${window.location.origin}/?onramp=swiftsats&network=${encodeURIComponent(buyNetwork)}&coin=${buyCoin}&amount=${buyParsedUsd}`);
-    const apiOrigin = (import.meta.env.VITE_API_URL || window.location.origin).replace(/\/$/, '');
-    const callbackUrl = encodeURIComponent(`${apiOrigin}/api/webhooks/swiftsats/`);
-
-    // Construct rich Swiftsats onramp bridge URL
-    const swiftsatsUrl = `${swiftsatsBase}/buy?wallet=${encodeURIComponent(activeBuyDepositAddress)}&network=${encodeURIComponent(buyNetwork)}&crypto=${encodeURIComponent(buyCoin)}&amount_usd=${buyParsedUsd}&partner_user_id=${encodeURIComponent(partnerUserId)}&return_url=${returnUrl}&callback_url=${callbackUrl}`;
-
-    // Open in new window/tab
-    window.open(swiftsatsUrl, '_blank');
-
-    // Transition to awaiting verification state
-    const autoGenOrderId = `SS-${Math.floor(100000 + Math.random() * 900000)}`;
-    setSwiftsatsOrderId(autoGenOrderId);
-    setBuyStep("awaiting");
-  };
-
-  const handleVerifySwiftsatsCredit = async () => {
-    const cleanOrder = swiftsatsOrderId.trim() || swiftsatsTxHash.trim();
-    if (!cleanOrder) {
-      setBuyVerifyError("Please enter your Order ID or Transaction Hash.");
-      return;
-    }
-    if (isNaN(buyParsedUsd) || buyParsedUsd < 5.0) {
-      setBuyVerifyError("Minimum purchase is $5.00 USD.");
-      return;
-    }
-
-    setIsVerifyingBuy(true);
-    setBuyVerifyError(null);
-
-    try {
-      const userAddr = authUser?.wallet_address || authUser?.email || "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
-      const result = await api.creditSwiftsatsOrder({
-        address: userAddr,
-        order_id: cleanOrder,
-        tx_hash: swiftsatsTxHash.trim() || undefined,
-        amount_usd: buyParsedUsd.toFixed(2),
-        currency: buyCoin,
-        deposit_wallet: activeBuyDepositAddress,
-      });
-
-      // Credit local frontend marketStore with exact USD amount
-      marketStore.depositFunds(buyCoin, parseFloat(result.credited_amount || String(buyTokensReceived)));
-
-      setBuySuccessData(result);
-      setBuyStep("success");
-      flash(`✅ Order #${cleanOrder} verified! Credited +$${buyParsedUsd.toFixed(2)} USD.`);
-    } catch (err: any) {
-      setBuyVerifyError(err.message || "Failed to verify order. Please try again.");
-    } finally {
-      setIsVerifyingBuy(false);
-    }
-  };
+  if (type === "send" || type === "withdraw") {
+    return (
+      <WithdrawPage
+        onClose={close}
+        onDone={done}
+        flash={flash}
+        authUser={authUser}
+        initialMode={type === "send" ? "crypto" : "bank"}
+      />
+    );
+  }
 
   const meta: Record<string, { title: string; sub: string }> = {
-    deposit: { title: "Deposit Crypto", sub: "Select USDT, SOL, USDC, BTC, or ETH to fund your account. Minimum: $5.00" },
-    buy: { title: "Buy Crypto with Naira", sub: "Instant Naira (NGN) bank transfer. Direct vault delivery." },
-    send: { title: "Withdraw Crypto / Cash", sub: "Withdraw balance to an external wallet address." },
     confirm: { title: "Confirm Swap", sub: "Review before confirming." },
     create: { title: "Create Asset", sub: "Create a new token listing draft." },
   };
   const { title, sub } = meta[type] ?? { title: "Action", sub: "" };
-
-  const isFullPage = type === "deposit" || type === "buy" || type === "send";
-
-  if (isFullPage) {
-    return (
-      <div style={{
-        position: "fixed", inset: 0, zIndex: 600,
-        background: "var(--bg)", display: "flex", flexDirection: "column", overflowY: "auto",
-      }}>
-        {/* Full-page sticky top nav */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: 12,
-          padding: "0.9rem 1.25rem", borderBottom: "1px solid var(--border-dark)",
-          background: "var(--card-bg)", position: "sticky", top: 0, zIndex: 10,
-          backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
-        }}>
-          <button
-            onClick={close}
-            style={{
-              background: "rgba(255,255,255,0.07)", border: "1px solid var(--border-dark)",
-              color: "var(--text-primary)", borderRadius: "50%", width: 36, height: 36,
-              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-            }}
-            aria-label="Go back"
-          >
-            <ChevronLeft size={18} />
-          </button>
-          <div>
-            <div style={{ fontSize: "1rem", fontWeight: 700, color: "var(--text-primary)" }}>{title}</div>
-            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: 1 }}>{sub}</div>
-          </div>
-        </div>
-        {/* Full-page scrollable content area */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "1.5rem 1.25rem", maxWidth: 520, margin: "0 auto", width: "100%", boxSizing: "border-box" }}>
-
-          {type === "deposit" && (
-          <>
-            {verifySuccess ? (
-              <div style={{ textAlign: 'center', padding: '16px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(16,185,129,0.15)', border: '2px solid #10B981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <ShieldCheck size={28} color="#10B981" />
-                </div>
-                <div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>Deposit Confirmed & Credited!</div>
-                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-                    On-chain automated verification confirmed on {depositNetwork.split(' ')[0]}.
-                  </div>
-                </div>
-                <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, padding: 12, width: '100%', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                    <span style={{ color: 'var(--muted)' }}>Amount Credited:</span>
-                    <span style={{ fontWeight: 800, color: '#10B981' }}>+${verifySuccess.usdAmount || '50.00'} USD ({verifySuccess.amount} {verifySuccess.currency})</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                    <span style={{ color: 'var(--muted)' }}>Network:</span>
-                    <span style={{ fontWeight: 600, color: 'var(--text)' }}>{depositNetwork}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-                    <span style={{ color: 'var(--muted)' }}>Tx Hash:</span>
-                    <span style={{ fontFamily: 'monospace', color: 'var(--text)' }}>{verifySuccess.txHash.slice(0, 10)}...{verifySuccess.txHash.slice(-6)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, paddingTop: 6, borderTop: '1px solid var(--border)' }}>
-                    <span style={{ color: 'var(--muted)' }}>New Balance:</span>
-                    <span style={{ fontWeight: 800, color: 'var(--violet)' }}>${Number(verifySuccess.newBalance).toFixed(2)} USD</span>
-                  </div>
-                </div>
-                <button className="btn-primary" onClick={() => done(`✅ Deposited +$${verifySuccess.usdAmount || '50.00'} USD (${verifySuccess.currency})!`)} style={{ width: '100%', padding: '10px', fontSize: 13, marginTop: 4 }}>
-                  Done & View Dashboard
-                </button>
-              </div>
-            ) : (
-              <>
-                {/* Compact Coin Selector Pills */}
-                <div className="deposit-coin-tabs" style={{ gap: 6, marginBottom: 8 }}>
-                  {(["USDT", "SOL", "USDC", "BTC", "ETH"] as const).map(sym => (
-                    <button
-                      key={sym}
-                      type="button"
-                      className={`deposit-coin-tab ${depositCoin === sym ? "active" : ""}`}
-                      onClick={() => handleSelectCoin(sym)}
-                      style={{ padding: '6px 10px', fontSize: 12, borderRadius: 10 }}
-                    >
-                      <CoinImg sym={sym} n={18} />
-                      <span style={{ fontWeight: 700 }}>{sym}</span>
-                    </button>
-                  ))}
-                </div>
-
-                {/* Multi-Network Pills (e.g. TRC-20, BEP-20, Solana, ERC-20) */}
-                <div style={{ display: 'flex', gap: 6, justifyContent: 'center', margin: '4px 0 10px', flexWrap: 'wrap' }}>
-                  {(COIN_NETWORKS[depositCoin] || []).map(net => (
-                    <button
-                      key={net.networkKey}
-                      type="button"
-                      onClick={() => setDepositNetwork(net.networkKey)}
-                      style={{
-                        padding: '4px 10px',
-                        borderRadius: 14,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        border: depositNetwork === net.networkKey ? '1px solid var(--violet)' : '1px solid var(--border)',
-                        background: depositNetwork === net.networkKey ? 'rgba(124,58,237,0.22)' : 'var(--surface2)',
-                        color: depositNetwork === net.networkKey ? '#C4B5FD' : 'var(--muted)',
-                        cursor: 'pointer',
-                        transition: 'all 120ms'
-                      }}
-                    >
-                      {net.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Compact QR Code */}
-                <div style={{ display: "flex", justifyContent: "center", margin: "4px 0 8px" }}>
-                  <div style={{ background: "#ffffff", padding: "8px", borderRadius: "12px", boxShadow: "0 4px 16px rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.2)" }}>
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=${encodeURIComponent(activeDepositAddress)}&margin=2`}
-                      width={110}
-                      height={110}
-                      alt="Deposit Address QR"
-                      style={{ display: "block", borderRadius: "6px" }}
-                    />
-                  </div>
-                </div>
-
-                {/* Compact Deposit Address Row with Copy */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '7px 10px', margin: '4px 0 6px' }}>
-                  <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#C4B5FD', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {activeDepositAddress}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleCopyDepositAddress}
-                    style={{ background: copiedAddr ? '#10B981' : 'var(--violet)', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, transition: 'all 150ms' }}
-                  >
-                    {copiedAddr ? <Check size={12} /> : <Copy size={12} />}
-                    {copiedAddr ? 'Copied' : 'Copy'}
-                  </button>
-                </div>
-
-                {/* 1-Line Network Safety Notice */}
-                <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', marginBottom: 8 }}>
-                  ⚠️ Only send <b>{depositCoin}</b> via <b>{depositNetwork}</b> to this address.
-                </div>
-
-                {/* Deposit Amount Input Section ($5.00 Minimum) */}
-                <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', marginBottom: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                      Deposit Amount ($ USD)
-                    </label>
-                    <span style={{ fontSize: 10.5, fontWeight: 700, color: '#10B981', background: 'rgba(16,185,129,0.12)', padding: '2px 8px', borderRadius: 10 }}>
-                      Minimum: $5.00
-                    </span>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 10px' }}>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>$</span>
-                    <input
-                      type="number"
-                      min="5"
-                      step="5"
-                      value={depositAmt}
-                      onChange={e => { setDepositAmt(e.target.value); setVerifyError(null); }}
-                      placeholder="50.00"
-                      style={{ flex: 1, background: 'none', border: 'none', color: 'var(--text)', fontSize: 14, fontWeight: 700, outline: 'none' }}
-                    />
-                    <span style={{ fontSize: 11, fontWeight: 700, color: '#C4B5FD', whiteSpace: 'nowrap' }}>
-                      ≈ {cryptoEquivalent < 1 ? cryptoEquivalent.toFixed(6) : cryptoEquivalent.toFixed(2)} {depositCoin}
-                    </span>
-                  </div>
-
-                  {/* Preset Amount Chips Underneath */}
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                    {[10, 25, 50, 100, 250, 500].map(val => (
-                      <button
-                        key={val}
-                        type="button"
-                        onClick={() => { setDepositAmt(String(val)); setVerifyError(null); }}
-                        style={{
-                          flex: 1,
-                          minWidth: 42,
-                          padding: '5px 8px',
-                          borderRadius: 6,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          border: parseFloat(depositAmt) === val ? '1px solid var(--violet)' : '1px solid var(--border)',
-                          background: parseFloat(depositAmt) === val ? 'rgba(124,58,237,0.25)' : 'var(--surface)',
-                          color: parseFloat(depositAmt) === val ? '#C4B5FD' : 'var(--muted)',
-                          cursor: 'pointer',
-                          transition: 'all 120ms'
-                        }}
-                      >
-                        ${val}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Instant Verification Bar (Demo TxID Removed) */}
-                <div style={{ background: 'rgba(124, 58, 237, 0.08)', border: '1px solid rgba(124, 58, 237, 0.25)', borderRadius: 10, padding: '10px 12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
-                    <Zap size={13} color="var(--violet)" />
-                    <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text)' }}>
-                      Instant Auto-Credit Verification
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <input
-                      type="text"
-                      value={txHash}
-                      onChange={e => { setTxHash(e.target.value); setVerifyError(null); }}
-                      placeholder="Paste TxID / Hash after transfer..."
-                      style={{ flex: 1, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 10px', fontSize: 11, fontFamily: 'monospace', color: 'var(--text)', outline: 'none' }}
-                    />
-                    <button
-                      className="btn-primary"
-                      onClick={handleVerifyOnChainDeposit}
-                      disabled={isVerifying}
-                      style={{ margin: 0, padding: '7px 14px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', width: 'auto', display: 'flex', alignItems: 'center', gap: 5, borderRadius: 8 }}
-                    >
-                      {isVerifying ? <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Zap size={12} />}
-                      {isVerifying ? 'Verifying...' : 'Verify Deposit'}
-                    </button>
-                  </div>
-                  {verifyError && (
-                    <div style={{ marginTop: 6, fontSize: 10.5, color: '#EF4444', fontWeight: 600 }}>
-                      ⚠️ {verifyError}
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-          </>
-        )}
-
-        {type === "send" && (
-          <>
-            {sendStep === "result" && withdrawalResult ? (
-              <div style={{ textAlign: 'center', padding: '16px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-                {withdrawalResult.is_instant ? (
-                  <>
-                    <div style={{
-                      width: 56,
-                      height: 56,
-                      borderRadius: '50%',
-                      background: 'rgba(16,185,129,0.15)',
-                      border: '2px solid #10B981',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 0 20px rgba(16,185,129,0.3)'
-                    }}>
-                      <CheckCircle size={30} color="#10B981" />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>Withdrawal Processed Successfully!</div>
-                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-                        Your withdrawal transaction has been executed &amp; sent.
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div style={{
-                      width: 56,
-                      height: 56,
-                      borderRadius: '50%',
-                      background: 'rgba(59,130,246,0.15)',
-                      border: '2px solid #3B82F6',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 0 20px rgba(59,130,246,0.25)'
-                    }}>
-                      <Clock size={30} color="#3B82F6" />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>Withdrawal Request Submitted</div>
-                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-                        Your withdrawal has been received and is being processed.
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                <div style={{
-                  background: 'var(--surface2)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 14,
-                  padding: 14,
-                  width: '100%',
-                  textAlign: 'left',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 9
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                    <span style={{ color: 'var(--muted)' }}>Withdrawal Amount:</span>
-                    <span style={{ fontWeight: 800, color: withdrawalResult.is_instant ? '#10B981' : 'var(--text)' }}>
-                      ${withdrawalResult.amount} {withdrawalResult.currency}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                    <span style={{ color: 'var(--muted)' }}>Network / Rail:</span>
-                    <span style={{ fontWeight: 600, color: 'var(--text)' }}>{withdrawalResult.network}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                    <span style={{ color: 'var(--muted)' }}>Destination Address:</span>
-                    <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text)' }}>
-                      {withdrawalResult.destination_address.length > 16
-                        ? `${withdrawalResult.destination_address.slice(0, 8)}...${withdrawalResult.destination_address.slice(-6)}`
-                        : withdrawalResult.destination_address}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                    <span style={{ color: 'var(--muted)' }}>Status:</span>
-                    <span style={{
-                      fontWeight: 700,
-                      fontSize: 11,
-                      padding: '2px 8px',
-                      borderRadius: 6,
-                      background: withdrawalResult.is_instant ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)',
-                      color: withdrawalResult.is_instant ? '#10B981' : '#3B82F6'
-                    }}>
-                      {withdrawalResult.is_instant ? 'COMPLETED' : 'PROCESSING'}
-                    </span>
-                  </div>
-                  {withdrawalResult.tx_hash && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-                      <span style={{ color: 'var(--muted)' }}>Tx Hash:</span>
-                      <span style={{ fontFamily: 'monospace', color: '#A78BFA' }}>
-                        {withdrawalResult.tx_hash.slice(0, 10)}...{withdrawalResult.tx_hash.slice(-8)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <button className="btn-primary" style={{ marginTop: 6, width: '100%' }} onClick={() => done("Withdrawal processed")}>
-                  Done • Return to Wallet
-                </button>
-              </div>
-            ) : (
-              <>
-                {/* Stablecoin Selector Tabs */}
-                <div className="deposit-coin-tabs">
-                  {(["USDT", "USDC"] as const).map(sym => (
-                    <button
-                      key={sym}
-                      type="button"
-                      className={`deposit-coin-tab ${sendCoin === sym ? "active" : ""}`}
-                      onClick={() => handleSelectSendCoin(sym)}
-                    >
-                      <CoinImg sym={sym} n={20} />
-                      <span>{sym}</span>
-                    </button>
-                  ))}
-                </div>
-
-                {/* Network Selection */}
-                <div style={{ marginTop: 10 }}>
-                  <label className="modal-label" style={{ marginBottom: 6 }}>Withdrawal Network / Chain</label>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {SEND_NETWORKS[sendCoin]?.map(n => {
-                      const isSel = sendNetwork === n.networkKey;
-                      return (
-                        <button
-                          key={n.networkKey}
-                          type="button"
-                          onClick={() => setSendNetwork(n.networkKey)}
-                          style={{
-                            padding: '6px 10px',
-                            borderRadius: 8,
-                            fontSize: 11,
-                            fontWeight: isSel ? 700 : 500,
-                            background: isSel ? 'var(--primary)' : 'var(--surface2)',
-                            color: isSel ? '#fff' : 'var(--muted)',
-                            border: `1px solid ${isSel ? 'var(--primary)' : 'var(--border)'}`,
-                            cursor: 'pointer',
-                            transition: 'all 120ms'
-                          }}
-                        >
-                          {n.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="deposit-network-chip" style={{ marginTop: 10 }}>
-                  <span>Available Cash</span>
-                  <b>${availableSendBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {sendCoin}</b>
-                </div>
-
-                <label className="modal-label" style={{ marginTop: 12 }}>Recipient Address</label>
-                <input
-                  className="modal-input"
-                  placeholder={`Paste recipient ${sendNetwork.split(' ')[0]} address`}
-                  value={sendRecipient}
-                  onChange={e => { setSendRecipient(e.target.value); setSendError(null); }}
-                />
-
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <label className="modal-label" style={{ margin: 0 }}>Amount ({sendCoin})</label>
-                    <span style={{ color: "#A78BFA", fontSize: 11, fontWeight: 700 }}>Min withdrawal: $10.00</span>
-                  </div>
-                  <input
-                    className="modal-input"
-                    placeholder="Min $10.00"
-                    type="number"
-                    value={sendAmt}
-                    onChange={e => { setSendAmt(e.target.value); setSendError(null); }}
-                    style={{ marginTop: 4 }}
-                  />
-                  <div className="deposit-quick-chips">
-                    {["25%", "50%", "75%", "MAX"].map(pct => (
-                      <button
-                        key={pct}
-                        type="button"
-                        className="deposit-quick-chip"
-                        onClick={() => {
-                          const fraction = pct === "25%" ? 0.25 : pct === "50%" ? 0.5 : pct === "75%" ? 0.75 : 1.0;
-                          setSendAmt((availableSendBalance * fraction).toFixed(2));
-                          setSendError(null);
-                        }}
-                      >
-                        {pct}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {sendError && (
-                  <div style={{
-                    marginTop: 10,
-                    padding: '8px 12px',
-                    borderRadius: 8,
-                    background: 'rgba(239,68,68,0.1)',
-                    border: '1px solid rgba(239,68,68,0.3)',
-                    color: '#EF4444',
-                    fontSize: 11,
-                    fontWeight: 600,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6
-                  }}>
-                    <AlertTriangle size={14} /> {sendError}
-                  </div>
-                )}
-
-                <button
-                  className="btn-primary"
-                  style={{ marginTop: 16 }}
-                  onClick={handleExecuteSend}
-                  disabled={isSubmittingSend}
-                >
-                  {isSubmittingSend ? (
-                    <span>Processing withdrawal...</span>
-                  ) : (
-                    <>
-                      <Send size={15} /> Withdraw {sendAmt ? `$${sendAmt}` : "0.00"} {sendCoin}
-                    </>
-                  )}
-                </button>
-              </>
-            )}
-          </>
-        )}
-
-        {type === "buy" && (
-          <>
-            {buyStep === "success" ? (
-              <div style={{ textAlign: 'center', padding: '16px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(16,185,129,0.15)', border: '2px solid #10B981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <ShieldCheck size={28} color="#10B981" />
-                </div>
-                <div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>Naira Purchase Confirmed & Credited!</div>
-                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-                    Bank transfer verified and crypto credited to your platform balance.
-                  </div>
-                </div>
-                <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, padding: 12, width: '100%', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                    <span style={{ color: 'var(--muted)' }}>Credited Amount:</span>
-                    <span style={{ fontWeight: 800, color: '#10B981' }}>+${buySuccessData?.usd_amount || buyParsedUsd.toFixed(2)} USD ({buySuccessData?.credited_amount || buyTokensReceived.toFixed(4)} {buyCoin})</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                    <span style={{ color: 'var(--muted)' }}>Payment Method:</span>
-                    <span style={{ fontWeight: 700, color: '#C4B5FD' }}>₦{buyNairaAmount.toLocaleString()} NGN (Bank Transfer)</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                    <span style={{ color: 'var(--muted)' }}>Delivery Network:</span>
-                    <span style={{ fontWeight: 600, color: 'var(--text)' }}>{buyNetwork}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-                    <span style={{ color: 'var(--muted)' }}>Order ID:</span>
-                    <span style={{ fontFamily: 'monospace', color: 'var(--text)' }}>{buySuccessData?.order_id || swiftsatsOrderId}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, paddingTop: 6, borderTop: '1px solid var(--border)' }}>
-                    <span style={{ color: 'var(--muted)' }}>New Balance:</span>
-                    <span style={{ fontWeight: 800, color: 'var(--violet)' }}>${Number(buySuccessData?.new_balance || buyParsedUsd).toFixed(2)} USD</span>
-                  </div>
-                </div>
-                <button
-                  className="btn-primary"
-                  onClick={() => done(`✅ Purchased +$${buyParsedUsd.toFixed(2)} USD (${buyCoin}) via Bank Transfer!`)}
-                  style={{ width: '100%', padding: '10px', fontSize: 13, marginTop: 4 }}
-                >
-                  Done & View Dashboard
-                </button>
-              </div>
-            ) : buyStep === "awaiting" ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {/* Awaiting Progress Banner */}
-                <div style={{ background: 'rgba(124, 58, 237, 0.1)', border: '1px solid rgba(124, 58, 237, 0.3)', borderRadius: 12, padding: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(124,58,237,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <RefreshCw size={18} color="#C4B5FD" style={{ animation: 'spin 2s linear infinite' }} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)' }}>Bank Checkout In Progress</div>
-                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-                      Complete your bank transfer of <b>₦{buyNairaAmount.toLocaleString()} NGN</b> to finalize.
-                    </div>
-                  </div>
-                </div>
-
-                {/* Order Details Summary */}
-                <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: 10, display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--muted)' }}>You Are Buying:</span>
-                    <span style={{ fontWeight: 700, color: 'var(--text)' }}>${buyParsedUsd.toFixed(2)} USD (≈ {buyTokensReceived.toFixed(4)} {buyCoin})</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--muted)' }}>Naira to Pay:</span>
-                    <span style={{ fontWeight: 800, color: '#10B981' }}>₦{buyNairaAmount.toLocaleString()} NGN</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--muted)' }}>Receiving Vault:</span>
-                    <span style={{ fontFamily: 'monospace', color: '#C4B5FD', fontSize: 11 }}>
-                      {activeBuyDepositAddress.slice(0, 8)}...{activeBuyDepositAddress.slice(-6)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Real-time Payment Verification Box */}
-                <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Clock size={14} color="#F59E0B" />
-                      <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)' }}>
-                        Awaiting Bank Transfer
-                      </span>
-                    </div>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: '#F59E0B', background: 'rgba(245,158,11,0.12)', padding: '2px 8px', borderRadius: 10 }}>
-                      Unpaid / Pending
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.4, marginBottom: 10 }}>
-                    Please complete your bank transfer. Your wallet balance will be credited automatically once your payment is received.
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 10px', marginBottom: 10 }}>
-                    <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Order ID:</span>
-                    <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#C4B5FD', flex: 1, fontWeight: 700 }}>
-                      {swiftsatsOrderId}
-                    </span>
-                  </div>
-
-                  <button
-                    className="btn-primary"
-                    onClick={handleVerifySwiftsatsCredit}
-                    disabled={isVerifyingBuy}
-                    style={{ width: '100%', padding: '9px 12px', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'var(--surface3)', border: '1px solid var(--border)', color: 'var(--text)' }}
-                  >
-                    {isVerifyingBuy ? <RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={13} />}
-                    {isVerifyingBuy ? 'Checking Payment Gateway...' : 'Check Payment Status'}
-                  </button>
-
-                  {buyVerifyError && (
-                    <div style={{ marginTop: 8, padding: '8px 10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 8, fontSize: 11, color: '#F87171', fontWeight: 600 }}>
-                      ⚠️ {buyVerifyError}
-                    </div>
-                  )}
-                </div>
-
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button
-                    type="button"
-                    onClick={handleLaunchSwiftsats}
-                    style={{ flex: 1, background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 8, padding: '8px', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
-                  >
-                    <ExternalLink size={12} /> Re-open Payment Portal
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBuyStep("form")}
-                    style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer', padding: '0 8px' }}
-                  >
-                    Back / Edit
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                {/* 1. Crypto Asset Selector */}
-                <label className="modal-label" style={{ marginTop: 0, fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>Select Crypto to Buy</label>
-                <div className="deposit-coin-tabs" style={{ gap: 6, marginBottom: 8 }}>
-                  {(["USDT", "SOL", "USDC", "BTC", "ETH"] as const).map(sym => (
-                    <button
-                      key={sym}
-                      type="button"
-                      className={`deposit-coin-tab ${buyCoin === sym ? "active" : ""}`}
-                      onClick={() => handleSelectBuyCoin(sym)}
-                      style={{ padding: '6px 10px', fontSize: 12, borderRadius: 10 }}
-                    >
-                      <CoinImg sym={sym} n={18} />
-                      <span style={{ fontWeight: 700 }}>{sym}</span>
-                    </button>
-                  ))}
-                </div>
-
-                {/* 2. Multi-Network Selection Pills (e.g. TRC-20, BEP-20, Solana, ERC-20) */}
-                <div style={{ display: 'flex', gap: 6, justifyContent: 'center', margin: '2px 0 10px', flexWrap: 'wrap' }}>
-                  {(COIN_NETWORKS[buyCoin] || []).map(net => (
-                    <button
-                      key={net.networkKey}
-                      type="button"
-                      onClick={() => setBuyNetwork(net.networkKey)}
-                      style={{
-                        padding: '4px 10px',
-                        borderRadius: 14,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        border: buyNetwork === net.networkKey ? '1px solid var(--violet)' : '1px solid var(--border)',
-                        background: buyNetwork === net.networkKey ? 'rgba(124,58,237,0.22)' : 'var(--surface2)',
-                        color: buyNetwork === net.networkKey ? '#C4B5FD' : 'var(--muted)',
-                        cursor: 'pointer',
-                        transition: 'all 120ms'
-                      }}
-                    >
-                      {net.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* 3. Direct Platform Vault Delivery Card */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(124, 58, 237, 0.08)', border: '1px solid rgba(124, 58, 237, 0.22)', borderRadius: 10, padding: '7px 10px', marginBottom: 10 }}>
-                  <Shield size={14} color="var(--violet)" style={{ flexShrink: 0 }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase' }}>
-                      Delivery Platform Vault ({buyNetwork.split(' ')[0]})
-                    </div>
-                    <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#C4B5FD', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {activeBuyDepositAddress}
-                    </div>
-                  </div>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: '#10B981', background: 'rgba(16,185,129,0.12)', padding: '2px 6px', borderRadius: 6, flexShrink: 0 }}>
-                    🔒 Auto-Filled
-                  </span>
-                </div>
-
-                {/* 4. Purchase Amount in USD with $5.00 Minimum */}
-                <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', marginBottom: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                      Amount to Buy ($ USD)
-                    </label>
-                    <span style={{ fontSize: 10.5, fontWeight: 700, color: '#10B981', background: 'rgba(16,185,129,0.12)', padding: '2px 8px', borderRadius: 10 }}>
-                      Minimum: $5.00
-                    </span>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 10px' }}>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>$</span>
-                    <input
-                      type="number"
-                      min="5"
-                      step="5"
-                      value={buyUsdAmount}
-                      onChange={e => setBuyUsdAmount(e.target.value)}
-                      placeholder="50.00"
-                      style={{ flex: 1, background: 'none', border: 'none', color: 'var(--text)', fontSize: 14, fontWeight: 700, outline: 'none' }}
-                    />
-                    <span style={{ fontSize: 11, fontWeight: 700, color: '#C4B5FD', whiteSpace: 'nowrap' }}>
-                      ≈ {buyTokensReceived < 1 ? buyTokensReceived.toFixed(6) : buyTokensReceived.toFixed(2)} {buyCoin}
-                    </span>
-                  </div>
-
-                  {/* Preset Amount Chips Underneath */}
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                    {[10, 25, 50, 100, 250, 500].map(val => (
-                      <button
-                        key={val}
-                        type="button"
-                        onClick={() => setBuyUsdAmount(String(val))}
-                        style={{
-                          flex: 1,
-                          minWidth: 42,
-                          padding: '5px 8px',
-                          borderRadius: 6,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          border: parseFloat(buyUsdAmount) === val ? '1px solid var(--violet)' : '1px solid var(--border)',
-                          background: parseFloat(buyUsdAmount) === val ? 'rgba(124,58,237,0.25)' : 'var(--surface)',
-                          color: parseFloat(buyUsdAmount) === val ? '#C4B5FD' : 'var(--muted)',
-                          cursor: 'pointer',
-                          transition: 'all 120ms'
-                        }}
-                      >
-                        ${val}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 5. Live Naira (NGN) Bank Transfer Preview Card */}
-                <div style={{ background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.22)', borderRadius: 10, padding: '10px 12px', marginBottom: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontSize: 10.5, fontWeight: 700, color: '#10B981', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                        Pay with Naira (Bank Transfer)
-                      </div>
-                      <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', marginTop: 2 }}>
-                        ₦{buyNairaAmount.toLocaleString()} NGN
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <span style={{ fontSize: 10, color: 'var(--muted)' }}>Rate: ₦{usdNgnRate.toLocaleString()}/$1</span>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: '#C4B5FD', marginTop: 2 }}>
-                        ⚡ Instant Bank Transfer
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 6, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 6 }}>
-                    No cards or Apple Pay required. Simply transfer Naira via instant Nigerian bank account.
-                  </div>
-                </div>
-
-                {/* 6. Primary Action CTA Button */}
-                <button
-                  className="btn-primary"
-                  style={{ marginTop: 0, padding: '11px', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%' }}
-                  onClick={handleLaunchSwiftsats}
-                >
-                  <ExternalLink size={15} /> Continue to Pay ₦{buyNairaAmount.toLocaleString()} (Bank Transfer)
-                </button>
-              </>
-            )}
-          </>
-        )}
-
-      </div>
-    </div>
-  );
-  } // end if (isFullPage)
 
   // Fallback for confirm/create: classic card overlay
   return (
@@ -4355,6 +3244,23 @@ function ProfileView({
   const [confirmPw, setConfirmPw] = useState("");
   const [pwLoading, setPwLoading] = useState(false);
   const [pwFeedback, setPwFeedback] = useState<{ msg: string; isError: boolean } | null>(null);
+
+  // Country & Currency preferences
+  const [userCountryCode, setUserCountryCode] = useState<string>(() => {
+    return localStorage.getItem("axiom_user_country") || "NG";
+  });
+  const [showCountryModal, setShowCountryModal] = useState<boolean>(false);
+
+  const selectedCountry = useMemo(() => {
+    return getCountryByCode(userCountryCode);
+  }, [userCountryCode]);
+
+  const handleSelectCountry = (c: CountryInfo) => {
+    setUserCountryCode(c.code);
+    localStorage.setItem("axiom_user_country", c.code);
+    setShowCountryModal(false);
+    flash(`Trading country updated to ${c.name} (${c.currency})`);
+  };
 
   useEffect(() => {
     return marketStore.subscribe(() => setTick(t => t + 1));
@@ -4458,6 +3364,28 @@ function ProfileView({
               <span className="profile-badge profile-badge-vip">
                 <ShieldCheck size={12} /> Tier 1 Pro
               </span>
+              <button
+                type="button"
+                onClick={() => setShowCountryModal(true)}
+                className="profile-badge"
+                style={{
+                  background: "rgba(124, 58, 237, 0.16)",
+                  border: "1px solid rgba(167, 139, 250, 0.35)",
+                  color: "#DDD6FE",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: "4px 9px",
+                  borderRadius: 14,
+                  fontSize: 11,
+                  fontWeight: 700
+                }}
+                title="Click to change your trading region & currency"
+              >
+                <span style={{ fontSize: 13 }}>{selectedCountry.flag}</span>
+                <span>{selectedCountry.name} ({selectedCountry.currency})</span>
+              </button>
             </div>
 
             <div className="profile-email">
@@ -4627,6 +3555,90 @@ function ProfileView({
 
       {/* ── Grid: Security & Settings | Session Info ── */}
       <div className="profile-sections-grid">
+        {/* Trading Region & Local Fiat Currency Card */}
+        <div className="profile-card">
+          <div className="profile-card-title">
+            <Globe size={18} />
+            <span>Trading Region & Local Fiat</span>
+          </div>
+          <p style={{ fontSize: 11, color: "var(--muted)", margin: 0 }}>
+            Sets your local currency conversions, banking checkout rails, and instant fiat-to-crypto deposit methods.
+          </p>
+
+          <div style={{
+            background: "rgba(255, 255, 255, 0.03)",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+            borderRadius: 12,
+            padding: "14px 16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            marginTop: 4
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ fontSize: 32, lineHeight: 1 }}>{selectedCountry.flag}</span>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>
+                  {selectedCountry.name}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                  Fiat Currency: <strong style={{ color: "#A78BFA" }}>{selectedCountry.currency} ({selectedCountry.currencySymbol})</strong>
+                  {" · "}
+                  Rate: <strong>{selectedCountry.currencySymbol}{selectedCountry.rateToUsd.toLocaleString()} / $1 USD</strong>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowCountryModal(true)}
+              style={{
+                background: "rgba(124, 58, 237, 0.2)",
+                border: "1px solid rgba(167, 139, 250, 0.4)",
+                color: "#C4B5FD",
+                borderRadius: 8,
+                padding: "8px 14px",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                transition: "all 150ms",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                flexShrink: 0
+              }}
+            >
+              <Globe size={14} /> Change
+            </button>
+          </div>
+
+          {selectedCountry.paymentMethods && selectedCountry.paymentMethods.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>
+                Supported Local Payment Rails:
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {selectedCountry.paymentMethods.map((pm, idx) => (
+                  <span
+                    key={idx}
+                    style={{
+                      fontSize: 10.5,
+                      padding: "4px 8px",
+                      borderRadius: 6,
+                      background: "rgba(16, 185, 129, 0.08)",
+                      border: "1px solid rgba(16, 185, 129, 0.2)",
+                      color: "#34D399"
+                    }}
+                  >
+                    ✓ {pm}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Password Update Card */}
         <div className="profile-card">
           <div className="profile-card-title">
@@ -4873,6 +3885,16 @@ function ProfileView({
           </div>
         )}
       </div>
+
+      {showCountryModal && (
+        <CountrySelectModal
+          isOpen={showCountryModal}
+          onClose={() => setShowCountryModal(false)}
+          onSelect={handleSelectCountry}
+          selectedCode={userCountryCode}
+          title="Select Trading Country & Currency"
+        />
+      )}
     </div>
   );
 }
