@@ -683,9 +683,10 @@ function parseGeckoPoolToToken(
 export async function fetchGeckoCandles(
   network: string,
   poolAddress: string,
-  timeframe: string
+  timeframe: string,
+  sym?: string
 ): Promise<Candle[] | null> {
-  const cacheKey = `${network}_${poolAddress}_${timeframe}`;
+  const cacheKey = `${network}_${poolAddress}_${timeframe}_${sym || ''}`;
   const now = Date.now();
 
   if (now < rateLimitedUntil) {
@@ -697,7 +698,7 @@ export async function fetchGeckoCandles(
     return ohlcvCache[cacheKey].candles;
   }
 
-  // 1. Try Binance for major pairs (instant, zero rate limits, sub-50ms)
+  // 1. Try Binance for major pairs (instant, zero rate limits, sub-50ms, deep 500-candle history)
   const binancePairMap: Record<string, string> = {
     BTC: "BTCUSDT",
     ETH: "ETHUSDT",
@@ -710,10 +711,13 @@ export async function fetchGeckoCandles(
     SUI: "SUIUSDT",
   };
 
-  const bSym = poolAddress ? Object.keys(binancePairMap).find(s => {
-    const cfg = MAJOR_CONFIGS.find(c => c.sym === s);
-    return cfg && cfg.poolAddress.toLowerCase() === poolAddress.toLowerCase();
-  }) : null;
+  const lookupSym = sym ? sym.toUpperCase() : null;
+  const bSym = (lookupSym && binancePairMap[lookupSym])
+    ? lookupSym
+    : (poolAddress ? Object.keys(binancePairMap).find(s => {
+        const cfg = MAJOR_CONFIGS.find(c => c.sym === s);
+        return cfg && cfg.poolAddress.toLowerCase() === poolAddress.toLowerCase();
+      }) : null);
 
   if (bSym && binancePairMap[bSym]) {
     try {
@@ -723,7 +727,7 @@ export async function fetchGeckoCandles(
         timeframe === '1h' ? '1h' :
         timeframe === '4h' ? '4h' : '1d';
 
-      const bRes = await fetch(`https://api.binance.com/api/v3/klines?symbol=${binancePairMap[bSym]}&interval=${bInterval}&limit=150`);
+      const bRes = await fetch(`https://api.binance.com/api/v3/klines?symbol=${binancePairMap[bSym]}&interval=${bInterval}&limit=500`);
       if (bRes.ok) {
         const bData = await bRes.json();
         if (Array.isArray(bData) && bData.length > 0) {

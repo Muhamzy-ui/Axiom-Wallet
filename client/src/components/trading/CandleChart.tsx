@@ -208,11 +208,13 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       },
     });
 
-    // Display healthy readable candles with right breathing room
+    // Display healthy readable candles with right breathing room and unrestricted historical scrolling
     chart.timeScale().applyOptions({
-      barSpacing: 9,
-      rightOffset: 12,
-      minBarSpacing: 2.5,
+      barSpacing: timeframe === 'D' ? 11 : timeframe === '4h' ? 10 : 9,
+      rightOffset: 8,
+      minBarSpacing: 1.5,
+      fixLeftEdge: false,
+      fixRightEdge: false,
     });
     chart.timeScale().scrollToRealTime();
 
@@ -470,9 +472,18 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       const rawCandles = marketStore.getCandles(targetSym, timeframe);
       if (!rawCandles || rawCandles.length === 0) return;
 
-      // If full dataset count changed (e.g. real candles loaded), refresh whole series
+      // If full dataset count changed (e.g. real candles loaded), refresh whole series without losing scroll position
       if (rawCandles.length !== candleCountRef.current) {
+        const chart = chartRef.current;
+        const prevRange = chart ? chart.timeScale().getVisibleLogicalRange() : null;
         applyFullData();
+        if (chart && prevRange && candleCountRef.current > 0 && prevRange.to < (candleCountRef.current - 4)) {
+          try {
+            chart.timeScale().setVisibleLogicalRange(prevRange);
+          } catch {
+            // fallback
+          }
+        }
         return;
       }
 

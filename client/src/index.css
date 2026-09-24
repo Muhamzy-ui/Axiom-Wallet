@@ -4208,6 +4208,19 @@ select:focus-visible {
   font-size: 9.5px;
 }
 
+.dex-verified-tag-sm {
+  color: #10B981;
+  font-weight: 700;
+  font-size: 8.5px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 4px;
+  padding: 1px 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .dex-hero-actions {
   display: flex;
   align-items: center;
@@ -4842,7 +4855,24 @@ select:focus-visible {
   }
 
   .chart-bottom-resizer {
-    display: none !important;
+    display: flex !important;
+    height: 32px !important;
+    touch-action: none;
+    background: rgba(13, 13, 20, 0.98) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .chart-bottom-resizer .chart-arrow-toggle-btn {
+    height: 24px !important;
+    padding: 2px 10px !important;
+    font-size: 11px !important;
+  }
+
+  .chart-bottom-resizer .chart-arrow-height-indicator {
+    height: 24px !important;
+    padding: 2px 9px !important;
+    font-size: 11px !important;
   }
 
   .dex-mobile-watchlist {
@@ -4876,10 +4906,9 @@ select:focus-visible {
   }
 
   .chart-stage {
-    height: auto !important;
-    min-height: 230px !important;
     display: block !important;
     position: relative !important;
+    width: 100% !important;
   }
 
   /* Wallet */

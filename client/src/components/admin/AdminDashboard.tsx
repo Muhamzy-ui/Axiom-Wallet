@@ -1327,6 +1327,35 @@ function MemeCoinsPage({ search }: { search: string }) {
               <Badge status={activeToken.is_rugged ? 'failed' : 'active'} />
             </div>
           </div>
+          <div style={{ background: C.surface2, padding: '10px 14px', borderRadius: 10, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>VERIFIED BADGE</div>
+            <div style={{ marginTop: 4 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !marketStore.isTokenVerified(activeToken.sym);
+                  marketStore.setTokenVerified(activeToken.sym, next);
+                  toast_(`${activeToken.sym} verified badge ${next ? 'enabled ✓' : 'disabled'}`);
+                }}
+                style={{
+                  background: marketStore.isTokenVerified(activeToken.sym) ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.06)',
+                  border: `1px solid ${marketStore.isTokenVerified(activeToken.sym) ? C.green : C.border}`,
+                  color: marketStore.isTokenVerified(activeToken.sym) ? C.green : C.muted,
+                  borderRadius: 6,
+                  padding: '3px 8px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+                title="Click to toggle Verified badge on/off"
+              >
+                {marketStore.isTokenVerified(activeToken.sym) ? <><Check size={12} color={C.green} /> Verified</> : '○ Unverified'}
+              </button>
+            </div>
+          </div>
           <div style={{ background: 'rgba(124,58,237,0.12)', padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(124,58,237,0.3)', display: 'flex', alignItems: 'center' }}>
             <button
               onClick={() => openEditModal(activeToken)}
@@ -1864,10 +1893,10 @@ function MemeCoinsPage({ search }: { search: string }) {
           <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
               <thead><tr style={{ borderBottom: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.02)' }}>
-                {['Token', 'Price', '24h Change', 'Liquidity', 'Mkt Cap', 'Real Buyers', 'User Volume', 'Contract', 'Status', 'Quick Actions'].map(h => <th key={h} style={TH}>{h}</th>)}
+                {['Token', 'Price', '24h Change', 'Liquidity', 'Mkt Cap', 'Real Buyers', 'User Volume', 'Verified', 'Contract', 'Status', 'Quick Actions'].map(h => <th key={h} style={TH}>{h}</th>)}
               </tr></thead>
             <tbody>
-              {filtered.length === 0 ? <tr><td colSpan={10}><EmptyState message="No tokens found." /></td></tr> : filtered.map(t => (
+              {filtered.length === 0 ? <tr><td colSpan={11}><EmptyState message="No tokens found." /></td></tr> : filtered.map(t => (
                 <tr key={t.sym} style={{ borderBottom: `1px solid ${C.border}` }} {...TR_HOVER}>
                   <td style={TD}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1896,6 +1925,40 @@ function MemeCoinsPage({ search }: { search: string }) {
                   </td>
                   <td style={{ ...TD, fontWeight: 700, color: C.green }}>
                     {fmtUSD(t.total_user_buy_volume_usd || 0)}
+                  </td>
+                  <td style={TD}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !marketStore.isTokenVerified(t.sym);
+                        marketStore.setTokenVerified(t.sym, next);
+                        toast_(`${t.sym} verified badge ${next ? 'enabled ✓' : 'disabled'}`);
+                      }}
+                      style={{
+                        background: marketStore.isTokenVerified(t.sym) ? 'rgba(16,185,129,0.18)' : 'rgba(255,255,255,0.05)',
+                        border: `1px solid ${marketStore.isTokenVerified(t.sym) ? 'rgba(16,185,129,0.45)' : C.border}`,
+                        color: marketStore.isTokenVerified(t.sym) ? C.green : C.muted,
+                        borderRadius: 6,
+                        padding: '3px 8px',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        transition: 'all 150ms'
+                      }}
+                      title="Click to toggle Verified badge on/off"
+                    >
+                      {marketStore.isTokenVerified(t.sym) ? (
+                        <>
+                          <Check size={12} color={C.green} />
+                          <span>Verified</span>
+                        </>
+                      ) : (
+                        <span>○ Unverified</span>
+                      )}
+                    </button>
                   </td>
                   <td style={TD}>
                     {(t.contractAddress || t.poolAddress) ? (
@@ -2458,6 +2521,36 @@ function MemeCoinsPage({ search }: { search: string }) {
                     placeholder="+0.00%"
                     style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '9px 12px', color: C.text, fontSize: 12, boxSizing: 'border-box', outline: 'none' }}
                   />
+                </div>
+
+                {/* Verified Coin Badge toggle */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: '10px 14px' }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Verified Coin Badge</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>Display the green ✓ Verified tag on Trade screen and pair picker</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = marketStore.isTokenVerified(editModalToken.sym);
+                      marketStore.setTokenVerified(editModalToken.sym, !cur);
+                    }}
+                    style={{
+                      background: marketStore.isTokenVerified(editModalToken.sym) ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.06)',
+                      border: `1px solid ${marketStore.isTokenVerified(editModalToken.sym) ? C.green : C.border}`,
+                      color: marketStore.isTokenVerified(editModalToken.sym) ? C.green : C.muted,
+                      borderRadius: 6,
+                      padding: '4px 10px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4
+                    }}
+                  >
+                    {marketStore.isTokenVerified(editModalToken.sym) ? <><Check size={12} color={C.green} /> Verified</> : '○ Unverified'}
+                  </button>
                 </div>
 
                 <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>

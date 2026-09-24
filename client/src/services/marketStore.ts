@@ -48,6 +48,7 @@ export interface MarketToken {
   user_holders_count?: number;
   total_user_buy_volume_usd?: number;
   user_circulating_tokens?: number;
+  is_verified?: boolean;
 }
 
 export function generateSparkline(p: number, isUp: boolean): number[] {
@@ -590,6 +591,8 @@ class MarketStore {
   lastOrderAlert: string | null = null;
   trades: Record<string, LiveTrade[]> = {};
   candleSeries: Record<string, Record<string, Candle[]>> = {}; // sym -> timeframe -> candles
+  verifiedTokens: Record<string, boolean> = {};
+  private isSynthetic: Record<string, Record<string, boolean>> = {};
   activeTimeframe: string = "1m";
   timeframe: string = "1m";
   dispMode: "Price" | "Mcap" = "Price";
@@ -602,10 +605,12 @@ class MarketStore {
   private priceAnchors: Record<string, number> = {};
 
   constructor() {
+    this.initVerifiedTokens();
     this.tokens.forEach(t => {
       this.trades[t.sym] = generateInitialTrades(t);
       this.priceAnchors[t.sym] = t.numericPrice;
       this.momentums[t.sym] = 0;
+      t.is_verified = this.isTokenVerified(t.sym);
     });
     this.initSync();
     this.syncBackendTokens();
@@ -623,6 +628,62 @@ class MarketStore {
         this.fetchRealMarketData();
       }, 14000);
     }
+  }
+
+  private initVerifiedTokens() {
+    const DEFAULT_VERIFIED: Record<string, boolean> = {
+      BTC: true,
+      ETH: true,
+      SOL: true,
+      BNB: true,
+      XRP: true,
+      DOGE: true,
+      ADA: true,
+      AVAX: true,
+      SUI: true,
+      USDT: true,
+      USDC: true,
+    };
+    if (typeof localStorage !== "undefined") {
+      try {
+        const raw = localStorage.getItem("axiom_admin_verified_tokens");
+        if (raw) {
+          this.verifiedTokens = { ...DEFAULT_VERIFIED, ...JSON.parse(raw) };
+          return;
+        }
+      } catch (e) {
+        console.warn("Failed to parse verified tokens from localStorage:", e);
+      }
+    }
+    this.verifiedTokens = { ...DEFAULT_VERIFIED };
+  }
+
+  isTokenVerified(sym: string): boolean {
+    if (!sym) return false;
+    const s = sym.toUpperCase();
+    if (this.verifiedTokens[s] !== undefined) return this.verifiedTokens[s];
+    const DEFAULT_MAJORS = ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "SUI", "USDT", "USDC"];
+    return DEFAULT_MAJORS.includes(s);
+  }
+
+  setTokenVerified(sym: string, verified: boolean) {
+    if (!sym) return;
+    const s = sym.toUpperCase();
+    this.verifiedTokens[s] = verified;
+    const tok = this.tokens.find(t => t.sym.toUpperCase() === s);
+    if (tok) tok.is_verified = verified;
+    if (typeof localStorage !== "undefined") {
+      try {
+        localStorage.setItem("axiom_admin_verified_tokens", JSON.stringify(this.verifiedTokens));
+      } catch (e) {
+        console.warn("Failed to persist verified tokens:", e);
+      }
+    }
+    this.notify();
+  }
+
+  getAllVerifiedTokens(): Record<string, boolean> {
+    return { ...this.verifiedTokens };
   }
 
   // Guarantee 9 Majors (BTC, ETH, SOL, BNB, XRP, DOGE, ADA, AVAX, SUI) stay pinned at the top in order, others sorted descending by 24h volume
@@ -1742,11 +1803,18 @@ class MarketStore {
 
     this.loadingCandles.add(key);
     try {
-      const realCandles = await fetchGeckoCandles(token.network, token.poolAddress, tf);
+      const realCandles = await fetchGeckoCandles(token.network, token.poolAddress, tf, sym);
       if (realCandles && realCandles.length > 0) {
         if (!this.candleSeries[sym]) this.candleSeries[sym] = {};
-        if (!this.candleSeries[sym][tf] || this.candleSeries[sym][tf].length === 0) {
+        if (
+          !this.candleSeries[sym][tf] ||
+          this.candleSeries[sym][tf].length === 0 ||
+          this.isSynthetic[sym]?.[tf] ||
+          realCandles.length > this.candleSeries[sym][tf].length
+        ) {
           this.candleSeries[sym][tf] = realCandles;
+          if (!this.isSynthetic[sym]) this.isSynthetic[sym] = {};
+          this.isSynthetic[sym][tf] = false;
           this.notify();
         }
       }
@@ -1758,10 +1826,14 @@ class MarketStore {
   }
 
   private buildInitialCandles(sym: string, tf: string): Candle[] {
+    if (!this.isSynthetic[sym]) this.isSynthetic[sym] = {};
+    this.isSynthetic[sym][tf] = true;
+
     const token = this.getToken(sym);
     const p = Math.max(0.00000001, token.numericPrice);
     const candles: Candle[] = [];
-    const N = 180; // 180 candles for deep historical past data
+    // Deep historical candle dataset: 365 daily, 360 4-hour, 360 1-hour, 300 minutes
+    const N = tf === "D" ? 365 : tf === "4h" ? 360 : tf === "1h" ? 360 : 300;
     const now = Date.now();
     const stepMs = this.getTfStepMs(tf);
     const currentInterval = Math.floor(now / stepMs) * stepMs;
@@ -1872,7 +1944,7 @@ class MarketStore {
     const token = this.getToken(sym);
     if (!token) return { success: false, message: "Token not found" };
     if (token.is_rugged) {
-      return { success: false, message: `⚠️ Cannot trade $${sym}: Token has been RUGPULLED and liquidity is zero. Total loss realized.` };
+      return { success: false, message: `⚠️ Cannot trade $${sym}: Market liquidity has been exhausted.` };
     }
 
     const p = token.numericPrice;
@@ -1949,8 +2021,18 @@ class MarketStore {
       this.userOrders.unshift(userOrder);
       if (this.userOrders.length > 50) this.userOrders = this.userOrders.slice(0, 50);
 
-      // Micro pump on buy (+0.15%)
-      this.applyPriceTick(sym, p * 1.002, true);
+      // Dynamic real-time price impact with persistent memory
+      const isMajor = this.isMajorToken(sym);
+      const impactRatio = isMajor
+        ? Math.min(0.005, (amount / 2000000))
+        : Math.min(0.12, Math.max(0.015, amount / (p * 50000 + 500)));
+      const newP = p * (1 + impactRatio);
+
+      this.priceAnchors[sym] = newP;
+      this.momentums[sym] = Math.min(0.08, (this.momentums[sym] || 0) + impactRatio * 0.7);
+      token.customPrice = true;
+      token.isMarketMakerActive = true;
+      this.applyPriceTick(sym, newP, true);
 
       // Update buyers counters
       token.txns += 1;
@@ -2038,8 +2120,18 @@ class MarketStore {
       this.userOrders.unshift(userOrder);
       if (this.userOrders.length > 50) this.userOrders = this.userOrders.slice(0, 50);
 
-      // Micro dump on sell (-0.15%)
-      this.applyPriceTick(sym, p * 0.998, false);
+      // Dynamic real-time price impact with persistent memory
+      const isMajor = this.isMajorToken(sym);
+      const impactRatio = isMajor
+        ? Math.min(0.005, (usdcReceived / 2000000))
+        : Math.min(0.12, Math.max(0.015, usdcReceived / (p * 50000 + 500)));
+      const newP = Math.max(0.00000001, p * (1 - impactRatio));
+
+      this.priceAnchors[sym] = newP;
+      this.momentums[sym] = Math.max(-0.08, (this.momentums[sym] || 0) - impactRatio * 0.7);
+      token.customPrice = true;
+      token.isMarketMakerActive = true;
+      this.applyPriceTick(sym, newP, false);
 
       // Update sellers counters
       token.txns += 1;
@@ -2073,7 +2165,7 @@ class MarketStore {
 
       return {
         success: true,
-        message: `Sold ${amount >= 1000 ? amount.toLocaleString(undefined, { maximumFractionDigits: 1 }) : amount.toFixed(4)} ${sym} for $${usdcReceived.toFixed(2)} USDC!`,
+        message: `Sold ${amount >= 1000 ? amount.toLocaleString(undefined, { maximumFractionDigits: 1 }) : amount.toFixed(4)} ${sym} for $${usdcReceived.toFixed(2)} USDT!`,
         tokensExchanged: amount,
         usdcExchanged: usdcReceived,
       };
@@ -2637,16 +2729,26 @@ class MarketStore {
     // Cancel all open pending limit or TP/SL orders for this token without refund
     this.pendingOrders = this.pendingOrders.filter(o => o.sym.toUpperCase() !== sym.toUpperCase());
 
-    // Add realistic market exit trade
-    this.addTrade({
-      sym,
-      type: "Sell",
-      usd: 25000,
-      tokenAmt: 250000000,
-      price: 0.00000001,
-      trader: "4qWp...8kZ",
-      traderEmoji: "⚡",
-    }, fromRemote);
+    // Add realistic cascade of heavy market dumps ("Sell Sell Sell" in Recent Trades list)
+    const dumpTrades = [
+      { trader: "Whale_88", emoji: "🐋", usd: 42500, time: Date.now() - 3000 },
+      { trader: "4qWp...8kZ", emoji: "⚡", usd: 31200, time: Date.now() - 2500 },
+      { trader: "DeFi_Alpha", emoji: "📉", usd: 18900, time: Date.now() - 2000 },
+      { trader: "9xK2...01b", emoji: "🔥", usd: 24700, time: Date.now() - 1500 },
+      { trader: "Vault_Exit", emoji: "⚠️", usd: 14200, time: Date.now() - 1000 },
+      { trader: "7mLp...43f", emoji: "🔻", usd: 9800, time: Date.now() - 500 },
+    ];
+    dumpTrades.forEach(dt => {
+      this.addTrade({
+        sym,
+        type: "Sell",
+        usd: dt.usd,
+        tokenAmt: Math.round(dt.usd / 0.00000001),
+        price: 0.00000001,
+        trader: dt.trader,
+        traderEmoji: dt.emoji,
+      }, fromRemote);
+    });
 
     // Inactive all candles down to 0
     const tfs = ["1s", "1m", "5m", "15m", "1h", "4h", "D"];
@@ -3217,7 +3319,7 @@ class MarketStore {
               last.vol += 0.15;
             } else if (currentInterval > last.time) {
               // Current timeframe interval has rolled over! Open next candle
-              if (candles.length >= 250) candles.shift();
+              if (candles.length >= 800) candles.shift();
               candles.push({
                 open: last.close,
                 high: Math.max(last.close, newP),

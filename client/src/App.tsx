@@ -156,7 +156,7 @@ function TokenSnapshot({ sym, flash }: { sym: string; flash?: (m: string) => voi
       <div className="snap-header">
         <CoinImg sym={sym} n={22} url={d.imageUrl} />
         <div>
-          <div className="snap-pair">{sym} / USDC</div>
+          <div className="snap-pair">{sym} / USDT</div>
           <div className="snap-chain">
             <span className={`chain-dot ${d.network === "eth" ? "eth" : "sol"}`} />
             {d.network === "eth" ? "Ethereum" : "Solana"}
@@ -689,20 +689,20 @@ function Trade({ flash }: { flash: (x: string) => void }) {
   const [mobileSubTab, setMobileSubTab] = useState<"trades" | "orderbook" | "order" | "position" | "security">("trades");
   const [showPairModal, setShowPairModal] = useState(false);
 
-  // Board Height state: default 240px for compact sleek look
+  // Board Height state: default 360px on mobile, iPad, and desktop for generous readable chart
   const [chartHeight, setChartHeight] = useState<number>(() => {
     if (typeof localStorage !== "undefined") {
       const saved = localStorage.getItem("axiom_board_height");
-      if (saved) {
+      if (saved && saved !== "240") {
         const n = parseInt(saved);
-        if (!isNaN(n) && n >= 160 && n <= 700) return n;
+        if (!isNaN(n) && n >= 180 && n <= 700) return n;
       }
     }
-    return 240;
+    return 360;
   });
 
   const handleAdjustHeight = (delta: number) => {
-    const next = Math.max(160, Math.min(650, chartHeight + delta));
+    const next = Math.max(180, Math.min(650, chartHeight + delta));
     setChartHeight(next);
     if (typeof localStorage !== "undefined") {
       localStorage.setItem("axiom_board_height", String(next));
@@ -723,7 +723,7 @@ function Trade({ flash }: { flash: (x: string) => void }) {
     const handleMouseMove = (ev: MouseEvent) => {
       if (!isResizingRef.current) return;
       const delta = ev.clientY - startYRef.current;
-      const next = Math.max(160, Math.min(650, startHRef.current + delta));
+      const next = Math.max(180, Math.min(650, startHRef.current + delta));
       setChartHeight(next);
       if (typeof localStorage !== "undefined") {
         localStorage.setItem("axiom_board_height", String(next));
@@ -738,6 +738,32 @@ function Trade({ flash }: { flash: (x: string) => void }) {
 
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  const handleStartTouchResize = (e: React.TouchEvent) => {
+    if (!e.touches[0]) return;
+    isResizingRef.current = true;
+    startYRef.current = e.touches[0].clientY;
+    startHRef.current = chartHeight;
+
+    const handleTouchMove = (ev: TouchEvent) => {
+      if (!isResizingRef.current || !ev.touches[0]) return;
+      const delta = ev.touches[0].clientY - startYRef.current;
+      const next = Math.max(180, Math.min(650, startHRef.current + delta));
+      setChartHeight(next);
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("axiom_board_height", String(next));
+      }
+    };
+
+    const handleTouchEnd = () => {
+      isResizingRef.current = false;
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+    };
+
+    window.addEventListener("touchmove", handleTouchMove, { passive: true });
+    window.addEventListener("touchend", handleTouchEnd);
   };
 
   // Markets Tab & Favorites & Search state
@@ -1118,15 +1144,19 @@ function Trade({ flash }: { flash: (x: string) => void }) {
               <CoinImg sym={m.sym} n={32} url={m.imageUrl} />
               <div className="dex-hero-name-wrap">
                 <div className="dex-hero-pair-title">
-                  <b>{m.sym} / USDC</b>
+                  <b>{m.sym} / USDT</b>
                   <span className="dex-chain-pill">{m.network === "eth" ? "ETH" : "SOL"}</span>
-                  {m.is_rugged && <span className="dex-rugged-badge">LIQUIDITY DRAINED</span>}
+                  {m.is_rugged && <span className="dex-rugged-badge">DUMPED</span>}
                   <ChevronDown size={13} className="dex-switch-chevron" />
                 </div>
                 <div className="dex-hero-name-sub">
                   <span>{m.name}</span>
-                  <span className="dex-dot-sep">·</span>
-                  <span className="dex-verified-tag">✓ Verified</span>
+                  {marketStore.isTokenVerified(m.sym) && (
+                    <>
+                      <span className="dex-dot-sep">·</span>
+                      <span className="dex-verified-tag">✓ Verified</span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -1221,10 +1251,13 @@ function Trade({ flash }: { flash: (x: string) => void }) {
             <CoinImg sym={m.sym} n={30} url={m.imageUrl} />
             <i>
               <b style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                {m.sym} / USDC
+                {m.sym} / USDT
+                {marketStore.isTokenVerified(m.sym) && (
+                  <span className="dex-verified-tag-sm">✓ Verified</span>
+                )}
                 {m.is_rugged && (
                   <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 4, background: "rgba(239,68,68,0.25)", color: "#EF4444", fontWeight: 800, border: "1px solid rgba(239,68,68,0.5)" }}>
-                    ⚠️ TRADING HALTED
+                    ⚠️ LOW LIQUIDITY
                   </span>
                 )}
               </b>
@@ -1319,31 +1352,31 @@ function Trade({ flash }: { flash: (x: string) => void }) {
             {/* Board Size Presets */}
             <div className="chart-btn-seg" title="Adjust Board Height">
               <button
-                className={chartHeight <= 210 ? "on" : ""}
+                className={chartHeight <= 280 ? "on" : ""}
                 onClick={() => {
-                  setChartHeight(190);
-                  localStorage.setItem("axiom_board_height", "190");
-                  flash("Board size: Small (190px)");
+                  setChartHeight(240);
+                  localStorage.setItem("axiom_board_height", "240");
+                  flash("Board size: Small (240px)");
                 }}
               >
                 Small
               </button>
               <button
-                className={chartHeight > 210 && chartHeight <= 290 ? "on" : ""}
+                className={chartHeight > 280 && chartHeight <= 400 ? "on" : ""}
                 onClick={() => {
-                  setChartHeight(250);
-                  localStorage.setItem("axiom_board_height", "250");
-                  flash("Board size: Medium (250px)");
+                  setChartHeight(360);
+                  localStorage.setItem("axiom_board_height", "360");
+                  flash("Board size: Medium (360px)");
                 }}
               >
                 Med
               </button>
               <button
-                className={chartHeight > 290 ? "on" : ""}
+                className={chartHeight > 400 ? "on" : ""}
                 onClick={() => {
-                  setChartHeight(360);
-                  localStorage.setItem("axiom_board_height", "360");
-                  flash("Board size: Tall (360px)");
+                  setChartHeight(480);
+                  localStorage.setItem("axiom_board_height", "480");
+                  flash("Board size: Tall (480px)");
                 }}
               >
                 Tall
@@ -1372,14 +1405,15 @@ function Trade({ flash }: { flash: (x: string) => void }) {
         <div
           className="chart-bottom-resizer"
           onMouseDown={handleStartResize}
+          onTouchStart={handleStartTouchResize}
           title="Drag up to reduce board height, drag down to increase"
         >
-          <div className="chart-bottom-arrows-wrap" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="chart-bottom-arrows-wrap" onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
             <button
               type="button"
               className="chart-arrow-toggle-btn"
               onClick={() => {
-                const newH = Math.max(160, chartHeight - 50);
+                const newH = Math.max(180, chartHeight - 50);
                 setChartHeight(newH);
                 localStorage.setItem("axiom_board_height", String(newH));
                 flash(`Reduced chart to ${newH}px`);
@@ -1394,14 +1428,14 @@ function Trade({ flash }: { flash: (x: string) => void }) {
               type="button"
               className="chart-arrow-height-indicator"
               onClick={() => {
-                const newH = chartHeight > 240 ? 180 : 340;
+                const newH = chartHeight >= 360 ? 240 : 420;
                 setChartHeight(newH);
                 localStorage.setItem("axiom_board_height", String(newH));
-                flash(newH === 180 ? "Chart reduced to compact (180px)" : "Chart increased to tall (340px)");
+                flash(newH === 240 ? "Chart reduced to compact (240px)" : "Chart increased to tall (420px)");
               }}
               title="Click arrow to toggle between compact and expanded chart"
             >
-              {chartHeight > 240 ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              {chartHeight >= 360 ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
               <span>{chartHeight}px</span>
             </button>
 
@@ -1639,22 +1673,73 @@ function Trade({ flash }: { flash: (x: string) => void }) {
                           {pos.hasPosition ? (isPumping ? `🔥 PUMPING (+${pos.pnlPct.toFixed(1)}%)` : isDipping ? `🔻 DIPPING (${pos.pnlPct.toFixed(1)}%)` : "HOLDING") : "NO POSITION"}
                         </span>
                       </div>
-                      <div className="user-pos-body" style={{ marginTop: 8 }}>
-                        <div className="user-pos-row">
-                          <span className="user-pos-k">Coin Owned</span>
-                          <span className="user-pos-v"><b>{pos.bal.toFixed(4)} {m.sym}</b></span>
+                      {pos.hasPosition && pos.bal > 0 ? (
+                        <>
+                          <div className="user-pos-body" style={{ marginTop: 8 }}>
+                            <div className="user-pos-row">
+                              <span className="user-pos-k">Coin Owned</span>
+                              <span className="user-pos-v"><b>{pos.bal.toFixed(4)} {m.sym}</b></span>
+                            </div>
+                            <div className="user-pos-row">
+                              <span className="user-pos-k">Money Used</span>
+                              <span className="user-pos-v highlight-spent">
+                                ${pos.invested.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                            <div className="user-pos-row">
+                              <span className="user-pos-k">Position Value</span>
+                              <span className="user-pos-v highlight-val">${pos.currentVal.toFixed(2)}</span>
+                            </div>
+                            <div className="user-pos-row">
+                              <span className="user-pos-k">Unrealized PnL</span>
+                              <span className={`user-pos-v ${pos.pnlUsd >= 0 ? "text-green" : "text-red"}`}>
+                                <b>{pos.pnlUsd >= 0 ? `+$${pos.pnlUsd.toFixed(2)}` : `-$${Math.abs(pos.pnlUsd).toFixed(2)}`}</b> ({pos.pnlPct.toFixed(2)}%)
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Quick Partial & Full Exit Buttons */}
+                          <div className="user-pos-quick-actions" style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                            <button
+                              type="button"
+                              className="user-pos-quick-btn"
+                              style={{ padding: "8px 0", fontSize: 12, fontWeight: 700, borderRadius: 8 }}
+                              onClick={() => {
+                                const sellAmt = pos.bal * 0.5;
+                                const res = marketStore.placeOrder({ sym: m.sym, side: "Sell", amount: sellAmt });
+                                flash(res.message);
+                              }}
+                              title="Sell 50% of your holdings"
+                            >
+                              Sell 50%
+                            </button>
+                            <button
+                              type="button"
+                              className={`user-pos-quick-btn ${isPumping ? "profit-btn" : ""}`}
+                              style={{ padding: "8px 0", fontSize: 12, fontWeight: 700, borderRadius: 8 }}
+                              onClick={() => {
+                                const res = marketStore.placeOrder({ sym: m.sym, side: "Sell", amount: pos.bal });
+                                flash(res.message);
+                              }}
+                              title="Sell 100% of your holdings to lock in profit"
+                            >
+                              {isPumping ? "🔥 Take Profit (100%)" : "Sell 100%"}
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ textAlign: "center", padding: "20px 10px", color: "var(--muted)", fontSize: 12 }}>
+                          <div>You don't hold any {m.sym} yet.</div>
+                          <button
+                            type="button"
+                            className="btn-primary green"
+                            style={{ marginTop: 10, padding: "8px 20px", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6 }}
+                            onClick={() => { setSide("Buy"); setMobileSubTab("order"); }}
+                          >
+                            <Zap size={13} /> Buy {m.sym} Now
+                          </button>
                         </div>
-                        <div className="user-pos-row">
-                          <span className="user-pos-k">Position Value</span>
-                          <span className="user-pos-v highlight-val">${pos.currentVal.toFixed(2)}</span>
-                        </div>
-                        <div className="user-pos-row">
-                          <span className="user-pos-k">Unrealized PnL</span>
-                          <span className={`user-pos-v ${pos.pnlUsd >= 0 ? "text-green" : "text-red"}`}>
-                            <b>{pos.pnlUsd >= 0 ? `+$${pos.pnlUsd.toFixed(2)}` : `-$${Math.abs(pos.pnlUsd).toFixed(2)}`}</b> ({pos.pnlPct.toFixed(2)}%)
-                          </span>
-                        </div>
-                      </div>
+                      )}
                     </div>
                   );
                 })()}
@@ -1751,6 +1836,9 @@ function Trade({ flash }: { flash: (x: string) => void }) {
                         <div className="dex-coin-sym">
                           <b>{t.sym}</b>
                           <span className="dex-coin-network-tag">{t.network === "eth" ? "ETH" : "SOL"}</span>
+                          {marketStore.isTokenVerified(t.sym) && (
+                            <span className="dex-verified-tag-sm">✓ Verified</span>
+                          )}
                         </div>
                         <div className="dex-coin-name">{t.name}</div>
                       </div>
