@@ -61,7 +61,7 @@ class UserBalanceSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserBalance
-        fields = ['currency', 'available_amount', 'locked_amount', 'total_amount', 'updated_at']
+        fields = ['currency', 'available_amount', 'locked_amount', 'total_amount', 'total_invested', 'avg_buy_price', 'updated_at']
 
 class PricePointSerializer(serializers.ModelSerializer):
     class Meta:

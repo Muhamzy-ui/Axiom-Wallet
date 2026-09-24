@@ -8,7 +8,12 @@ def get_or_create_balance(user, currency):
     balance, _ = UserBalance.objects.select_for_update().get_or_create(
         user=user,
         currency=currency.upper(),
-        defaults={'available_amount': Decimal('0.0'), 'locked_amount': Decimal('0.0')}
+        defaults={
+            'available_amount': Decimal('0.0'),
+            'locked_amount': Decimal('0.0'),
+            'total_invested': Decimal('0.0'),
+            'avg_buy_price': Decimal('0.0')
+        }
     )
     return balance
 

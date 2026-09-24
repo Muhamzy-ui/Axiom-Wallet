@@ -3,6 +3,11 @@ import { Candle, LiveTrade, MarketToken } from "./marketStore";
 
 const BASE_URL = "https://api.geckoterminal.com/api/v2";
 
+function getProxyUrl(subpath: string): string {
+  const base = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
+  return `${base}/api/market/gecko-proxy/?path=${encodeURIComponent(subpath)}`;
+}
+
 export interface MajorPoolConfig {
   sym: string;
   name: string;
@@ -551,43 +556,107 @@ export async function fetchGeckoTrendingSolana(): Promise<MarketToken[]> {
   }
 
   const tokens: MarketToken[] = [];
+
+  // 1. Try our dedicated backend proxy (same origin, avoids browser CORS and 429 limits)
   try {
-    const url = `${BASE_URL}/networks/solana/trending_pools?include=base_token`;
+    const url = getProxyUrl("networks/solana/trending_pools?include=base_token");
     const res = await fetch(url, { headers: { Accept: "application/json" } });
-    if (res.status === 429) {
-      rateLimitedUntil = Date.now() + 180000;
-      return cachedTrending.length > 0 ? cachedTrending : getFallbackTrending();
-    }
-    if (!res.ok) {
-      return cachedTrending.length > 0 ? cachedTrending : getFallbackTrending();
-    }
-    const json = await res.json();
-    const pools: any[] = json.data || [];
-    const included: any[] = json.included || [];
+    if (res.ok) {
+      const json = await res.json();
+      if (!json.rate_limited && Array.isArray(json.data) && json.data.length > 0) {
+        const pools: any[] = json.data;
+        const included: any[] = json.included || [];
 
-    for (const pool of pools) {
-      const baseTokenRelId = pool.relationships?.base_token?.data?.id;
-      const tokenAttr = included.find((item: any) => item.id === baseTokenRelId)?.attributes;
-      const sym = tokenAttr?.symbol?.toUpperCase() || pool.attributes?.name?.split("/")[0]?.trim()?.toUpperCase() || "MEME";
-      const name = tokenAttr?.name || pool.attributes?.name?.split("/")[0]?.trim() || sym;
+        for (const pool of pools) {
+          const baseTokenRelId = pool.relationships?.base_token?.data?.id;
+          const tokenAttr = included.find((item: any) => item.id === baseTokenRelId)?.attributes;
+          const sym = tokenAttr?.symbol?.toUpperCase() || pool.attributes?.name?.split("/")[0]?.trim()?.toUpperCase() || "MEME";
+          const name = tokenAttr?.name || pool.attributes?.name?.split("/")[0]?.trim() || sym;
 
-      tokens.push(parseGeckoPoolToToken(pool, included, {
-        sym,
-        name,
-        network: "solana",
-        imageUrl: tokenAttr?.image_url,
-        supply: 1000000000,
-        isMajor: false,
-      }));
-    }
+          tokens.push(parseGeckoPoolToToken(pool, included, {
+            sym,
+            name,
+            network: "solana",
+            imageUrl: tokenAttr?.image_url,
+            supply: 1000000000,
+            isMajor: false,
+          }));
+        }
 
-    if (tokens.length > 0) {
-      cachedTrending = tokens;
-      lastTrendingFetchTime = now;
-      return tokens;
+        if (tokens.length > 0) {
+          cachedTrending = tokens;
+          lastTrendingFetchTime = now;
+          return tokens;
+        }
+      }
     }
-  } catch (_err) {
-    rateLimitedUntil = Date.now() + 180000;
+  } catch (_proxyErr) {
+    // Backend proxy unavailable or offline, continue to CORS-enabled DexScreener fallback
+  }
+
+  // 2. Fallback: DexScreener public search (fully CORS-enabled: Access-Control-Allow-Origin: *)
+  try {
+    const dsRes = await fetch("https://api.dexscreener.com/latest/dex/search?q=solana", {
+      headers: { Accept: "application/json" }
+    });
+    if (dsRes.ok) {
+      const dsData = await dsRes.json();
+      const solPairs = (dsData.pairs || []).filter((p: any) => p.chainId === "solana");
+      const majorSyms = new Set(["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "SUI", "USDT", "USDC"]);
+
+      for (const p of solPairs) {
+        const sym = (p.baseToken?.symbol || "MEME").toUpperCase();
+        if (majorSyms.has(sym)) continue;
+        const name = p.baseToken?.name || sym;
+        const numPrice = parseFloat(p.priceUsd) || 0.001;
+        const changeNum = parseFloat(p.priceChange?.h24) || 0;
+        const pos = changeNum >= 0;
+        const volUsd = parseFloat(p.volume?.h24) || 50000;
+        const liqUsd = parseFloat(p.liquidity?.usd) || 20000;
+        const mcap = parseFloat(p.marketCap || p.fdv) || (numPrice * 1000000000);
+
+        tokens.push({
+          sym,
+          name,
+          price: formatPrice(numPrice),
+          numericPrice: numPrice,
+          solPrice: `${(numPrice / 180).toFixed(6)} SOL`,
+          change: `${pos ? "+" : ""}${changeNum.toFixed(2)}%`,
+          changeNum,
+          cap: formatUsdShort(mcap),
+          fdv: formatUsdShort(mcap * 1.05),
+          liq: formatUsdShort(liqUsd),
+          pos,
+          supply: 1000000000,
+          m5: { val: `${Math.abs(changeNum * 0.05).toFixed(2)}%`, up: pos },
+          h1: { val: `${Math.abs(changeNum * 0.2).toFixed(2)}%`, up: pos },
+          h6: { val: `${Math.abs(changeNum * 0.6).toFixed(2)}%`, up: pos },
+          h24: { val: `${Math.abs(changeNum).toFixed(2)}%`, up: pos },
+          txns: (p.txns?.h24?.buys || 100) + (p.txns?.h24?.sells || 100),
+          buys: p.txns?.h24?.buys || 100,
+          sells: p.txns?.h24?.sells || 100,
+          vol: Number((volUsd / 1e6).toFixed(2)),
+          buyVol: Number(((volUsd * 0.52) / 1e6).toFixed(2)),
+          sellVol: Number(((volUsd * 0.48) / 1e6).toFixed(2)),
+          traders: 200,
+          buyers: 110,
+          sellers: 90,
+          network: "solana",
+          poolAddress: p.pairAddress || "",
+          imageUrl: p.info?.imageUrl,
+          isMajor: false,
+        });
+        if (tokens.length >= 20) break;
+      }
+
+      if (tokens.length > 0) {
+        cachedTrending = tokens;
+        lastTrendingFetchTime = now;
+        return tokens;
+      }
+    }
+  } catch (_dsErr) {
+    // DexScreener fallback failed
   }
 
   return cachedTrending.length > 0 ? cachedTrending : getFallbackTrending();
@@ -782,7 +851,7 @@ export async function fetchGeckoCandles(
       aggregate = 5;
   }
 
-  const url = `${BASE_URL}/networks/${network}/pools/${poolAddress}/ohlcv/${granularity}?aggregate=${aggregate}&limit=300`;
+  const url = getProxyUrl(`networks/${network}/pools/${poolAddress}/ohlcv/${granularity}?aggregate=${aggregate}&limit=300`);
 
   try {
     const res = await fetch(url, { headers: { Accept: "application/json" } });
@@ -858,7 +927,7 @@ export async function fetchGeckoTrades(
     return tradesCache[cacheKey].trades;
   }
 
-  const url = `${BASE_URL}/networks/${network}/pools/${poolAddress}/trades`;
+  const url = getProxyUrl(`networks/${network}/pools/${poolAddress}/trades`);
 
   try {
     const res = await fetch(url, { headers: { Accept: "application/json" } });

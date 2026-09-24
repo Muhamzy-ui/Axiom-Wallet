@@ -2328,38 +2328,44 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser }: { moda
       if (t) {
         list.push(t);
         added.add(sym.toUpperCase());
+        added.add(sym.toUpperCase().replace(/^\$/, ""));
       }
     });
 
-    // If user holds any other coin (e.g. USDT, USDC, or a bought meme coin), include it in the roll
+    // If user holds any other coin (e.g. USDT, USDC, or a bought/created meme coin), include it in the roll
     Object.entries(rawBalances).forEach(([sym, b]) => {
-      if (b.bal > 0.000001 && !added.has(sym.toUpperCase())) {
-        const t = marketStore.getToken(sym);
+      const rawSym = (sym || "").toUpperCase().trim();
+      const cleanSym = rawSym.replace(/^\$/, "");
+      if (b.bal > 0.000001 && !added.has(cleanSym) && !added.has(rawSym)) {
+        const t = marketStore.getToken(cleanSym);
         if (t) {
           list.push(t);
-          added.add(sym.toUpperCase());
+          added.add(cleanSym);
+          added.add(rawSym);
         }
       }
     });
 
     return list.map(token => {
-      const sym = token.sym;
-      const isStable = sym.toUpperCase() === "USDC" || sym.toUpperCase() === "USDT";
-      const b = rawBalances[sym];
+      const rawSym = (token.sym || "").toUpperCase().trim();
+      const cleanSym = rawSym.replace(/^\$/, "");
+      const isStable = cleanSym === "USDC" || cleanSym === "USDT";
+      const b = rawBalances[token.sym] || rawBalances[cleanSym] || rawBalances[`$${cleanSym}`] || rawBalances[rawSym];
       const balNum = b?.bal || 0;
-      const userUsd = isStable ? balNum : balNum * token.numericPrice;
-      const invested = b?.totalInvested !== undefined ? b.totalInvested : (b?.bal || 0) * (b?.avgBuyPrice || token.numericPrice);
+      const effectivePrice = token.numericPrice > 0 ? token.numericPrice : (b?.avgBuyPrice || 0);
+      const userUsd = isStable ? balNum : (balNum * effectivePrice);
+      const invested = b?.totalInvested !== undefined && b?.totalInvested > 0 ? b.totalInvested : (balNum * (b?.avgBuyPrice || effectivePrice));
       const pnlUsd = isStable ? 0 : (userUsd - invested);
       const pnlPct = isStable || invested <= 0 ? 0 : (pnlUsd / invested) * 100;
-      const sparkline = isStable ? [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1] : (token.sparkline || generateSparkline(token.numericPrice, token.pos));
+      const sparkline = isStable ? [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1] : (token.sparkline || generateSparkline(effectivePrice, token.pos));
 
       return {
-        sym,
-        name: sym.toUpperCase() === "USDC" ? "USD Coin" : sym.toUpperCase() === "USDT" ? "Tether USD" : sym.toUpperCase() === "SOL" ? "Solana" : token.name,
+        sym: cleanSym,
+        name: cleanSym === "USDC" ? "USD Coin" : cleanSym === "USDT" ? "Tether USD" : cleanSym === "SOL" ? "Solana" : (token.name || b?.name || cleanSym),
         imageUrl: token.imageUrl,
         poolAddress: token.poolAddress,
         price: token.price,
-        numericPrice: token.numericPrice,
+        numericPrice: effectivePrice,
         chg: isStable ? "+0.00%" : token.change,
         pos: isStable ? true : token.pos,
         sparkline,
@@ -2369,6 +2375,7 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser }: { moda
         pnlUsd,
         pnlPct,
         isStable,
+        isRugged: !!token.is_rugged,
       };
     });
   }, [rawBalances, tick]);

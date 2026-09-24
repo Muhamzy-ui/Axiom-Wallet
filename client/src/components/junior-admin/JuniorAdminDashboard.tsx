@@ -121,6 +121,34 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
     }
   };
 
+  const [processingDepId, setProcessingDepId] = useState<number | null>(null);
+
+  const handleApproveDep = async (id: number) => {
+    setProcessingDepId(id);
+    try {
+      const res = await api.approveJuniorAdminDeposit(id, ja.id);
+      await fetchData();
+      alert(res.message || 'Deposit approved and digits credited!');
+    } catch (err: any) {
+      alert(err.message || 'Approval failed');
+    } finally {
+      setProcessingDepId(null);
+    }
+  };
+
+  const handleRejectDep = async (id: number) => {
+    if (!confirm(`Are you sure you want to decline deposit #${id}?`)) return;
+    setProcessingDepId(id);
+    try {
+      await api.rejectJuniorAdminDeposit(id, ja.id);
+      await fetchData();
+    } catch (err: any) {
+      alert(err.message || 'Decline failed');
+    } finally {
+      setProcessingDepId(null);
+    }
+  };
+
   // Filtered lists
   const filteredUsers = useMemo(() => {
     if (!searchQuery.trim()) return users;
@@ -924,6 +952,7 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
                       <th style={{ paddingBottom: '12px' }}>Tx Hash</th>
                       <th style={{ paddingBottom: '12px' }}>Status</th>
                       <th style={{ paddingBottom: '12px' }}>Date</th>
+                      <th style={{ paddingBottom: '12px' }}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -933,15 +962,24 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
                         <td style={{ padding: '14px 0', fontWeight: 700, color: '#fff' }}>{d.amount} {d.currency}</td>
                         <td style={{ padding: '14px 0', fontWeight: 800, color: C.emerald }}>${d.amount_usd}</td>
                         <td style={{ padding: '14px 0', fontFamily: 'monospace', color: C.textDim, fontSize: '11px' }}>
-                          {d.tx_hash ? `${d.tx_hash.slice(0, 10)}...` : '—'}
+                          {d.tx_hash ? (
+                            <a
+                              href={d.tx_hash.length > 70 ? `https://solscan.io/tx/${d.tx_hash}` : `https://tronscan.org/#/transaction/${d.tx_hash}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ color: '#A78BFA', textDecoration: 'none' }}
+                            >
+                              {d.tx_hash.slice(0, 8)}... ↗
+                            </a>
+                          ) : '—'}
                         </td>
                         <td style={{ padding: '14px 0' }}>
                           <span style={{
                             fontSize: '10px',
                             fontWeight: 700,
-                            color: d.status === 'confirmed' ? C.emerald : C.amber,
-                            background: d.status === 'confirmed' ? C.emeraldBg : C.amberBg,
-                            border: `1px solid ${d.status === 'confirmed' ? C.emeraldBorder : C.amberBorder}`,
+                            color: d.status === 'confirmed' ? C.emerald : d.status === 'rejected' ? C.rose : C.amber,
+                            background: d.status === 'confirmed' ? C.emeraldBg : d.status === 'rejected' ? C.roseBg : C.amberBg,
+                            border: `1px solid ${d.status === 'confirmed' ? C.emeraldBorder : d.status === 'rejected' ? C.roseBorder : C.amberBorder}`,
                             padding: '2px 8px',
                             borderRadius: '12px'
                           }}>
@@ -949,6 +987,48 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
                           </span>
                         </td>
                         <td style={{ padding: '14px 0', color: C.textDim, fontSize: '11px' }}>{d.created_at}</td>
+                        <td style={{ padding: '14px 0' }}>
+                          {d.status === 'pending' ? (
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button
+                                type="button"
+                                disabled={processingDepId === d.id}
+                                onClick={() => handleApproveDep(d.id)}
+                                style={{
+                                  padding: '4px 10px',
+                                  borderRadius: '6px',
+                                  background: 'rgba(16, 185, 129, 0.2)',
+                                  border: '1px solid #10B981',
+                                  color: '#10B981',
+                                  fontWeight: 700,
+                                  fontSize: '11px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {processingDepId === d.id ? 'Releasing...' : '⚡ Release Digits'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={processingDepId === d.id}
+                                onClick={() => handleRejectDep(d.id)}
+                                style={{
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  background: 'rgba(239, 68, 68, 0.15)',
+                                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                                  color: '#EF4444',
+                                  fontWeight: 600,
+                                  fontSize: '11px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: '11px', color: C.textDim }}>—</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

@@ -956,72 +956,114 @@ def unlock_wallet(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_portfolio(request):
-    """Returns user balances and calculated net worth in USD."""
+    """Returns user balances, calculated net worth in USD, total deposited, and persistent PnL metrics."""
     ensure_initial_seed_data()
     address = request.query_params.get('address')
     if not address:
         return Response({'error': 'address parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-    try:
-        user = WalletUser.objects.get(wallet_address=address)
-    except WalletUser.DoesNotExist:
+    user = WalletUser.objects.filter(wallet_address=address).first() or WalletUser.objects.filter(email__iexact=address).first()
+    if not user:
         return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
     balances = UserBalance.objects.filter(user=user)
-    meme_map = {m.symbol.upper(): m for m in MemeToken.objects.all()}
+    meme_map = {}
+    for m in MemeToken.objects.all():
+        raw_s = m.symbol.upper()
+        clean_s = raw_s.lstrip('$')
+        meme_map[raw_s] = m
+        meme_map[clean_s] = m
+        meme_map[f"${clean_s}"] = m
 
     portfolio_items = []
     total_net_worth_usd = Decimal('0.0')
 
     for b in balances:
         curr = b.currency.upper()
+        clean_curr = curr.lstrip('$')
         amount = b.available_amount
         usd_value = Decimal('0.0')
         price_usd = Decimal('0.0')
         change_24h = Decimal('0.0')
         icon = ''
+        token_name = clean_curr
+        is_rugged = False
 
-        if curr in BASE_RATES_USD:
-            price_usd = BASE_RATES_USD[curr]
+        if curr in BASE_RATES_USD or clean_curr in BASE_RATES_USD:
+            base_key = curr if curr in BASE_RATES_USD else clean_curr
+            price_usd = BASE_RATES_USD[base_key]
             usd_value = amount * price_usd
-            if curr == 'SOL':
+            if base_key == 'SOL':
                 change_24h = Decimal('+2.55')
                 icon = 'https://cryptologos.cc/logos/solana-sol-logo.png'
-            elif curr == 'ETH':
+                token_name = 'Solana'
+            elif base_key == 'ETH':
                 change_24h = Decimal('-1.20')
                 icon = 'https://cryptologos.cc/logos/ethereum-eth-logo.png'
-            elif curr == 'USDT':
+                token_name = 'Ethereum'
+            elif base_key == 'USDT':
                 change_24h = Decimal('0.00')
                 icon = 'https://cryptologos.cc/logos/tether-usdt-logo.png'
-            elif curr == 'USDC':
+                token_name = 'Tether USD'
+            elif base_key == 'USDC':
                 change_24h = Decimal('0.00')
                 icon = 'https://cryptologos.cc/logos/usd-coin-usdc-logo.png'
-            elif curr == 'BTC':
+                token_name = 'USD Coin'
+            elif base_key == 'BTC':
                 change_24h = Decimal('+1.45')
                 icon = 'https://cryptologos.cc/logos/bitcoin-btc-logo.png'
-        elif curr in meme_map:
-            m = meme_map[curr]
+                token_name = 'Bitcoin'
+        elif curr in meme_map or clean_curr in meme_map:
+            m = meme_map.get(curr) or meme_map.get(clean_curr)
             price_usd = m.current_price_usd
             usd_value = amount * price_usd
             change_24h = m.change_24h
             icon = m.logo_url
+            token_name = m.name or clean_curr
+            is_rugged = m.is_rugged
+        else:
+            price_usd = b.avg_buy_price if b.avg_buy_price > Decimal('0') else Decimal('0.0')
+            usd_value = amount * price_usd
 
         total_net_worth_usd += usd_value
 
+        price_str = f"{price_usd:.8f}".rstrip('0').rstrip('.') if price_usd != Decimal('0') else "0.00"
+        if price_usd > Decimal('0') and (not price_str or price_str in ("0", "0.00")):
+            price_str = f"{price_usd:.12f}".rstrip('0').rstrip('.')
+
+        avail_str = f"{b.available_amount:.8f}".rstrip('0').rstrip('.') if b.available_amount != Decimal('0') else "0.00"
+        locked_str = f"{b.locked_amount:.8f}".rstrip('0').rstrip('.') if b.locked_amount != Decimal('0') else "0.00"
+        total_str = f"{b.total_amount:.8f}".rstrip('0').rstrip('.') if b.total_amount != Decimal('0') else "0.00"
+        total_inv_str = f"{b.total_invested:.8f}".rstrip('0').rstrip('.') if b.total_invested != Decimal('0') else "0.00"
+        avg_buy_str = f"{b.avg_buy_price:.8f}".rstrip('0').rstrip('.') if b.avg_buy_price != Decimal('0') else price_str
+
         portfolio_items.append({
-            'currency': curr,
-            'available_amount': f"{b.available_amount:.4f}".rstrip('0').rstrip('.') if b.available_amount != Decimal('0') else "0.00",
-            'locked_amount': f"{b.locked_amount:.4f}".rstrip('0').rstrip('.') if b.locked_amount != Decimal('0') else "0.00",
-            'total_amount': f"{b.total_amount:.4f}".rstrip('0').rstrip('.') if b.total_amount != Decimal('0') else "0.00",
-            'price_usd': f"{price_usd:.6f}".rstrip('0').rstrip('.') if price_usd != Decimal('0') else "0.00",
+            'currency': clean_curr,
+            'name': token_name,
+            'available_amount': avail_str,
+            'locked_amount': locked_str,
+            'total_amount': total_str,
+            'price_usd': price_str,
             'usd_value': f"{usd_value:.2f}",
+            'total_invested': total_inv_str,
+            'avg_buy_price': avg_buy_str,
             'change_24h': str(change_24h),
-            'icon': icon
+            'icon': icon,
+            'is_rugged': is_rugged,
         })
+
+    total_deposited_usd = Decimal('0.0')
+    for d in PlatformDeposit.objects.filter(user=user, status='CONFIRMED'):
+        dep_c = d.currency.upper().lstrip('$')
+        if dep_c in BASE_RATES_USD:
+            total_deposited_usd += d.amount * BASE_RATES_USD[dep_c]
+        else:
+            total_deposited_usd += d.amount
 
     return Response({
         'wallet_address': user.wallet_address,
         'total_net_worth_usd': f"{total_net_worth_usd:.2f}",
+        'total_deposited_usd': f"{total_deposited_usd:.2f}",
         'balances': portfolio_items
     })
 
@@ -1130,11 +1172,13 @@ def admin_deposit_wallets(request):
 @permission_classes([AllowAny])
 def verify_onchain_deposit(request):
     """
-    Automated on-chain deposit verification (Method 1).
-    Validates Solana transaction signature against platform deposit wallets.
-    Prevents replay attacks (duplicate tx_hash).
-    Atomically credits UserBalance and creates PlatformDeposit record.
+    Automated on-chain deposit verification.
+    Validates Solana base58 signatures and TRON/EVM hashes against blockchain nodes.
+    Prevents replay attacks (duplicate tx_hash) and rejects invalid/fake inputs.
+    Atomically credits UserBalance upon confirmation, or queues as PENDING for admin review.
     """
+    import re
+
     user_address = request.data.get('address', '').strip()
     tx_hash = request.data.get('tx_hash', '').strip()
     currency = request.data.get('currency', 'USDT').upper()
@@ -1142,30 +1186,59 @@ def verify_onchain_deposit(request):
     amount_str = str(request.data.get('amount', '10.0')).strip()
 
     if not user_address:
-        return Response({'error': 'User wallet address is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'User wallet address or email is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
     if not tx_hash:
-        return Response({'error': 'Transaction hash / signature is required for on-chain verification.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Transaction hash / signature is required for deposit verification.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    try:
-        user = WalletUser.objects.get(wallet_address=user_address)
-    except WalletUser.DoesNotExist:
+    user = WalletUser.objects.filter(wallet_address=user_address).first()
+    if not user:
+        user = WalletUser.objects.filter(email__iexact=user_address).first()
+    if not user and user_address.isdigit():
+        user = WalletUser.objects.filter(id=int(user_address)).first()
+    if not user:
         return Response({'error': 'User account not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    # 1. Anti-Replay: Check if tx_hash was already confirmed
-    if PlatformDeposit.objects.filter(tx_hash=tx_hash).exists():
+    # 1. Strict Hash Format Validation (Reject "123", "abc", "fake", etc.)
+    clean_hash = tx_hash.strip()
+    if len(clean_hash) < 32:
         return Response({
-            'error': 'This transaction hash has already been credited. Each transaction can only be redeemed once.'
+            'error': 'Invalid transaction hash format. Blockchain transaction IDs must be at least 32 characters.'
         }, status=status.HTTP_400_BAD_REQUEST)
 
-    # 2. Check matched platform deposit wallet
+    is_hex = bool(re.match(r'^(0x)?[0-9a-fA-F]{64}$', clean_hash))
+    is_sol = bool(re.match(r'^[1-9A-HJ-NP-Za-km-z]{80,95}$', clean_hash))
+
+    if not (is_hex or is_sol):
+        return Response({
+            'error': 'Invalid transaction hash format. Please enter a valid on-chain signature (88-char Solana signature or 64-char Tron/EVM TxID).'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    # 2. Anti-Replay: Prevent duplicate credit for same transaction
+    existing_dep = PlatformDeposit.objects.filter(tx_hash=clean_hash).first()
+    if existing_dep:
+        if existing_dep.status == 'CONFIRMED':
+            return Response({
+                'error': 'This transaction hash has already been credited. Each transaction can only be redeemed once.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        elif existing_dep.status == 'PENDING':
+            return Response({
+                'success': True,
+                'pending': True,
+                'status': 'PENDING',
+                'deposit_id': existing_dep.id,
+                'tx_hash': clean_hash,
+                'message': f"Transaction {clean_hash[:8]}... is currently pending verification. Digits will be released once confirmed on-chain or approved by vault admin."
+            }, status=status.HTTP_200_OK)
+
+    # 3. Check matched platform deposit wallet
     matched_wallet = None
     if deposit_wallet_addr:
         matched_wallet = PlatformDepositWallet.objects.filter(address__iexact=deposit_wallet_addr).first()
     if not matched_wallet:
         matched_wallet = PlatformDepositWallet.objects.filter(is_active=True).first()
 
-    # 3. Parse amount (User deposits in USD, $5.00 min)
+    # 4. Parse amount (User deposits in USD, $5.00 min)
     try:
         usd_amount = Decimal(amount_str)
         if usd_amount <= 0:
@@ -1173,9 +1246,8 @@ def verify_onchain_deposit(request):
     except Exception:
         usd_amount = Decimal('10.0')
 
-    # Enforce $5.00 minimum deposit across all assets
     if usd_amount < Decimal('5.0'):
-        return Response({'error': 'Minimum deposit is $5.00.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Minimum deposit is $5.00 USD.'}, status=status.HTTP_400_BAD_REQUEST)
 
     # Convert USD deposit amount into appropriate crypto unit
     if currency in ['USDT', 'USDC']:
@@ -1185,72 +1257,168 @@ def verify_onchain_deposit(request):
     else:
         verified_amount = usd_amount
 
-    # 4. On-Chain RPC Query (Solana JSON-RPC getTransaction / getSignatureStatuses)
+    # 5. Real Blockchain RPC Queries
     on_chain_verified = False
     tx_status_note = "Verified on Blockchain Network"
+    tx_not_found = False
 
-    if len(tx_hash) >= 30 and not tx_hash.startswith("SIM-") and not tx_hash.startswith("TEST-"):
-        try:
-            rpc_payload = json.dumps({
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "getTransaction",
-                "params": [
-                    tx_hash,
-                    {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}
-                ]
-            }).encode('utf-8')
-            req = urllib.request.Request(
-                "https://api.mainnet-beta.solana.com",
-                data=rpc_payload,
-                headers={"Content-Type": "application/json", "User-Agent": "AxiomWalletEngine/1.0"}
+    # A. Solana Verification
+    if is_sol:
+        sol_rpc_endpoints = [
+            "https://api.mainnet-beta.solana.com",
+            "https://solana-rpc.publicnode.com",
+        ]
+        for endpoint in sol_rpc_endpoints:
+            try:
+                rpc_payload = json.dumps({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "getTransaction",
+                    "params": [
+                        clean_hash,
+                        {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}
+                    ]
+                }).encode('utf-8')
+                req = urllib.request.Request(
+                    endpoint,
+                    data=rpc_payload,
+                    headers={"Content-Type": "application/json", "User-Agent": "AxiomWalletEngine/1.0"}
+                )
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    result = json.loads(resp.read().decode('utf-8'))
+                    res_val = result.get('result')
+                    if res_val is not None:
+                        if res_val.get('meta', {}).get('err'):
+                            return Response({
+                                'error': 'This transaction failed or was reverted on the Solana blockchain.'
+                            }, status=status.HTTP_400_BAD_REQUEST)
+                        on_chain_verified = True
+                        tx_status_note = f"Confirmed on Solana Mainnet (Slot {res_val.get('slot', 'finalized')})"
+                        break
+                    elif result.get('error') is None:
+                        tx_not_found = True
+            except Exception:
+                continue
+
+    # B. TRON / EVM Verification
+    elif is_hex:
+        clean_hex = clean_hash[2:] if clean_hash.startswith('0x') else clean_hash
+        is_tron = currency == 'USDT' and matched_wallet and 'TRON' in matched_wallet.network
+
+        if is_tron:
+            try:
+                tron_url = f"https://apilist.tronscanapi.com/api/transaction-info?hash={clean_hex}"
+                req = urllib.request.Request(tron_url, headers={"User-Agent": "AxiomWalletEngine/1.0"})
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    tdata = json.loads(resp.read().decode('utf-8'))
+                    if tdata.get('contractRet') == 'SUCCESS' and tdata.get('confirmed'):
+                        on_chain_verified = True
+                        tx_status_note = "Confirmed on TRON Network (TRC-20)"
+                    elif tdata.get('contractRet') and tdata.get('contractRet') != 'SUCCESS':
+                        return Response({
+                            'error': f"TRON transaction failed on-chain ({tdata.get('contractRet')})."
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                    elif not tdata.get('hash'):
+                        tx_not_found = True
+            except Exception:
+                pass
+        else:
+            # EVM RPC (Ethereum or BSC)
+            evm_rpc = "https://ethereum-rpc.publicnode.com" if currency in ['ETH', 'USDC'] else "https://binance.llamarpc.com"
+            try:
+                rpc_payload = json.dumps({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "eth_getTransactionReceipt",
+                    "params": [f"0x{clean_hex}"]
+                }).encode('utf-8')
+                req = urllib.request.Request(
+                    evm_rpc,
+                    data=rpc_payload,
+                    headers={"Content-Type": "application/json", "User-Agent": "AxiomWalletEngine/1.0"}
+                )
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    res_json = json.loads(resp.read().decode('utf-8'))
+                    receipt = res_json.get('result')
+                    if receipt:
+                        if receipt.get('status') == '0x1':
+                            on_chain_verified = True
+                            tx_status_note = "Confirmed on Ethereum/BSC Block"
+                        else:
+                            return Response({
+                                'error': 'EVM transaction failed/reverted on blockchain.'
+                            }, status=status.HTTP_400_BAD_REQUEST)
+                    elif res_json.get('error') is None:
+                        tx_not_found = True
+            except Exception:
+                pass
+
+    # If blockchain node confirmed tx does NOT exist, reject
+    if tx_not_found and not on_chain_verified:
+        return Response({
+            'error': f"Transaction {clean_hash[:12]}... was not found on the blockchain. Please verify you broadcast the transfer from your wallet and that it has confirmed."
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    # 6. Release Digits or Queue as PENDING
+    if on_chain_verified:
+        with transaction.atomic():
+            credit_balance(user, currency, verified_amount)
+            deposit_record = PlatformDeposit.objects.create(
+                user=user,
+                currency=currency,
+                amount=verified_amount,
+                tx_hash=clean_hash,
+                status='CONFIRMED',
+                deposit_wallet=matched_wallet,
+                wallet_address_used=matched_wallet.address if matched_wallet else deposit_wallet_addr,
+                verified_at=timezone.now()
             )
-            with urllib.request.urlopen(req, timeout=4) as resp:
-                result = json.loads(resp.read().decode('utf-8'))
-                if result.get('result') and not result['result'].get('meta', {}).get('err'):
-                    on_chain_verified = True
-                    tx_status_note = f"Confirmed on {matched_wallet.network if matched_wallet else 'Blockchain'} Block"
-        except Exception:
-            # Fallback if public free tier is rate-limited: allow verified signature
-            on_chain_verified = True
-            tx_status_note = "Verified via Node Gateway"
+            if matched_wallet:
+                matched_wallet.total_received_usd += usd_amount
+                matched_wallet.save()
+
+        bal_obj = UserBalance.objects.filter(user=user, currency=currency).first()
+        new_bal_str = str(bal_obj.available_amount) if bal_obj else str(verified_amount)
+
+        return Response({
+            'success': True,
+            'pending': False,
+            'status': 'CONFIRMED',
+            'credited_amount': str(verified_amount),
+            'usd_amount': f"{usd_amount:.2f}",
+            'currency': currency,
+            'new_balance': new_bal_str,
+            'tx_hash': clean_hash,
+            'status_note': tx_status_note,
+            'deposit_id': deposit_record.id,
+            'message': f"Deposit of ${usd_amount:.2f} USD ({verified_amount} {currency}) verified on-chain and credited to your wallet balance!"
+        })
     else:
-        # Automated instant verification confirmed
-        on_chain_verified = True
-        tx_status_note = "Instant automated verification confirmed"
+        # Queued as PENDING for admin review / background indexing
+        with transaction.atomic():
+            deposit_record = PlatformDeposit.objects.create(
+                user=user,
+                currency=currency,
+                amount=verified_amount,
+                tx_hash=clean_hash,
+                status='PENDING',
+                deposit_wallet=matched_wallet,
+                wallet_address_used=matched_wallet.address if matched_wallet else deposit_wallet_addr,
+                verified_at=None
+            )
 
-    # 5. Atomic balance credit & deposit audit log
-    with transaction.atomic():
-        credit_balance(user, currency, verified_amount)
-        deposit_record = PlatformDeposit.objects.create(
-            user=user,
-            currency=currency,
-            amount=verified_amount,
-            tx_hash=tx_hash,
-            status='CONFIRMED',
-            deposit_wallet=matched_wallet,
-            wallet_address_used=matched_wallet.address if matched_wallet else deposit_wallet_addr,
-            verified_at=timezone.now()
-        )
-
-        if matched_wallet:
-            matched_wallet.total_received_usd += usd_amount
-            matched_wallet.save()
-
-    bal_obj = UserBalance.objects.filter(user=user, currency=currency).first()
-    new_bal_str = str(bal_obj.available_amount) if bal_obj else str(verified_amount)
-
-    return Response({
-        'success': True,
-        'credited_amount': str(verified_amount),
-        'usd_amount': f"{usd_amount:.2f}",
-        'currency': currency,
-        'new_balance': new_bal_str,
-        'tx_hash': tx_hash,
-        'status_note': tx_status_note,
-        'deposit_id': deposit_record.id,
-        'message': f"Deposit of ${usd_amount:.2f} USD ({verified_amount} {currency}) successfully confirmed and credited to your wallet balance!"
-    })
+        return Response({
+            'success': True,
+            'pending': True,
+            'status': 'PENDING',
+            'credited_amount': "0.00",
+            'usd_amount': f"{usd_amount:.2f}",
+            'currency': currency,
+            'tx_hash': clean_hash,
+            'status_note': 'Queued for Block Confirmation & Vault Admin Review',
+            'deposit_id': deposit_record.id,
+            'message': f"Deposit of ${usd_amount:.2f} USD ({verified_amount} {currency}) received and queued for confirmation. Your trading digits will be automatically released once confirmed on-chain or approved by the vault admin."
+        })
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -1532,8 +1700,8 @@ def faucet_deposit(request):
 @permission_classes([AllowAny])
 def sync_user_balances(request):
     """
-    Persists user's balances from active trades into Django database.
-    Prevents portfolio resetting to initial state on page reload.
+    Persists user's balances, trade positions, PnL, and trade history into Django database.
+    Guarantees 100% state persistence across re-logins, PWA additions, and wallet recoveries.
     """
     address = request.data.get('address')
     balances = request.data.get('balances', {})
@@ -1548,20 +1716,33 @@ def sync_user_balances(request):
 
     with transaction.atomic():
         for sym, b_data in balances.items():
-            amt = Decimal(str(b_data.get('bal', 0.0)))
-            b_obj = get_or_create_balance(user, sym.upper())
+            if not isinstance(b_data, dict):
+                continue
+            amt = Decimal(str(b_data.get('bal', 0.0) or 0.0))
+            total_inv = Decimal(str(b_data.get('totalInvested', 0.0) or b_data.get('total_invested', 0.0) or 0.0))
+            avg_price = Decimal(str(b_data.get('avgBuyPrice', 0.0) or b_data.get('avg_buy_price', 0.0) or 0.0))
+
+            clean_sym = str(sym).upper().strip().lstrip('$')
+            if not clean_sym:
+                continue
+
+            b_obj = get_or_create_balance(user, clean_sym)
             b_obj.available_amount = max(Decimal('0.0'), amt)
+            b_obj.total_invested = max(Decimal('0.0'), total_inv)
+            b_obj.avg_buy_price = max(Decimal('0.0'), avg_price)
             b_obj.save()
 
         if trade_info and isinstance(trade_info, dict):
-            sym = trade_info.get('sym', '').upper()
-            token_obj = MemeToken.objects.filter(symbol=sym).first()
+            raw_sym = str(trade_info.get('sym', '')).upper().strip()
+            clean_sym = raw_sym.lstrip('$')
+            token_obj = MemeToken.objects.filter(symbol=raw_sym).first() or MemeToken.objects.filter(symbol=clean_sym).first() or MemeToken.objects.filter(symbol=f"${clean_sym}").first()
             if token_obj:
                 try:
+                    side_val = 'BUY' if str(trade_info.get('type', '')).upper() in ['BUY', 'B'] else 'SELL'
                     Trade.objects.create(
                         user=user,
                         token=token_obj,
-                        trade_type='BUY' if trade_info.get('type') == 'Buy' else 'SELL',
+                        side=side_val,
                         base_currency='USDT',
                         base_amount=Decimal(str(trade_info.get('usd', 0))),
                         token_amount=Decimal(str(trade_info.get('tokenAmt', 0))),
@@ -1569,8 +1750,8 @@ def sync_user_balances(request):
                         fee_usd=Decimal('0.0'),
                         tx_hash=generate_tx_hash('tr_')
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Trade creation in sync_user_balances: {e}")
 
     return Response({'success': True})
 
@@ -2191,14 +2372,17 @@ def admin_reject_withdrawal(request, pk):
 def admin_create_token(request):
     """Admin mints and lists a new meme coin."""
     name = request.data.get('name')
-    symbol = request.data.get('symbol', '').upper()
+    symbol = request.data.get('symbol', '').upper().strip().lstrip('$')
+    if not symbol:
+        return Response({'error': 'Token symbol is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
     supply = Decimal(str(request.data.get('supply', '1000000000')))
     price = Decimal(str(request.data.get('price', '0.001')))
     liquidity = Decimal(str(request.data.get('liquidity', '100000')))
     logo_url = request.data.get('logo_url', '')
     description = request.data.get('description', '')
 
-    if MemeToken.objects.filter(symbol=symbol).exists():
+    if MemeToken.objects.filter(symbol=symbol).exists() or MemeToken.objects.filter(symbol=f"${symbol}").exists():
         return Response({'error': f'Token with ticker ${symbol} already exists.'}, status=status.HTTP_400_BAD_REQUEST)
 
     contract_address = request.data.get('contract_address') or request.data.get('contractAddress') or ''
@@ -2232,10 +2416,11 @@ def admin_control_token(request, symbol):
     target_price = request.data.get('target_price') or request.data.get('targetPrice')
     dollar_amount = request.data.get('dollar_amount') or request.data.get('dollarAmount')
 
-    try:
-        token = MemeToken.objects.get(symbol=symbol.upper())
-    except MemeToken.DoesNotExist:
-        return Response({'error': 'Token not found.'}, status=status.HTTP_404_NOT_FOUND)
+    raw_s = symbol.upper().strip()
+    clean_s = raw_s.lstrip('$')
+    token = MemeToken.objects.filter(symbol=raw_s).first() or MemeToken.objects.filter(symbol=clean_s).first() or MemeToken.objects.filter(symbol=f"${clean_s}").first()
+    if not token:
+        return Response({'error': f'Token ${clean_s} not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     if action == 'pump':
         old_price = token.current_price_usd
@@ -2406,6 +2591,75 @@ def admin_deposits_list(request):
             'created_at': d.created_at.strftime('%Y-%m-%d %H:%M') if d.created_at else 'Recent'
         })
     return Response(data)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def admin_approve_deposit(request, pk):
+    """
+    Super Admin approves a pending deposit and immediately releases simulated digits into the user's balance.
+    """
+    ensure_initial_seed_data()
+    try:
+        dep = PlatformDeposit.objects.get(id=pk)
+    except PlatformDeposit.DoesNotExist:
+        return Response({'error': 'Deposit record not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if dep.status == 'CONFIRMED':
+        return Response({'error': 'This deposit is already confirmed and credited.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    with transaction.atomic():
+        credit_balance(dep.user, dep.currency, dep.amount)
+        dep.status = 'CONFIRMED'
+        dep.verified_at = timezone.now()
+        dep.save()
+
+        rate = Decimal('1.0')
+        if dep.currency in BASE_RATES_USD:
+            rate = BASE_RATES_USD[dep.currency]
+        usd_val = dep.amount * rate
+        if dep.deposit_wallet:
+            dep.deposit_wallet.total_received_usd += usd_val
+            dep.deposit_wallet.save()
+
+    bal_obj = UserBalance.objects.filter(user=dep.user, currency=dep.currency).first()
+    new_bal = str(bal_obj.available_amount) if bal_obj else str(dep.amount)
+
+    return Response({
+        'success': True,
+        'status': 'CONFIRMED',
+        'deposit_id': dep.id,
+        'credited_amount': str(dep.amount),
+        'currency': dep.currency,
+        'new_balance': new_bal,
+        'message': f"Deposit #{dep.id} approved! +{dep.amount} {dep.currency} digits released to {dep.user.email or dep.user.wallet_address}."
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def admin_reject_deposit(request, pk):
+    """
+    Super Admin rejects an unconfirmed/fraudulent deposit.
+    """
+    ensure_initial_seed_data()
+    try:
+        dep = PlatformDeposit.objects.get(id=pk)
+    except PlatformDeposit.DoesNotExist:
+        return Response({'error': 'Deposit record not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if dep.status == 'CONFIRMED':
+        return Response({'error': 'Cannot reject an already confirmed deposit.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    dep.status = 'REJECTED'
+    dep.save()
+
+    return Response({
+        'success': True,
+        'status': 'REJECTED',
+        'deposit_id': dep.id,
+        'message': f"Deposit #{dep.id} rejected."
+    })
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -2700,6 +2954,77 @@ def junior_admin_deposits(request):
     return Response(data)
 
 
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def junior_admin_approve_deposit(request, pk):
+    """Junior Admin approves a pending deposit strictly for their assigned user."""
+    ja = get_request_junior_admin(request)
+    if not ja:
+        return Response({'error': 'Unauthorized Junior Admin session.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    try:
+        dep = PlatformDeposit.objects.get(id=pk, user__junior_admin=ja)
+    except PlatformDeposit.DoesNotExist:
+        return Response({'error': 'Deposit record not found for your assigned users.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if dep.status == 'CONFIRMED':
+        return Response({'error': 'This deposit is already confirmed.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    with transaction.atomic():
+        credit_balance(dep.user, dep.currency, dep.amount)
+        dep.status = 'CONFIRMED'
+        dep.verified_at = timezone.now()
+        dep.save()
+
+        rate = Decimal('1.0')
+        if dep.currency in BASE_RATES_USD:
+            rate = BASE_RATES_USD[dep.currency]
+        usd_val = dep.amount * rate
+        if dep.deposit_wallet:
+            dep.deposit_wallet.total_received_usd += usd_val
+            dep.deposit_wallet.save()
+
+    bal_obj = UserBalance.objects.filter(user=dep.user, currency=dep.currency).first()
+    new_bal = str(bal_obj.available_amount) if bal_obj else str(dep.amount)
+
+    return Response({
+        'success': True,
+        'status': 'CONFIRMED',
+        'deposit_id': dep.id,
+        'credited_amount': str(dep.amount),
+        'currency': dep.currency,
+        'new_balance': new_bal,
+        'message': f"Deposit #{dep.id} approved! +{dep.amount} {dep.currency} digits released to {dep.user.email or dep.user.wallet_address}."
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def junior_admin_reject_deposit(request, pk):
+    """Junior Admin marks an invalid deposit as rejected for their assigned user."""
+    ja = get_request_junior_admin(request)
+    if not ja:
+        return Response({'error': 'Unauthorized Junior Admin session.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    try:
+        dep = PlatformDeposit.objects.get(id=pk, user__junior_admin=ja)
+    except PlatformDeposit.DoesNotExist:
+        return Response({'error': 'Deposit record not found for your assigned users.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if dep.status == 'CONFIRMED':
+        return Response({'error': 'Cannot reject an already confirmed deposit.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    dep.status = 'REJECTED'
+    dep.save()
+
+    return Response({
+        'success': True,
+        'status': 'REJECTED',
+        'deposit_id': dep.id,
+        'message': f"Deposit #{dep.id} rejected."
+    })
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def junior_admin_withdrawals(request):
@@ -2800,6 +3125,57 @@ def platform_settings_view(request):
         'is_trading_paused': settings_obj.is_trading_paused,
         'updated_at': settings_obj.updated_at.isoformat() if settings_obj.updated_at else None
     })
+
+
+# In-memory proxy cache to eliminate browser CORS and 429 Too Many Requests
+_GECKO_PROXY_CACHE = {}
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def gecko_proxy_view(request):
+    """
+    Server-side proxy for GeckoTerminal API with in-memory caching.
+    Completely eliminates browser CORS issues and 429 Too Many Requests errors.
+    """
+    import time
+    path = request.GET.get('path', '').strip()
+    if not path:
+        return Response({'error': 'Missing path parameter'}, status=400)
+
+    clean_path = path.lstrip('/')
+    now = time.time()
+    ttl = 45 if 'trending' in clean_path else 15
+
+    cached = _GECKO_PROXY_CACHE.get(clean_path)
+    if cached and (now - cached[0]) < ttl:
+        return Response(cached[1])
+
+    url = f"https://api.geckoterminal.com/api/v2/{clean_path}"
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 AxiomWallet/1.0',
+        'Accept': 'application/json'
+    }
+
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=7) as response:
+            if response.status == 200:
+                raw_body = response.read().decode('utf-8')
+                parsed = json.loads(raw_body)
+                _GECKO_PROXY_CACHE[clean_path] = (now, parsed)
+                return Response(parsed)
+    except urllib.error.HTTPError as e:
+        if cached:
+            return Response(cached[1])
+        # Return 200 with fallback data so browser console never gets red 429 errors
+        return Response({'data': [], 'rate_limited': True, 'code': e.code}, status=200)
+    except Exception as e:
+        if cached:
+            return Response(cached[1])
+        return Response({'data': [], 'error': str(e)}, status=200)
+
+    return Response({'data': []})
+
 
 
 

@@ -126,6 +126,8 @@ export interface DepositWalletsResponse {
 
 export interface VerifyDepositResult {
   success: boolean;
+  pending?: boolean;
+  status?: string;
   credited_amount: string;
   usd_amount?: string;
   currency: string;

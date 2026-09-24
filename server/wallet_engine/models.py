@@ -97,6 +97,8 @@ class UserBalance(models.Model):
     currency = models.CharField(max_length=20, db_index=True) # SOL, ETH, USDT, AXIOM, PEPE2
     available_amount = models.DecimalField(max_digits=28, decimal_places=8, default=0.0)
     locked_amount = models.DecimalField(max_digits=28, decimal_places=8, default=0.0)
+    total_invested = models.DecimalField(max_digits=28, decimal_places=8, default=0.0)
+    avg_buy_price = models.DecimalField(max_digits=28, decimal_places=8, default=0.0)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

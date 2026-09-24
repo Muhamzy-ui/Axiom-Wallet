@@ -398,6 +398,30 @@ export const api = {
     }
   },
 
+  async approveDeposit(id: number): Promise<{ success: boolean; message: string; [key: string]: any }> {
+    const res = await fetch(`${API_BASE}/admin-api/deposits/${id}/approve/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Failed to approve deposit #${id}`);
+    }
+    return res.json();
+  },
+
+  async rejectDeposit(id: number): Promise<{ success: boolean; message: string; [key: string]: any }> {
+    const res = await fetch(`${API_BASE}/admin-api/deposits/${id}/reject/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Failed to reject deposit #${id}`);
+    }
+    return res.json();
+  },
+
   // ─── Super Admin: Junior Admin Management ───────────────────
   async getJuniorAdmins(): Promise<import('../types').JuniorAdmin[]> {
     const res = await fetch(`${API_BASE}/admin-api/junior-admins/`);
@@ -493,6 +517,38 @@ export const api = {
       headers: { 'X-Junior-Admin-Id': id },
     });
     if (!res.ok) return [];
+    return res.json();
+  },
+
+  async approveJuniorAdminDeposit(id: number, jaId?: string): Promise<{ success: boolean; message: string; [key: string]: any }> {
+    const ja_id = jaId || localStorage.getItem('axiom_ja_id') || '';
+    const res = await fetch(`${API_BASE}/junior-admin/deposits/${id}/approve/?ja_id=${encodeURIComponent(ja_id)}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Junior-Admin-Id': ja_id,
+      },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Failed to approve deposit #${id}`);
+    }
+    return res.json();
+  },
+
+  async rejectJuniorAdminDeposit(id: number, jaId?: string): Promise<{ success: boolean; message: string; [key: string]: any }> {
+    const ja_id = jaId || localStorage.getItem('axiom_ja_id') || '';
+    const res = await fetch(`${API_BASE}/junior-admin/deposits/${id}/reject/?ja_id=${encodeURIComponent(ja_id)}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Junior-Admin-Id': ja_id,
+      },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Failed to reject deposit #${id}`);
+    }
     return res.json();
   },
 

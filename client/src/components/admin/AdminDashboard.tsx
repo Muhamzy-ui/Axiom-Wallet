@@ -8,7 +8,7 @@ import {
   ArrowDownRight, ToggleLeft, ToggleRight, Save, Layers,
   Globe, Lock, BarChart2, Shield, Skull, TrendingUp, TrendingDown,
   Copy, RotateCcw, Sparkles, ExternalLink, Edit3,
-  Sun, Moon, Menu, Smartphone, Eye, EyeOff, Trophy
+  Sun, Moon, Menu, Smartphone, Eye, EyeOff, Trophy, ShieldCheck
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1104,10 +1104,11 @@ function MemeCoinsPage({ search }: { search: string }) {
       toast_("Please enter Token Name and Symbol");
       return;
     }
+    const cleanSym = form.symbol.trim().toUpperCase().replace(/^\$/, "");
     const contractAddr = form.contractAddress.trim() || generateSolanaAddress();
     const created = marketStore.createToken({
       name: form.name.trim(),
-      symbol: form.symbol.trim().toUpperCase(),
+      symbol: cleanSym,
       price: form.price,
       supply: form.supply,
       liquidity: form.liquidity,
@@ -1118,7 +1119,7 @@ function MemeCoinsPage({ search }: { search: string }) {
     try {
       await api.createMemeToken({
         name: form.name.trim(),
-        symbol: form.symbol.trim().toUpperCase(),
+        symbol: cleanSym,
         supply: form.supply,
         price: form.price,
         liquidity: form.liquidity,
@@ -2826,21 +2827,64 @@ function DepositsPage({ metrics, loading, search }: { metrics: AdminMetrics; loa
   const [localSearch, setLocalSearch] = useState('');
   const [deposits, setDeposits] = useState<any[]>([]);
   const [loadingDeposits, setLoadingDeposits] = useState(false);
+  const [approvingId, setApprovingId] = useState<number | null>(null);
+  const [rejectingId, setRejectingId] = useState<number | null>(null);
+  const [copiedTxId, setCopiedTxId] = useState<number | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
+  const fetchDeposits = () => {
     setLoadingDeposits(true);
     api.getAdminDeposits().then(data => {
-      if (isMounted && Array.isArray(data)) {
+      if (Array.isArray(data)) {
         setDeposits(data);
       }
     }).catch(() => {
-      if (isMounted) setDeposits([]);
+      setDeposits([]);
     }).finally(() => {
-      if (isMounted) setLoadingDeposits(false);
+      setLoadingDeposits(false);
     });
-    return () => { isMounted = false; };
+  };
+
+  useEffect(() => {
+    fetchDeposits();
   }, []);
+
+  const handleApprove = async (id: number) => {
+    try {
+      setApprovingId(id);
+      const res = await api.approveDeposit(id);
+      setDeposits(prev => prev.map(d => d.id === id ? { ...d, status: 'confirmed' } : d));
+      alert(res.message || 'Deposit successfully approved and digits released!');
+    } catch (e: any) {
+      alert(e.message || 'Failed to approve deposit.');
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  const handleReject = async (id: number) => {
+    if (!window.confirm(`Are you sure you want to decline deposit #${id}?`)) return;
+    try {
+      setRejectingId(id);
+      await api.rejectDeposit(id);
+      setDeposits(prev => prev.map(d => d.id === id ? { ...d, status: 'rejected' } : d));
+    } catch (e: any) {
+      alert(e.message || 'Failed to reject deposit.');
+    } finally {
+      setRejectingId(null);
+    }
+  };
+
+  const getDepositExplorerUrl = (txHash?: string, currency?: string) => {
+    if (!txHash) return null;
+    const clean = txHash.trim();
+    if (clean.length > 70) {
+      return `https://solscan.io/tx/${clean}`;
+    }
+    if (currency === 'USDT' || clean.length === 64) {
+      return `https://tronscan.org/#/transaction/${clean.replace(/^0x/, '')}`;
+    }
+    return `https://etherscan.io/tx/${clean.startsWith('0x') ? clean : '0x' + clean}`;
+  };
 
   const k = metrics?.kpis || {} as any;
   const effectiveSearch = (localSearch || search || '').toLowerCase().trim();
@@ -2930,7 +2974,7 @@ function DepositsPage({ metrics, loading, search }: { metrics: AdminMetrics; loa
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <Filter size={15} color={C.muted} />
-            {['all', 'confirmed', 'completed', 'pending', 'failed'].map(s => (
+            {['all', 'confirmed', 'completed', 'pending', 'rejected', 'failed'].map(s => (
               <button key={s} onClick={() => setSf(s)} style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${sf === s ? C.violet : C.border}`, background: sf === s ? `${C.violet}22` : 'transparent', color: sf === s ? C.violet : C.muted, fontSize: 11, fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize', transition: 'all 150ms' }}>{s}</button>
             ))}
           </div>
@@ -2939,21 +2983,24 @@ function DepositsPage({ metrics, loading, search }: { metrics: AdminMetrics; loa
 
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 780 }}>
             <thead><tr style={{ borderBottom: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.02)' }}>
-              {['User', 'Deposit Amount', 'USD Value', 'Token / Currency', 'Date / Time', 'Status'].map(h => <th key={h} style={TH}>{h}</th>)}
+              {['User', 'Deposit Amount', 'USD Value', 'Token', 'Date / Time', 'TxID / Explorer', 'Status', 'Actions'].map(h => <th key={h} style={TH}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {rows.length === 0 ? <tr><td colSpan={6}><EmptyState message="No deposits match your filters." /></td></tr> : rows.map(d => {
+              {rows.length === 0 ? <tr><td colSpan={8}><EmptyState message="No deposits match your filters." /></td></tr> : rows.map(d => {
                 const currency = d.currency || d.token || 'USDT';
                 const amtFormatted = fmtCrypto(d.amount, currency);
                 const usdFormatted = d.amount_usd !== undefined ? fmtUSD(d.amount_usd) : fmtUSD(d.amount);
+                const explorerUrl = getDepositExplorerUrl(d.tx_hash, currency);
+                const isPending = d.status === 'pending';
+
                 return (
                   <tr key={d.id} style={{ borderBottom: `1px solid ${C.border}` }} {...TR_HOVER}>
                     <td style={{ ...TD, fontSize: 12, color: C.text, fontFamily: 'monospace' }}>
                       {d.user && d.user.length > 16 ? `${d.user.slice(0, 8)}...${d.user.slice(-6)}` : d.user}
                     </td>
-                    <td style={{ ...TD, fontWeight: 800, color: d.status === 'failed' ? C.red : C.green }}>
+                    <td style={{ ...TD, fontWeight: 800, color: d.status === 'failed' || d.status === 'rejected' ? C.red : C.green }}>
                       {amtFormatted}
                     </td>
                     <td style={{ ...TD, fontWeight: 700, color: C.text }}>
@@ -2965,7 +3012,90 @@ function DepositsPage({ metrics, loading, search }: { metrics: AdminMetrics; loa
                       </span>
                     </td>
                     <td style={{ ...TD, color: C.muted, fontSize: 12 }}>{d.created_at || d.date}</td>
+                    <td style={TD}>
+                      {d.tx_hash ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#C4B5FD' }}>
+                            {d.tx_hash.slice(0, 6)}...{d.tx_hash.slice(-4)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              copyToClipboard(d.tx_hash);
+                              setCopiedTxId(d.id);
+                              setTimeout(() => setCopiedTxId(null), 1800);
+                            }}
+                            title="Copy Tx Hash"
+                            style={{ background: 'rgba(255,255,255,0.06)', border: 'none', color: copiedTxId === d.id ? C.green : C.muted, borderRadius: 4, padding: '2px 5px', cursor: 'pointer', fontSize: 10 }}
+                          >
+                            {copiedTxId === d.id ? <Check size={11} /> : <Copy size={11} />}
+                          </button>
+                          {explorerUrl && (
+                            <a
+                              href={explorerUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="Inspect on Blockchain Explorer"
+                              style={{ color: '#A78BFA', display: 'flex', alignItems: 'center' }}
+                            >
+                              <ExternalLink size={12} />
+                            </a>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ color: C.muted, fontSize: 11 }}>—</span>
+                      )}
+                    </td>
                     <td style={TD}><Badge status={d.status} /></td>
+                    <td style={TD}>
+                      {isPending ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <button
+                            type="button"
+                            disabled={approvingId === d.id}
+                            onClick={() => handleApprove(d.id)}
+                            style={{
+                              background: 'rgba(16, 185, 129, 0.18)',
+                              border: '1px solid rgba(16, 185, 129, 0.4)',
+                              color: '#10B981',
+                              borderRadius: 6,
+                              padding: '4px 10px',
+                              fontSize: 11,
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
+                            }}
+                          >
+                            <Zap size={11} />
+                            <span>{approvingId === d.id ? 'Releasing...' : 'Release Digits'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={rejectingId === d.id}
+                            onClick={() => handleReject(d.id)}
+                            style={{
+                              background: 'rgba(239, 68, 68, 0.12)',
+                              border: '1px solid rgba(239, 68, 68, 0.3)',
+                              color: '#EF4444',
+                              borderRadius: 6,
+                              padding: '4px 8px',
+                              fontSize: 11,
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: 11, color: C.muted, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <ShieldCheck size={12} color={d.status === 'confirmed' ? C.green : C.muted} />
+                          {d.status === 'confirmed' ? 'Credited' : d.status}
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
