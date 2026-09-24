@@ -333,19 +333,102 @@ export const COUNTRIES: CountryInfo[] = [
 
 export const DEFAULT_COUNTRY = COUNTRIES[0]; // Nigeria
 
+let inMemoryDollarRate: number | null = null;
+
+export function getCustomDollarRate(): number {
+  if (inMemoryDollarRate && !isNaN(inMemoryDollarRate) && inMemoryDollarRate > 0) {
+    return inMemoryDollarRate;
+  }
+  if (typeof localStorage !== 'undefined') {
+    const saved = localStorage.getItem('swiftsats_usd_ngn_rate') || localStorage.getItem('axiom_dollar_rate');
+    if (saved) {
+      const parsed = parseFloat(saved);
+      if (!isNaN(parsed) && parsed > 0) {
+        inMemoryDollarRate = parsed;
+        return parsed;
+      }
+    }
+  }
+  return 1600;
+}
+
+export function setCustomDollarRate(newRate: number, broadcast = true) {
+  if (!newRate || isNaN(newRate) || newRate <= 0) return;
+  inMemoryDollarRate = newRate;
+  const ng = COUNTRIES.find((c) => c.code === 'NG');
+  if (ng) {
+    ng.rateToUsd = newRate;
+  }
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('swiftsats_usd_ngn_rate', String(newRate));
+    localStorage.setItem('axiom_dollar_rate', String(newRate));
+  }
+  if (broadcast && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('axiom_dollar_rate_updated', { detail: newRate }));
+  }
+}
+
+// Pre-sync in-memory COUNTRIES table with cached or default dollar rate
+const initialDollarRate = getCustomDollarRate();
+const initialNg = COUNTRIES.find((c) => c.code === 'NG');
+if (initialNg) {
+  initialNg.rateToUsd = initialDollarRate;
+}
+
+export async function syncDollarRateFromBackend(): Promise<number> {
+  try {
+    const res = await fetch('/api/platform/settings/');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.usd_rate) {
+        const val = Number(data.usd_rate);
+        if (!isNaN(val) && val > 0) {
+          setCustomDollarRate(val);
+          return val;
+        }
+      }
+    }
+  } catch (err) {
+    // Graceful fallback to cached localStorage rate
+  }
+  return getCustomDollarRate();
+}
+
 export function getCountryByCode(code: string): CountryInfo {
-  if (!code) return DEFAULT_COUNTRY;
-  const found = COUNTRIES.find((c) => c.code.toUpperCase() === code.toUpperCase());
-  return found || DEFAULT_COUNTRY;
+  const targetCode = (code || "NG").toUpperCase();
+  const found = COUNTRIES.find((c) => c.code.toUpperCase() === targetCode) || DEFAULT_COUNTRY;
+  if (found.code === "NG") {
+    return { ...found, rateToUsd: getCustomDollarRate() };
+  }
+  return { ...found };
 }
 
 export function searchCountries(query: string): CountryInfo[] {
-  if (!query || !query.trim()) return COUNTRIES;
+  const dynRate = getCustomDollarRate();
+  const list = COUNTRIES.map((c) => (c.code === "NG" ? { ...c, rateToUsd: dynRate } : { ...c }));
+  if (!query || !query.trim()) return list;
   const q = query.toLowerCase().trim();
-  return COUNTRIES.filter(
+  return list.filter(
     (c) =>
       c.name.toLowerCase().includes(q) ||
       c.code.toLowerCase().includes(q) ||
       c.currency.toLowerCase().includes(q)
   );
 }
+
+// Background startup sync
+if (typeof window !== 'undefined') {
+  syncDollarRateFromBackend();
+
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'swiftsats_usd_ngn_rate' || e.key === 'axiom_dollar_rate') {
+      if (e.newValue) {
+        const n = parseFloat(e.newValue);
+        if (!isNaN(n) && n > 0) {
+          setCustomDollarRate(n);
+        }
+      }
+    }
+  });
+}
+

@@ -20,6 +20,13 @@ export const CountrySelectModal: React.FC<CountrySelectModalProps> = ({
 }) => {
   const [search, setSearch] = useState("");
   const [filterRegion, setFilterRegion] = useState<"ALL" | "POPULAR" | "AFRICA" | "AMERICAS" | "EUROPE" | "ASIA">("POPULAR");
+  const [rateTick, setRateTick] = useState(0);
+
+  useEffect(() => {
+    const handleRateChange = () => setRateTick((t) => t + 1);
+    window.addEventListener("axiom_dollar_rate_updated", handleRateChange);
+    return () => window.removeEventListener("axiom_dollar_rate_updated", handleRateChange);
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -57,7 +64,7 @@ export const CountrySelectModal: React.FC<CountrySelectModalProps> = ({
     }
 
     return COUNTRIES;
-  }, [search, filterRegion]);
+  }, [search, filterRegion, rateTick]);
 
   if (!isOpen) return null;
 

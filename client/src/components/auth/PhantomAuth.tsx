@@ -13,7 +13,7 @@ import {
 import { useTheme } from "../../services/themeContext";
 import { copyToClipboard } from "../../services/clipboard";
 import { CountrySelectModal } from "../modals/CountrySelectModal";
-import { getCountryByCode, CountryInfo } from "../../constants/countries";
+import { getCountryByCode, CountryInfo, syncDollarRateFromBackend } from "../../constants/countries";
 import { CountryFlag } from "../common/CountryFlag";
 import "./PhantomAuth.css";
 
@@ -287,6 +287,22 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
     return getCountryByCode(saved);
   });
   const [isCountryModalOpen, setIsCountryModalOpen] = useState(false);
+
+  // Sync dollar exchange rate on mount and listen to admin updates
+  useEffect(() => {
+    syncDollarRateFromBackend().then(() => {
+      const saved = localStorage.getItem("axiom_user_country") || "NG";
+      setSelectedCountry(getCountryByCode(saved));
+    });
+
+    const handleRateChange = () => {
+      const saved = localStorage.getItem("axiom_user_country") || "NG";
+      setSelectedCountry(getCountryByCode(saved));
+    };
+
+    window.addEventListener("axiom_dollar_rate_updated", handleRateChange);
+    return () => window.removeEventListener("axiom_dollar_rate_updated", handleRateChange);
+  }, []);
 
   // Secret recovery phrase state
   const [seedPhrase, setSeedPhrase] = useState("");
@@ -572,6 +588,29 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
               <span className="phantom-status-dot" />
               <span>Solana Mainnet</span>
             </div>
+            <button
+              type="button"
+              onClick={() => setIsCountryModalOpen(true)}
+              title="Click to view or change currency rate"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                background: "rgba(124, 58, 237, 0.14)",
+                border: "1px solid rgba(167, 139, 250, 0.3)",
+                borderRadius: 12,
+                padding: "2px 8px",
+                color: "#E0E7FF",
+                fontSize: 10,
+                fontWeight: 600,
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={13} />
+              <span>1 USD ≈ {selectedCountry.currencySymbol}{selectedCountry.rateToUsd >= 100 ? selectedCountry.rateToUsd.toLocaleString() : selectedCountry.rateToUsd} {selectedCountry.currency}</span>
+              <ChevronDown size={11} color="#A78BFA" />
+            </button>
             <div className="phantom-status-security">
               <ShieldCheck size={13} />
               <span>AES-256 Vault</span>
@@ -652,6 +691,32 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
                     <Cpu size={12} className="phantom-trust-icon" />
                     <span>Raydium Direct</span>
                   </div>
+                </div>
+
+                {/* Live Dollar Rate Badge */}
+                <div style={{ display: "flex", justifyContent: "center", margin: "14px 0 6px 0" }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsCountryModalOpen(true)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 7,
+                      padding: "5px 12px",
+                      background: "rgba(124, 58, 237, 0.12)",
+                      border: "1px solid rgba(124, 58, 237, 0.28)",
+                      borderRadius: 20,
+                      cursor: "pointer",
+                      color: "#DDD6FE",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={15} />
+                    <span>Rate: 1 USD ≈ {selectedCountry.currencySymbol}{selectedCountry.rateToUsd >= 100 ? selectedCountry.rateToUsd.toLocaleString() : selectedCountry.rateToUsd} {selectedCountry.currency}</span>
+                    <ChevronDown size={12} color="#A78BFA" />
+                  </button>
                 </div>
 
                 {agentRef && (
@@ -789,9 +854,14 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
                   >
                     <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={20} />
                     <span style={{ flex: 1, fontWeight: 600, color: "inherit" }}>{selectedCountry.name}</span>
-                    <span style={{ fontSize: 11, color: "var(--muted, #94A3B8)", fontWeight: 700 }}>
-                      {selectedCountry.currency}
-                    </span>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                      <span style={{ fontSize: 11, color: "var(--muted, #94A3B8)", fontWeight: 700 }}>
+                        {selectedCountry.currency}
+                      </span>
+                      <span style={{ fontSize: 10, color: "#A78BFA", fontWeight: 600 }}>
+                        1 USD = {selectedCountry.currencySymbol}{selectedCountry.rateToUsd >= 100 ? selectedCountry.rateToUsd.toLocaleString() : selectedCountry.rateToUsd}
+                      </span>
+                    </div>
                     <ChevronDown size={15} color="#94A3B8" />
                   </button>
                 </div>
@@ -1138,6 +1208,31 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
                   )}
                 </div>
 
+                {/* Live Dollar Rate Badge */}
+                <div style={{ display: "flex", justifyContent: "center", margin: "8px 0 14px 0" }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsCountryModalOpen(true)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 7,
+                      padding: "4px 11px",
+                      background: "rgba(124, 58, 237, 0.12)",
+                      border: "1px solid rgba(124, 58, 237, 0.28)",
+                      borderRadius: 16,
+                      cursor: "pointer",
+                      color: "#DDD6FE",
+                      fontSize: 11,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={14} />
+                    <span>Rate: 1 USD ≈ {selectedCountry.currencySymbol}{selectedCountry.rateToUsd >= 100 ? selectedCountry.rateToUsd.toLocaleString() : selectedCountry.rateToUsd} {selectedCountry.currency}</span>
+                    <ChevronDown size={11} color="#A78BFA" />
+                  </button>
+                </div>
+
                 {error && (
                   <div className="phantom-error-banner">
                     <ShieldAlert size={16} />
@@ -1223,9 +1318,10 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
         onSelect={(c) => {
           setSelectedCountry(c);
           localStorage.setItem("axiom_user_country", c.code);
+          setIsCountryModalOpen(false);
         }}
         selectedCode={selectedCountry.code}
-        title="Select Country of Residence"
+        title="Select Country & Currency"
       />
     </div>
   );

@@ -72,6 +72,14 @@ export const BuyPage: React.FC<BuyPageProps> = ({
   });
   const [isCountryModalOpen, setIsCountryModalOpen] = useState(false);
 
+  useEffect(() => {
+    const handleRateChange = () => {
+      setSelectedCountry((prev) => getCountryByCode(prev.code));
+    };
+    window.addEventListener("axiom_dollar_rate_updated", handleRateChange);
+    return () => window.removeEventListener("axiom_dollar_rate_updated", handleRateChange);
+  }, []);
+
   // Inline Country Flags Drawer & Search
   const [showAllFlags, setShowAllFlags] = useState(false);
   const [inlineFlagSearch, setInlineFlagSearch] = useState("");

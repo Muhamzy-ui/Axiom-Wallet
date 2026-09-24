@@ -225,8 +225,10 @@ class PlatformSettings(models.Model):
     admin_pin = models.CharField(max_length=64, default='admin123')
     trading_fee_pct = models.DecimalField(max_digits=5, decimal_places=2, default=1.0)
     is_trading_paused = models.BooleanField(default=False)
+    usd_rate = models.DecimalField(max_digits=12, decimal_places=2, default=1600.0)
+    swiftsats_url = models.CharField(max_length=255, default='http://localhost:5173')
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Platform Settings (Fee: {self.trading_fee_pct}%)"
+        return f"Platform Settings (Fee: {self.trading_fee_pct}%, Rate: ₦{self.usd_rate})"
 

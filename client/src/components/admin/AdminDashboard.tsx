@@ -21,6 +21,7 @@ import { leaderboardStore, Trader, AdminTradeControl } from '../../services/lead
 import { Sparkline } from '../common/Sparkline';
 import { useTheme } from '../../services/themeContext';
 import { copyToClipboard } from '../../services/clipboard';
+import { setCustomDollarRate, getCustomDollarRate } from '../../constants/countries';
 
 /* ── Design tokens ─────────────────────────────────────────────── */
 const C = {
@@ -3866,14 +3867,47 @@ function TradesPage({ metrics, loading, search }: { metrics: AdminMetrics; loadi
 function SettingsPage({ loading }: { loading: boolean }) {
   const [s, setS]         = useState({ fee: '0.30', minW: '10', maintenance: false, networks: { Solana: true, Ethereum: true, BSC: false, Polygon: true } as Record<string, boolean> });
   const [swiftsatsUrl, setSwiftsatsUrl] = useState(() => localStorage.getItem('swiftsats_base_url') || 'http://localhost:5173');
-  const [swiftsatsRate, setSwiftsatsRate] = useState(() => localStorage.getItem('swiftsats_usd_ngn_rate') || '1600');
+  const [swiftsatsRate, setSwiftsatsRate] = useState(() => String(getCustomDollarRate() || 1600));
+  const [savingRate, setSavingRate] = useState(false);
   const [copiedHook, setCopiedHook] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const save = () => {
-    localStorage.setItem('swiftsats_base_url', swiftsatsUrl.trim() || 'http://localhost:5173');
-    localStorage.setItem('swiftsats_usd_ngn_rate', swiftsatsRate.trim() || '1600');
-    setToast('Settings & Onramp Gateway saved!');
-    setTimeout(() => setToast(null), 3000);
+
+  useEffect(() => {
+    api.getPlatformSettings().then((res: any) => {
+      if (res?.success) {
+        if (res.usd_rate) {
+          const val = Number(res.usd_rate);
+          setSwiftsatsRate(String(val));
+          setCustomDollarRate(val);
+        }
+        if (res.swiftsats_url) {
+          setSwiftsatsUrl(res.swiftsats_url);
+        }
+      }
+    }).catch(err => console.warn('Could not fetch remote platform settings', err));
+  }, []);
+
+  const save = async () => {
+    const cleanUrl = swiftsatsUrl.trim() || 'http://localhost:5173';
+    const numRate = parseFloat(swiftsatsRate) || 1600;
+
+    localStorage.setItem('swiftsats_base_url', cleanUrl);
+    localStorage.setItem('swiftsats_usd_ngn_rate', String(numRate));
+    setCustomDollarRate(numRate);
+
+    setSavingRate(true);
+    try {
+      await api.updatePlatformSettings({
+        usd_rate: numRate,
+        swiftsats_url: cleanUrl,
+      });
+      setToast(`Dollar rate updated to ₦${numRate.toLocaleString()} everywhere across platform!`);
+    } catch (e: any) {
+      setToast(`Dollar rate saved locally (₦${numRate.toLocaleString()}). Server sync: ${e.message || 'ok'}`);
+    } finally {
+      setSavingRate(false);
+      setTimeout(() => setToast(null), 3500);
+    }
   };
   if (loading) return <LoadingSpinner />;
   const INP: React.CSSProperties = { width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '10px 12px', color: C.text, fontSize: 14, boxSizing: 'border-box', outline: 'none' };
@@ -3934,7 +3968,7 @@ function SettingsPage({ loading }: { loading: boolean }) {
           />
 
           <label style={LBL}>USD to Naira (NGN) Exchange Rate</label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <span style={{ fontSize: 14, fontWeight: 800, color: C.muted }}>₦</span>
             <input
               type="number"
@@ -3944,6 +3978,9 @@ function SettingsPage({ loading }: { loading: boolean }) {
               style={{ ...INP, flex: 1 }}
             />
             <span style={{ fontSize: 12, color: C.muted, whiteSpace: 'nowrap' }}>per $1.00 USD</span>
+          </div>
+          <div style={{ fontSize: 11, color: '#A78BFA', marginBottom: 14 }}>
+            💡 Changing this dollar rate automatically updates all rates in real-time across the entire platform: Login screen, Buy crypto modal, Cashout / Withdraw modal, and Profile tab.
           </div>
 
           <label style={LBL}>Webhook Receiver URL (Paste into Gateway)</label>
@@ -3969,7 +4006,10 @@ function SettingsPage({ loading }: { loading: boolean }) {
           </div>
         </Card>
 
-        <Btn onClick={save}><Save size={15} />Save Changes</Btn>
+        <Btn onClick={save} disabled={savingRate}>
+          <Save size={15} />
+          {savingRate ? 'Saving & Syncing Globally...' : 'Save Changes'}
+        </Btn>
       </div>
     </div>
   );

@@ -23,7 +23,7 @@ import { DepositPage } from "./components/modals/DepositPage";
 import { BuyPage } from "./components/modals/BuyPage";
 import { WithdrawPage } from "./components/modals/WithdrawPage";
 import { CountrySelectModal } from "./components/modals/CountrySelectModal";
-import { getCountryByCode, CountryInfo } from "./constants/countries";
+import { getCountryByCode, CountryInfo, syncDollarRateFromBackend } from "./constants/countries";
 import { CountryFlag } from "./components/common/CountryFlag";
 
 type View = "trade" | "wallet" | "swap" | "admin" | "profile" | "leaderboard";
@@ -3339,10 +3339,18 @@ function ProfileView({
     return localStorage.getItem("axiom_user_country") || "NG";
   });
   const [showCountryModal, setShowCountryModal] = useState<boolean>(false);
+  const [rateTick, setRateTick] = useState<number>(0);
 
   const selectedCountry = useMemo(() => {
     return getCountryByCode(userCountryCode);
-  }, [userCountryCode]);
+  }, [userCountryCode, rateTick]);
+
+  useEffect(() => {
+    syncDollarRateFromBackend();
+    const handleRateChange = () => setRateTick((t) => t + 1);
+    window.addEventListener("axiom_dollar_rate_updated", handleRateChange);
+    return () => window.removeEventListener("axiom_dollar_rate_updated", handleRateChange);
+  }, []);
 
   const handleSelectCountry = (c: CountryInfo) => {
     setUserCountryCode(c.code);
@@ -3542,65 +3550,6 @@ function ProfileView({
             <div className="profile-stat-sub">Swaps, limits & executed trades</div>
           </div>
         </div>
-      </div>
-
-      {/* ── Solana Deposit & Trading Address Card ── */}
-      <div className="profile-card">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-          <div className="profile-card-title">
-            <Wallet size={18} />
-            <span>Solana Trading & Deposit Wallet</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#10B981", fontWeight: 700 }}>
-            <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#10B981", display: "inline-block", boxShadow: "0 0 8px #10B981" }} />
-            Solana Mainnet-Beta
-          </div>
-        </div>
-
-        <div style={{ fontSize: 11, color: "var(--muted)" }}>
-          Your dedicated non-custodial address. All native SOL, SPL tokens, and meme coin balances are secured on this address.
-        </div>
-
-        <div
-          className="address-box"
-          style={{ margin: "4px 0 0" }}
-          onClick={handleCopyAddress}
-          title="Click to copy full address"
-        >
-          <span style={{ fontFamily: "monospace", fontSize: 13, wordBreak: "break-all", color: solAddress ? "inherit" : "var(--muted)" }}>
-            {solAddress || "No wallet address generated yet"}
-          </span>
-          {solAddress && (
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              {copiedAddr ? (
-                <span style={{ color: "var(--green)", fontSize: 11, fontWeight: 700 }}>Copied!</span>
-              ) : (
-                <Copy size={15} />
-              )}
-            </div>
-          )}
-        </div>
-
-        {solAddress && (
-          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-            <a
-              href={`https://solscan.io/account/${solAddress}`}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-                fontSize: 11,
-                color: "#A78BFA",
-                textDecoration: "none",
-                fontWeight: 700
-              }}
-            >
-              <ExternalLink size={12} /> View on Solscan Explorer
-            </a>
-          </div>
-        )}
       </div>
 
       {/* ── 4 Quick Actions ── */}
@@ -4251,6 +4200,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    syncDollarRateFromBackend();
     getMe().then((user) => {
       setAuthUser(user);
       setAuthChecked(true);

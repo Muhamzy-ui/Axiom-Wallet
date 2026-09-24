@@ -2760,3 +2760,46 @@ def junior_admin_reject_withdrawal(request, pk):
     return Response({'success': True, 'status': 'REJECTED', 'message': f'Withdrawal #{w.id} declined. Funds returned to user.'})
 
 
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def platform_settings_view(request):
+    """
+    GET: Returns platform settings (dollar exchange rate, onramp gateway URL, trading fee).
+    POST: Updates platform settings in database for all users and clients.
+    """
+    ensure_initial_seed_data()
+    settings_obj = PlatformSettings.objects.first()
+    if not settings_obj:
+        settings_obj = PlatformSettings.objects.create()
+
+    if request.method == 'POST':
+        data = request.data
+        if 'usd_rate' in data:
+            try:
+                val = Decimal(str(data['usd_rate']).strip())
+                if val > 0:
+                    settings_obj.usd_rate = val
+            except Exception:
+                pass
+        if 'swiftsats_url' in data:
+            settings_obj.swiftsats_url = str(data['swiftsats_url']).strip()
+        if 'trading_fee_pct' in data:
+            try:
+                settings_obj.trading_fee_pct = Decimal(str(data['trading_fee_pct']).strip())
+            except Exception:
+                pass
+        if 'is_trading_paused' in data:
+            settings_obj.is_trading_paused = bool(data['is_trading_paused'])
+        settings_obj.save()
+
+    return Response({
+        'success': True,
+        'usd_rate': float(settings_obj.usd_rate),
+        'swiftsats_url': settings_obj.swiftsats_url,
+        'trading_fee_pct': float(settings_obj.trading_fee_pct),
+        'is_trading_paused': settings_obj.is_trading_paused,
+        'updated_at': settings_obj.updated_at.isoformat() if settings_obj.updated_at else None
+    })
+
+
+

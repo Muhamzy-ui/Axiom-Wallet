@@ -61,6 +61,14 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
   });
   const [isCountryModalOpen, setIsCountryModalOpen] = useState(false);
 
+  useEffect(() => {
+    const handleRateChange = () => {
+      setSelectedCountry((prev) => getCountryByCode(prev.code));
+    };
+    window.addEventListener("axiom_dollar_rate_updated", handleRateChange);
+    return () => window.removeEventListener("axiom_dollar_rate_updated", handleRateChange);
+  }, []);
+
   // Crypto Withdrawal Form State
   const [sendCoin, setSendCoin] = useState<WithdrawCoin>("USDT");
   const [sendNetwork, setSendNetwork] = useState<string>("TRON (TRC-20)");

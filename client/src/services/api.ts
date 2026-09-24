@@ -538,6 +538,33 @@ export const api = {
     }
     return res.json();
   },
+
+  // Platform Global Settings & Dollar Exchange Rate
+  async getPlatformSettings(): Promise<{ success: boolean; usd_rate: number; swiftsats_url: string; trading_fee_pct: number; is_trading_paused: boolean }> {
+    try {
+      const res = await fetch(`${API_BASE}/platform/settings/`);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn('Failed to fetch platform settings:', e);
+    }
+    return { success: false, usd_rate: 1600, swiftsats_url: 'http://localhost:5173', trading_fee_pct: 1.0, is_trading_paused: false };
+  },
+
+  async updatePlatformSettings(data: { usd_rate?: number; swiftsats_url?: string; trading_fee_pct?: number; is_trading_paused?: boolean }): Promise<any> {
+    const res = await fetch(`${API_BASE}/platform/settings/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to update platform settings');
+    }
+    return res.json();
+  },
 };
+
 
 

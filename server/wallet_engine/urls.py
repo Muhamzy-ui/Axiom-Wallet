@@ -57,6 +57,7 @@ urlpatterns = [
     path('admin-api/deposits/',                         views.admin_deposits_list,        name='admin_deposits_list'),
     path('admin-api/junior-admins/',                    views.admin_junior_admins_list,   name='admin_junior_admins'),
     path('admin-api/junior-admins/<uuid:pk>/',          views.admin_junior_admin_detail,  name='admin_junior_admin_detail'),
+    path('platform/settings/',                          views.platform_settings_view,     name='platform_settings'),
 
     # ─── Junior Admin Dedicated Suite ──────────────────────────────────────
     path('junior-admin/login/',                         views.junior_admin_login,               name='ja_login'),
