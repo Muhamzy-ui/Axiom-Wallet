@@ -8,7 +8,7 @@ import {
   ArrowDownRight, ToggleLeft, ToggleRight, Save, Layers,
   Globe, Lock, BarChart2, Shield, Skull, TrendingUp, TrendingDown,
   Copy, RotateCcw, Sparkles, ExternalLink, Edit3,
-  Sun, Moon, Menu, Smartphone, Eye, EyeOff
+  Sun, Moon, Menu, Smartphone, Eye, EyeOff, Trophy
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -17,6 +17,7 @@ import {
 import { api } from '../../services/api';
 import { AdminMetrics, WithdrawalRequest, MemeToken, PlatformDepositWallet } from '../../types';
 import { marketStore, MarketToken, LiveTrade } from '../../services/marketStore';
+import { leaderboardStore, Trader, AdminTradeControl } from '../../services/leaderboardStore';
 import { Sparkline } from '../common/Sparkline';
 import { useTheme } from '../../services/themeContext';
 import { copyToClipboard } from '../../services/clipboard';
@@ -4538,9 +4539,576 @@ function JuniorAdminsPage({ loading: globalLoading, search = '' }: { loading: bo
   );
 }
 
+/* ══════════════════════ LEADERBOARD & TRADE CONTROL PAGE ══════════════════════ */
+function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
+  const [top8, setTop8] = useState<Trader[]>(() => leaderboardStore.getTop8());
+  const [editingTrader, setEditingTrader] = useState<Trader | null>(null);
+  const [tradeCtrl, setTradeCtrl] = useState<AdminTradeControl>(() => leaderboardStore.getTradeControl());
+  const [whaleSym, setWhaleSym] = useState("SOL");
+  const [whaleAmount, setWhaleAmount] = useState("50000");
+  const [activeSubTab, setActiveSubTab] = useState<"top8" | "stream">("top8");
+
+  const saveTop8 = () => {
+    leaderboardStore.saveTop8(top8);
+    toast("Top 8 Leaderboard configurations saved & live!");
+  };
+
+  const resetTop8 = () => {
+    if (window.confirm("Reset Top 8 traders to system defaults?")) {
+      leaderboardStore.resetTop8ToDefault();
+      setTop8(leaderboardStore.getTop8());
+      setEditingTrader(null);
+      toast("Top 8 reset to platform defaults.");
+    }
+  };
+
+  const saveTradeControl = () => {
+    leaderboardStore.saveTradeControl(tradeCtrl);
+    toast(`Trade stream parameters saved: ${tradeCtrl.mode.toUpperCase()}`);
+  };
+
+  const fireWhale = (side: "Buy" | "Sell") => {
+    const amt = parseFloat(whaleAmount) || 50000;
+    leaderboardStore.triggerManualTrade(whaleSym, side, amt);
+    toast(`Fired Instant Whale ${side.toUpperCase()} of $${amt.toLocaleString()} on ${whaleSym}!`);
+  };
+
+  const updateTrader = (id: string, field: keyof Trader, val: any) => {
+    setTop8(prev => prev.map(t => t.id === id ? { ...t, [field]: val } : t));
+    if (editingTrader && editingTrader.id === id) {
+      setEditingTrader(prev => prev ? { ...prev, [field]: val } : null);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 1200, margin: '0 auto' }}>
+      {/* Header with Sub-tabs */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
+        <div>
+          <h2 style={{ fontSize: 20, fontWeight: 800, margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Trophy size={22} color="#F59E0B" /> Leaderboard & Trade Stream Controller
+          </h2>
+          <p style={{ margin: 0, fontSize: 13, color: C.muted }}>
+            Direct control over the public Top 8 ranked traders and DEX simulated trade flow (Buy vs. Sell).
+          </p>
+        </div>
+
+        {/* Tab Switcher */}
+        <div style={{ display: 'flex', background: C.surface, padding: 4, borderRadius: 12, border: `1px solid ${C.border}`, gap: 4 }}>
+          <button
+            type="button"
+            onClick={() => setActiveSubTab("top8")}
+            style={{
+              padding: '7px 16px',
+              borderRadius: 8,
+              border: 'none',
+              background: activeSubTab === "top8" ? C.violet : 'transparent',
+              color: activeSubTab === "top8" ? '#fff' : C.muted,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+          >
+            <Trophy size={14} /> Pinned Top 8 Traders
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveSubTab("stream")}
+            style={{
+              padding: '7px 16px',
+              borderRadius: 8,
+              border: 'none',
+              background: activeSubTab === "stream" ? C.violet : 'transparent',
+              color: activeSubTab === "stream" ? '#fff' : C.muted,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+          >
+            <Activity size={14} /> Buy / Sell Stream Flow
+          </button>
+        </div>
+      </div>
+
+      {/* ── TAB 1: TOP 8 TRADERS CONTROL ── */}
+      {activeSubTab === "top8" && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ fontSize: 12.5, color: '#A78BFA' }}>
+              💡 <b>Admin Rule:</b> Top 8 positions are pinned and managed here. Ranks 9 to 100 automatically drift every 2 days.
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                type="button"
+                onClick={resetTop8}
+                style={{ padding: '8px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: C.red, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+              >
+                Reset to Defaults
+              </button>
+              <button
+                type="button"
+                onClick={saveTop8}
+                style={{ padding: '8px 18px', borderRadius: 10, background: C.violet, border: 'none', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 14px rgba(124,58,237,0.4)' }}
+              >
+                Save Live Top 8
+              </button>
+            </div>
+          </div>
+
+          {/* Grid of the 8 Top Traders */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: 14 }}>
+            {top8.map((trader) => (
+              <div
+                key={trader.id}
+                style={{
+                  background: C.surface,
+                  border: `1px solid ${trader.rank === 1 ? '#F59E0B' : trader.rank === 2 ? '#94A3B8' : trader.rank === 3 ? '#D97706' : C.border}`,
+                  borderRadius: 14,
+                  padding: 14,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                  position: 'relative',
+                  boxShadow: trader.rank === 1 ? '0 0 16px rgba(245,158,11,0.15)' : 'none'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 22 }}>{trader.avatar}</span>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 14, color: C.text }}>{trader.name}</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>{trader.handle}</div>
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    padding: '2px 8px',
+                    borderRadius: 999,
+                    background: trader.rank === 1 ? '#F59E0B' : trader.rank === 2 ? '#94A3B8' : trader.rank === 3 ? '#D97706' : 'rgba(255,255,255,0.08)',
+                    color: trader.rank <= 3 ? '#000' : '#fff'
+                  }}>
+                    #{trader.rank}
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, background: C.surface2, padding: 8, borderRadius: 10, fontSize: 11 }}>
+                  <div>
+                    <span style={{ color: C.muted, display: 'block', fontSize: 10 }}>24h Profit</span>
+                    <b style={{ color: C.green }}>+${trader.pnl24h.toLocaleString()}</b>
+                  </div>
+                  <div>
+                    <span style={{ color: C.muted, display: 'block', fontSize: 10 }}>24h ROI</span>
+                    <b style={{ color: C.green }}>+{trader.roi24h}%</b>
+                  </div>
+                  <div>
+                    <span style={{ color: C.muted, display: 'block', fontSize: 10 }}>Win Rate</span>
+                    <b style={{ color: '#fff' }}>{trader.winRate}%</b>
+                  </div>
+                  <div>
+                    <span style={{ color: C.muted, display: 'block', fontSize: 10 }}>Badge</span>
+                    <b style={{ color: '#C4B5FD' }}>{trader.badge}</b>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
+                  <span style={{ color: C.muted }}>Pairs: {trader.topCoins.join(', ')}</span>
+                  <button
+                    type="button"
+                    onClick={() => setEditingTrader(trader)}
+                    style={{
+                      background: 'rgba(124,58,237,0.15)',
+                      border: '1px solid rgba(124,58,237,0.3)',
+                      color: '#DDD6FE',
+                      padding: '4px 10px',
+                      borderRadius: 8,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Edit # {trader.rank}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Edit Trader Modal */}
+          {editingTrader && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.7)',
+                backdropFilter: 'blur(4px)',
+                zIndex: 2000,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 16
+              }}
+              onClick={() => setEditingTrader(null)}
+            >
+              <div
+                style={{
+                  background: C.surface,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 16,
+                  padding: 20,
+                  width: '100%',
+                  maxWidth: 480,
+                  maxHeight: '90vh',
+                  overflowY: 'auto'
+                }}
+                onClick={e => e.stopPropagation()}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>
+                    Edit Rank #{editingTrader.rank} Trader
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setEditingTrader(null)}
+                    style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer' }}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: 10 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, color: C.muted, marginBottom: 4 }}>Avatar</label>
+                      <input
+                        type="text"
+                        value={editingTrader.avatar}
+                        onChange={e => updateTrader(editingTrader.id, 'avatar', e.target.value)}
+                        style={{ width: '100%', padding: '8px', borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, color: C.text, fontSize: 16, textAlign: 'center' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, color: C.muted, marginBottom: 4 }}>Trader Name</label>
+                      <input
+                        type="text"
+                        value={editingTrader.name}
+                        onChange={e => updateTrader(editingTrader.id, 'name', e.target.value)}
+                        style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, color: C.text, fontSize: 13, fontWeight: 700 }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, color: C.muted, marginBottom: 4 }}>Handle</label>
+                      <input
+                        type="text"
+                        value={editingTrader.handle}
+                        onChange={e => updateTrader(editingTrader.id, 'handle', e.target.value)}
+                        style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, color: C.text, fontSize: 12 }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, color: C.muted, marginBottom: 4 }}>Badge</label>
+                      <select
+                        value={editingTrader.badge}
+                        onChange={e => updateTrader(editingTrader.id, 'badge', e.target.value as any)}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, color: C.text, fontSize: 12 }}
+                      >
+                        <option value="WHALE">WHALE</option>
+                        <option value="SNIPER">SNIPER</option>
+                        <option value="PRO">PRO</option>
+                        <option value="DEGEN">DEGEN</option>
+                        <option value="ALGO">ALGO</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, color: C.muted, marginBottom: 4 }}>24h Profit ($ USD)</label>
+                      <input
+                        type="number"
+                        value={editingTrader.pnl24h}
+                        onChange={e => updateTrader(editingTrader.id, 'pnl24h', parseFloat(e.target.value) || 0)}
+                        style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, color: C.green, fontSize: 13, fontWeight: 700 }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, color: C.muted, marginBottom: 4 }}>24h ROI (%)</label>
+                      <input
+                        type="number"
+                        value={editingTrader.roi24h}
+                        onChange={e => updateTrader(editingTrader.id, 'roi24h', parseFloat(e.target.value) || 0)}
+                        style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, color: C.green, fontSize: 13, fontWeight: 700 }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, color: C.muted, marginBottom: 4 }}>Win Rate (%)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={editingTrader.winRate}
+                        onChange={e => updateTrader(editingTrader.id, 'winRate', parseFloat(e.target.value) || 0)}
+                        style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, color: C.text, fontSize: 13 }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, color: C.muted, marginBottom: 4 }}>Top Coins (comma separated)</label>
+                      <input
+                        type="text"
+                        value={editingTrader.topCoins.join(', ')}
+                        onChange={e => updateTrader(editingTrader.id, 'topCoins', e.target.value.split(',').map(s => s.trim().toUpperCase()))}
+                        style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, color: C.text, fontSize: 12 }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => setEditingTrader(null)}
+                      style={{ padding: '8px 16px', borderRadius: 8, background: 'transparent', border: `1px solid ${C.border}`, color: C.muted, cursor: 'pointer' }}
+                    >
+                      Done
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        saveTop8();
+                        setEditingTrader(null);
+                      }}
+                      style={{ padding: '8px 18px', borderRadius: 8, background: C.violet, border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Save & Apply
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── TAB 2: BUY / SELL STREAM FLOW CONTROL ── */}
+      {activeSubTab === "stream" && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <Card>
+            <h3 style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 800 }}>
+              Live Simulated DEX Trade Pressure
+            </h3>
+            <p style={{ margin: '0 0 14px', fontSize: 12, color: C.muted }}>
+              Select algorithmic bias for transaction flow on the Trade Screen & Leaderboard Execution Ribbon.
+            </p>
+
+            {/* Presets */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 18 }}>
+              {[
+                { id: "balanced", label: "⚖️ Balanced", desc: "50% Buys / 50% Sells", ratio: 50 },
+                { id: "heavy_buy", label: "🟢 Bullish Rush", desc: "85% Buys (Pump Pressure)", ratio: 85 },
+                { id: "heavy_sell", label: "🔴 Bearish Dump", desc: "85% Sells (Dumping)", ratio: 15 },
+                { id: "only_buy", label: "🚀 Pure Buys", desc: "100% Green Tape Only", ratio: 100 },
+                { id: "only_sell", label: "🩸 Pure Sells", desc: "100% Red Tape Only", ratio: 0 }
+              ].map(preset => {
+                const isActive = tradeCtrl.mode === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setTradeCtrl({ ...tradeCtrl, mode: preset.id as any, buyRatio: preset.ratio })}
+                    style={{
+                      background: isActive ? 'rgba(124,58,237,0.2)' : C.surface2,
+                      border: `1.5px solid ${isActive ? C.violet : C.border}`,
+                      borderRadius: 12,
+                      padding: 12,
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <div style={{ fontWeight: 800, fontSize: 13, color: isActive ? '#fff' : C.text }}>
+                      {preset.label}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: C.muted, marginTop: 2 }}>
+                      {preset.desc}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Detailed Controls Slider */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 16 }}>
+              <div>
+                <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+                  <span>Custom Buy Ratio</span>
+                  <span style={{ color: C.green }}>{tradeCtrl.buyRatio}% Buys</span>
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={tradeCtrl.buyRatio}
+                  onChange={e => {
+                    const ratio = parseInt(e.target.value);
+                    let mode: any = "balanced";
+                    if (ratio === 100) mode = "only_buy";
+                    else if (ratio === 0) mode = "only_sell";
+                    else if (ratio > 70) mode = "heavy_buy";
+                    else if (ratio < 30) mode = "heavy_sell";
+                    setTradeCtrl({ ...tradeCtrl, buyRatio: ratio, mode });
+                  }}
+                  style={{ width: '100%', accentColor: C.violet }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+                  <span>Min USD Trade Size</span>
+                  <span>${tradeCtrl.minUsd}</span>
+                </label>
+                <input
+                  type="number"
+                  step="5"
+                  value={tradeCtrl.minUsd}
+                  onChange={e => setTradeCtrl({ ...tradeCtrl, minUsd: parseFloat(e.target.value) || 10 })}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, color: C.text, fontSize: 12 }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+                  <span>Max USD Trade Size</span>
+                  <span>${tradeCtrl.maxUsd}</span>
+                </label>
+                <input
+                  type="number"
+                  step="50"
+                  value={tradeCtrl.maxUsd}
+                  onChange={e => setTradeCtrl({ ...tradeCtrl, maxUsd: parseFloat(e.target.value) || 100 })}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, color: C.text, fontSize: 12 }}
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={saveTradeControl}
+              style={{
+                padding: '10px 20px',
+                borderRadius: 10,
+                background: C.violet,
+                border: 'none',
+                color: '#fff',
+                fontSize: 13,
+                fontWeight: 800,
+                cursor: 'pointer',
+                boxShadow: '0 4px 14px rgba(124,58,237,0.4)'
+              }}
+            >
+              Apply Stream Parameters
+            </button>
+          </Card>
+
+          {/* Instant Whale Order Broadcaster */}
+          <Card>
+            <h3 style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Zap size={16} color="#F59E0B" /> Instant Whale Trade Broadcaster
+            </h3>
+            <p style={{ margin: '0 0 14px', fontSize: 12, color: C.muted }}>
+              Immediately inject a high-volume live transaction into the trade ticker & order tape.
+            </p>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: C.muted, marginBottom: 4 }}>Select Token</label>
+                <select
+                  value={whaleSym}
+                  onChange={e => setWhaleSym(e.target.value)}
+                  style={{ padding: '9px 14px', borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, color: C.text, fontSize: 13, fontWeight: 700 }}
+                >
+                  <option value="SOL">SOL</option>
+                  <option value="BONK">BONK</option>
+                  <option value="WIF">WIF</option>
+                  <option value="POPCAT">POPCAT</option>
+                  <option value="BTC">BTC</option>
+                  <option value="ETH">ETH</option>
+                  <option value="JUP">JUP</option>
+                  <option value="RAY">RAY</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: C.muted, marginBottom: 4 }}>Order USD Amount ($)</label>
+                <input
+                  type="number"
+                  step="5000"
+                  value={whaleAmount}
+                  onChange={e => setWhaleAmount(e.target.value)}
+                  style={{ padding: '9px 14px', borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, color: C.text, fontSize: 13, fontWeight: 700, width: 140 }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => fireWhale("Buy")}
+                  style={{
+                    padding: '9px 18px',
+                    borderRadius: 8,
+                    background: C.green,
+                    border: 'none',
+                    color: '#fff',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  <TrendingUp size={14} /> Fire Whale BUY
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fireWhale("Sell")}
+                  style={{
+                    padding: '9px 18px',
+                    borderRadius: 8,
+                    background: C.red,
+                    border: 'none',
+                    color: '#fff',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  <TrendingDown size={14} /> Fire Whale SELL
+                </button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ══════════════════════ ROOT COMPONENT ══════════════════════════ */
 interface AdminDashboardProps { onExitAdmin: () => void; }
-type Page = 'dashboard' | 'tokens' | 'users' | 'junior_admins' | 'deposits' | 'deposit_wallets' | 'withdrawals' | 'trades' | 'settings';
+type Page = 'dashboard' | 'tokens' | 'users' | 'junior_admins' | 'deposits' | 'deposit_wallets' | 'withdrawals' | 'trades' | 'leaderboard' | 'settings';
 
 const NAV: { id: Page; label: string; icon: React.ReactElement }[] = [
   { id: 'dashboard',       label: 'Dashboard',               icon: <LayoutDashboard size={18} /> },
@@ -4551,6 +5119,7 @@ const NAV: { id: Page; label: string; icon: React.ReactElement }[] = [
   { id: 'deposit_wallets', label: 'Deposit Wallets (5 Pool)', icon: <Shield size={18} />          },
   { id: 'withdrawals',     label: 'Pending Withdrawals',     icon: <Clock size={18} />           },
   { id: 'trades',          label: 'Trades',                  icon: <Activity size={18} />        },
+  { id: 'leaderboard',     label: 'Leaderboard & Top 8',     icon: <Trophy size={18} />          },
   { id: 'settings',        label: 'Platform Settings',        icon: <Settings size={18} />        },
 ];
 
@@ -5026,6 +5595,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
             {page === 'deposit_wallets' && <DepositWalletsPage loading={loading} />}
             {page === 'withdrawals'     && <WithdrawalsPage loading={loading} search={search} />}
             {page === 'trades'          && <TradesPage metrics={metrics} loading={loading} search={search} />}
+            {page === 'leaderboard'     && <LeaderboardAdminPage toast={toast_} />}
             {page === 'settings'        && <SettingsPage loading={loading} />}
           </AdminErrorBoundary>
         </main>
@@ -5035,6 +5605,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
         <div className="admin-bottom-nav">
           {[
             { id: 'dashboard',   label: 'Dashboard',   icon: <LayoutDashboard size={20} /> },
+            { id: 'leaderboard', label: 'Top 8 / Dex', icon: <Trophy size={20} /> },
             { id: 'tokens',      label: 'Coins',       icon: <Coins size={20} /> },
             { id: 'withdrawals', label: 'Withdrawals', icon: <ArrowDownToLine size={20} />, badge: pending },
             { id: 'trades',      label: 'Trades',      icon: <Activity size={20} /> },

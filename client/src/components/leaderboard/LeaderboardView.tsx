@@ -1,58 +1,17 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Trophy, TrendingUp, TrendingDown, Crown, Shield, ShieldCheck, Zap,
   Search, ArrowUpRight, Copy, Check, Filter, ExternalLink, Activity,
-  Users, Flame, Sparkles, X, ChevronRight, Sliders, DollarSign, Wallet
+  Users, Flame, Sparkles, X, ChevronRight, Sliders, DollarSign, Wallet,
+  Clock
 } from "lucide-react";
+import { leaderboardStore, Trader } from "../../services/leaderboardStore";
 import "./LeaderboardView.css";
 
-interface Trader {
-  id: string;
-  rank: number;
-  name: string;
-  handle: string;
-  address: string;
-  avatar: string;
-  badge: "WHALE" | "SNIPER" | "PRO" | "DEGEN" | "ALGO";
-  pnl24h: number;
-  roi24h: number;
-  pnl7d: number;
-  roi7d: number;
-  pnl30d: number;
-  roi30d: number;
-  pnlAll: number;
-  roiAll: number;
-  winRate: number;
-  totalTrades: number;
-  winTrades: number;
-  lossTrades: number;
-  volume: number;
-  profitFactor: number;
-  topCoins: string[];
-  openPositions: {
-    symbol: string;
-    side: "long" | "short";
-    leverage: string;
-    size: string;
-    entryPrice: string;
-    markPrice: string;
-    unrealizedPnl: string;
-    roi: string;
-  }[];
-  recentTrades: {
-    symbol: string;
-    side: "long" | "short";
-    pnl: string;
-    roi: string;
-    time: string;
-    type: "closed" | "entry";
-  }[];
-}
 
-const INITIAL_TRADERS: Trader[] = [
-  {
-    id: "trader-1",
-    rank: 1,
+const INITIAL_TRADERS: Trader[] = leaderboardStore.getAll100Traders();
+// Traders loaded dynamically from leaderboardStore (100 traders with 2-day epoch drift)
+/*
     name: "SatoshiGems",
     handle: "@satoshigems",
     address: "9a8f...4e1b",
@@ -346,6 +305,7 @@ const INITIAL_TRADERS: Trader[] = [
     ]
   }
 ];
+*/
 
 interface LiveStreamItem {
   id: string;
@@ -380,6 +340,32 @@ export function LeaderboardView({
   const [category, setCategory] = useState<"all" | "whale" | "sniper" | "pro" | "degen" | "algo">("all");
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"pnl" | "roi" | "winRate" | "volume">("pnl");
+  const [displayCount, setDisplayCount] = useState(25);
+  const [activeSlide, setActiveSlide] = useState(0);
+  const swipeRailRef = useRef<HTMLDivElement>(null);
+
+  // Subscribe to live leaderboardStore updates (Admin Top 8 / 2-Day Epoch rotation)
+  useEffect(() => {
+    const unsub = leaderboardStore.subscribe(() => {
+      setTraders(leaderboardStore.getAll100Traders());
+    });
+    return unsub;
+  }, []);
+
+  const handleSwipeScroll = () => {
+    if (!swipeRailRef.current) return;
+    const scrollLeft = swipeRailRef.current.scrollLeft;
+    const cardWidth = Math.max(260, swipeRailRef.current.clientWidth * 0.85);
+    const index = Math.round(scrollLeft / cardWidth);
+    setActiveSlide(Math.min(2, Math.max(0, index)));
+  };
+
+  const scrollToSlide = (idx: number) => {
+    if (!swipeRailRef.current) return;
+    const cardWidth = Math.max(260, swipeRailRef.current.clientWidth * 0.85);
+    swipeRailRef.current.scrollTo({ left: idx * cardWidth, behavior: "smooth" });
+    setActiveSlide(idx);
+  };
 
   // Live Stream Feed
   const [stream, setStream] = useState<LiveStreamItem[]>(LIVE_STREAM_MOCK);
@@ -504,7 +490,9 @@ export function LeaderboardView({
         <div className="lb-hero-stats">
           <div className="lb-stat-box">
             <span className="lb-stat-label">24h Top PnL</span>
-            <span className="lb-stat-val" style={{ color: "#10B981" }}>+$184,420</span>
+            <span className="lb-stat-val" style={{ color: "#10B981" }}>
+              +{top1 ? `$${Math.round(top1.pnl24h).toLocaleString()}` : "$184,420"}
+            </span>
           </div>
           <div className="lb-stat-box">
             <span className="lb-stat-label">Active Copiers</span>
@@ -543,7 +531,8 @@ export function LeaderboardView({
       </div>
 
       {/* ── 3. Podium Showcase (Top 3 Traders) ── */}
-      <section className="lb-podium-grid">
+      <section className="lb-podium-section">
+        <div className="lb-podium-grid" ref={swipeRailRef} onScroll={handleSwipeScroll}>
         {/* Rank 2: Silver */}
         {top2 && (
           <div className="lb-podium-card rank-2" onClick={() => setInspectTrader(top2)}>
@@ -812,7 +801,39 @@ export function LeaderboardView({
             </div>
           </div>
         )}
+        </div>
+
+        {/* Mobile Swipe Pagination Dots */}
+        <div className="lb-swipe-dots">
+          <button
+            type="button"
+            className={`lb-swipe-dot ${activeSlide === 0 ? "active" : ""}`}
+            onClick={() => scrollToSlide(0)}
+            aria-label="View #1 Champion"
+          />
+          <button
+            type="button"
+            className={`lb-swipe-dot ${activeSlide === 1 ? "active" : ""}`}
+            onClick={() => scrollToSlide(1)}
+            aria-label="View #2 Silver"
+          />
+          <button
+            type="button"
+            className={`lb-swipe-dot ${activeSlide === 2 ? "active" : ""}`}
+            onClick={() => scrollToSlide(2)}
+            aria-label="View #3 Bronze"
+          />
+        </div>
       </section>
+
+      {/* ── 48h Dynamic Epoch Rotation Indicator ── */}
+      <div className="lb-epoch-ribbon">
+        <div className="lb-epoch-left">
+          <Clock size={15} color="#A78BFA" />
+          <span><b>48h Dynamic Rotation:</b> Verified on-chain ranks 9–100 rotate positions every 2 days based on DEX execution. Admin manages Top 8.</span>
+        </div>
+        <span className="lb-epoch-pill">Top 100 Live</span>
+      </div>
 
       {/* ── 4. Controls, Filters & Search ── */}
       <div className="lb-controls-bar">
@@ -902,7 +923,7 @@ export function LeaderboardView({
               </tr>
             </thead>
             <tbody>
-              {filteredTraders.map((t, index) => {
+              {filteredTraders.slice(0, displayCount).map((t, index) => {
                 const rankNum = index + 1;
                 const pnl =
                   timeframe === "24h"
@@ -930,19 +951,34 @@ export function LeaderboardView({
                     onClick={() => setInspectTrader(t)}
                   >
                     <td>
-                      <div
-                        className={`lb-rank-col ${
-                          rankNum === 1
-                            ? "podium-1"
-                            : rankNum === 2
-                            ? "podium-2"
-                            : rankNum === 3
-                            ? "podium-3"
-                            : ""
-                        }`}
-                      >
-                        {rankNum === 1 && <Crown size={14} color="#F59E0B" />}
-                        #{rankNum}
+                      <div className="lb-rank-col-wrap">
+                        <div
+                          className={`lb-rank-col ${
+                            rankNum === 1
+                              ? "podium-1"
+                              : rankNum === 2
+                              ? "podium-2"
+                              : rankNum === 3
+                              ? "podium-3"
+                              : ""
+                          }`}
+                        >
+                          {rankNum === 1 && <Crown size={14} color="#F59E0B" />}
+                          #{rankNum}
+                        </div>
+                        {t.rankDelta > 0 ? (
+                          <span className="lb-rank-delta up" title={`Moved up ${t.rankDelta} positions this epoch`}>
+                            ▲+{t.rankDelta}
+                          </span>
+                        ) : t.rankDelta < 0 ? (
+                          <span className="lb-rank-delta down" title={`Moved down ${Math.abs(t.rankDelta)} positions this epoch`}>
+                            ▼{t.rankDelta}
+                          </span>
+                        ) : (
+                          <span className="lb-rank-delta neutral" title="Position unchanged this epoch">
+                            • 0
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td>
@@ -1029,6 +1065,43 @@ export function LeaderboardView({
             </tbody>
           </table>
         </div>
+
+        {/* Top 100 Pagination & Expansion Bar */}
+        {filteredTraders.length > 25 && (
+          <div className="lb-pagination-bar">
+            <span>
+              Showing top <b>{Math.min(displayCount, filteredTraders.length)}</b> of <b>{filteredTraders.length}</b> ranked traders
+            </span>
+            <div className="lb-pagination-buttons">
+              {displayCount < filteredTraders.length && (
+                <button
+                  type="button"
+                  className="lb-show-more-btn"
+                  onClick={() => setDisplayCount((prev) => Math.min(100, prev + 25))}
+                >
+                  Load Next 25 Traders
+                </button>
+              )}
+              {displayCount < filteredTraders.length ? (
+                <button
+                  type="button"
+                  className="lb-show-all-btn"
+                  onClick={() => setDisplayCount(100)}
+                >
+                  Show All Top 100
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="lb-show-more-btn"
+                  onClick={() => setDisplayCount(25)}
+                >
+                  Collapse to Top 25
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── 6. Trader Deep-Dive Inspector Modal ── */}

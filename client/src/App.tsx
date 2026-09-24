@@ -4077,25 +4077,27 @@ function AppShell({
         {view === "profile" && <ProfileView authUser={authUser} modal={setModal} flash={flash} onNavigate={navigateTo} onLogout={onLogout} />}
       </main>
 
-      <nav className="phone-nav" aria-label="Floating Mobile Navigation">
-        {links.map(([id, label, Icon]) => {
-          const isActive = view === id;
-          return (
-            <button
-              key={id}
-              className={`phone-nav-btn ${isActive ? "active" : ""}`}
-              onClick={() => navigateTo(id)}
-              type="button"
-            >
-              <div className="phone-nav-icon-wrap">
-                <Icon size={20} strokeWidth={isActive ? 2.4 : 1.9} />
-              </div>
-              <span className="phone-nav-label">{label}</span>
-              {isActive && <span className="phone-nav-glow-dot" />}
-            </button>
-          );
-        })}
-      </nav>
+      {!modal && (
+        <nav className="phone-nav" aria-label="Floating Mobile Navigation">
+          {links.map(([id, label, Icon]) => {
+            const isActive = view === id;
+            return (
+              <button
+                key={id}
+                className={`phone-nav-btn ${isActive ? "active" : ""}`}
+                onClick={() => navigateTo(id)}
+                type="button"
+              >
+                <div className="phone-nav-icon-wrap">
+                  <Icon size={20} strokeWidth={isActive ? 2.4 : 1.9} />
+                </div>
+                <span className="phone-nav-label">{label}</span>
+                {isActive && <span className="phone-nav-glow-dot" />}
+              </button>
+            );
+          })}
+        </nav>
+      )}
 
       {modal && <ModalBox authUser={authUser} type={modal} close={() => setModal("")} flash={flash} />}
 

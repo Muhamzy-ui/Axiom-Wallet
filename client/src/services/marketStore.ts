@@ -3025,7 +3025,7 @@ class MarketStore {
   }
 
   // ── Helper: Add a live trade ───────────────────────────────────────
-  private addTrade(trade: {
+  public addTrade(trade: {
     sym: string;
     type: "Buy" | "Sell";
     usd: number;
@@ -3230,18 +3230,38 @@ class MarketStore {
           });
         }
 
-        // Live simulated trades with realistic orderbook impact (30% probability per second for active token)
-        if (token.sym === this.activeSym && Math.random() < 0.3) {
-          const isBuy = Math.random() > 0.48;
+        // Live simulated trades with admin-controllable Buy vs. Sell direction and size
+        let isBuy = Math.random() > 0.48;
+        let minUsd = 15;
+        let maxUsd = 240;
+
+        try {
+          const ctrlRaw = typeof window !== "undefined" ? localStorage.getItem("axiom_admin_trade_control") : null;
+          if (ctrlRaw) {
+            const ctrl = JSON.parse(ctrlRaw);
+            if (ctrl.mode === "only_buy") isBuy = true;
+            else if (ctrl.mode === "only_sell") isBuy = false;
+            else if (ctrl.mode === "heavy_buy") isBuy = Math.random() < 0.88;
+            else if (ctrl.mode === "heavy_sell") isBuy = Math.random() < 0.12;
+            else if (typeof ctrl.buyRatio === "number") isBuy = (Math.random() * 100) < ctrl.buyRatio;
+
+            if (ctrl.minUsd && ctrl.maxUsd) {
+              minUsd = Number(ctrl.minUsd);
+              maxUsd = Math.max(minUsd + 10, Number(ctrl.maxUsd));
+            }
+          }
+        } catch {
+          // fallback
+        }
+
+        if (token.sym === this.activeSym && Math.random() < 0.35) {
           // Major coins have deep liquidity, almost zero retail price impact
           this.momentums[token.sym] += isMajor
             ? (isBuy ? 0.000008 : -0.000008)
             : (isBuy ? 0.00008 : -0.00008);
 
           const roster = TRADER_ROSTER[Math.floor(Math.random() * TRADER_ROSTER.length)];
-          const usd = isBuy
-            ? Number((15 + Math.random() * 220).toFixed(2))
-            : Number((10 + Math.random() * 180).toFixed(2));
+          const usd = Number((minUsd + Math.random() * (maxUsd - minUsd)).toFixed(2));
           const tokenAmt = Number((usd / newP).toFixed(newP < 0.001 ? 0 : 2));
 
           this.addTrade({

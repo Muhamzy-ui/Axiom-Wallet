@@ -180,7 +180,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
   };
 
   return (
-    <div className="fullpage-modal-wrap">
+    <div className="fullpage-modal-wrap" style={{ overflowX: "hidden", touchAction: "pan-y", width: "100%", maxWidth: "100vw" }}>
       {/* Sticky Header */}
       <header className="fullpage-modal-header">
         <button type="button" className="fullpage-back-btn" onClick={onClose}>
@@ -442,24 +442,27 @@ export const DepositPage: React.FC<DepositPageProps> = ({
               </div>
 
               <div className="converter-box">
-                <div className="converter-row">
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
-                    <span style={{ fontSize: 20, fontWeight: 800, color: "var(--text)" }}>$</span>
-                    <input
-                      type="number"
-                      min="5"
-                      step="5"
-                      className="converter-input"
-                      value={depositAmt}
-                      onChange={(e) => {
-                        setDepositAmt(e.target.value);
-                        setVerifyError(null);
-                      }}
-                      placeholder="50.00"
-                    />
-                  </div>
+                <div className="converter-input-row">
+                  <span className="converter-currency-sym">$</span>
+                  <input
+                    type="number"
+                    min="5"
+                    step="5"
+                    className="converter-input"
+                    value={depositAmt}
+                    onChange={(e) => {
+                      setDepositAmt(e.target.value);
+                      setVerifyError(null);
+                    }}
+                    placeholder="50.00"
+                  />
+                  <span className="converter-fiat-tag">USD</span>
+                </div>
+
+                <div className="converter-subrow">
+                  <span className="converter-sub-label">You will transfer approx:</span>
                   <div className="converter-badge">
-                    <img src={COIN_METAS[depositCoin].iconUrl} width={18} height={18} alt={depositCoin} style={{ borderRadius: "50%" }} />
+                    <img src={COIN_METAS[depositCoin].iconUrl} width={16} height={16} alt={depositCoin} style={{ borderRadius: "50%" }} />
                     <span>
                       ≈ {cryptoEquivalent < 1 ? cryptoEquivalent.toFixed(6) : cryptoEquivalent.toFixed(2)} {depositCoin}
                     </span>
