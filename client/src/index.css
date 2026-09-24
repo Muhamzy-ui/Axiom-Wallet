@@ -7499,3 +7499,17 @@ select:focus-visible {
 [data-theme="light"] .dex-coin-liq {
   color: #64748B !important;
 }
+
+/* ── Hide all external watermarks & logos so chart looks 100% native ── */
+#tv-attr-logo,
+.tv-lightweight-charts a,
+.chart-stage a,
+.chart-stage a[href*="tradingview"],
+.chart-stage a[title*="TradingView"],
+div[class*="watermark"],
+div[class*="attribution"] {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}

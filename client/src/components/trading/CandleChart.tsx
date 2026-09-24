@@ -43,7 +43,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   timeframe = '1s',
   dispMode = 'Price',
   currMode = 'USD',
-  showCandle = true, // Candlestick view is the default
+  showCandle = false, // Line view is ALWAYS the default
   chartHeight,
   onAdjustHeight,
 }) => {
