@@ -2,9 +2,27 @@
  * authService.ts
  * Handles all authentication API calls.
  * Tokens are stored in httpOnly cookies (set by server) — NOT localStorage.
+ *
+ * SESSION PERSISTENCE:
+ * - Access token: 60 minutes (httpOnly cookie)
+ * - Refresh token: 30 days (httpOnly cookie, set with remember_me=true)
+ * - On 401, we automatically try to refresh the access token before giving up.
  */
 
 const API_BASE = (import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api` : '/api');
+
+// Attempt to silently refresh the access token using the refresh cookie
+async function tryRefreshToken(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/refresh/`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 export interface AuthUser {
   user_id: string;
@@ -64,13 +82,28 @@ async function apiPost(path: string, body: Record<string, unknown>): Promise<Aut
 
 async function apiGet(path: string): Promise<AuthResponse & { authenticated?: boolean }> {
   try {
-    const response = await fetch(`${API_BASE}${path}`, {
+    let response = await fetch(`${API_BASE}${path}`, {
       method: 'GET',
       credentials: 'include',
     });
+
+    // If 401 (access token expired), try to silently refresh and retry once
     if (response.status === 401) {
-      return { success: false, authenticated: false, message: 'Not authenticated' };
+      const refreshed = await tryRefreshToken();
+      if (refreshed) {
+        response = await fetch(`${API_BASE}${path}`, {
+          method: 'GET',
+          credentials: 'include',
+        });
+      } else {
+        return { success: false, authenticated: false, message: 'Not authenticated' };
+      }
     }
+
+    if (!response.ok) {
+      return { success: false, authenticated: false };
+    }
+
     const text = await response.text();
     try {
       return JSON.parse(text);

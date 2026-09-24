@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Eye, EyeOff, ArrowRight, Loader2, CheckCircle2, XCircle,
   AlertCircle, Mail, Lock, User, Shield, ChevronLeft, Zap,
-  TrendingUp, Activity, Check, Sparkles, Sun, Moon
+  TrendingUp, Activity, Check, Sparkles, Sun, Moon, Globe, ChevronDown
 } from "lucide-react";
 import {
   signUp, login, forgotPassword, resetPassword, verifyEmail, resendVerification,
@@ -12,6 +12,325 @@ import {
 import { useTheme } from "../../services/themeContext";
 import { copyToClipboard } from "../../services/clipboard";
 import "./AuthPage.css";
+
+// ─────────────────────────────────────────────────────────────
+// Country data with flag emoji
+// ─────────────────────────────────────────────────────────────
+const COUNTRIES = [
+  { code: "AF", name: "Afghanistan", flag: "🇦🇫" },
+  { code: "AL", name: "Albania", flag: "🇦🇱" },
+  { code: "DZ", name: "Algeria", flag: "🇩🇿" },
+  { code: "AD", name: "Andorra", flag: "🇦🇩" },
+  { code: "AO", name: "Angola", flag: "🇦🇴" },
+  { code: "AG", name: "Antigua & Barbuda", flag: "🇦🇬" },
+  { code: "AR", name: "Argentina", flag: "🇦🇷" },
+  { code: "AM", name: "Armenia", flag: "🇦🇲" },
+  { code: "AU", name: "Australia", flag: "🇦🇺" },
+  { code: "AT", name: "Austria", flag: "🇦🇹" },
+  { code: "AZ", name: "Azerbaijan", flag: "🇦🇿" },
+  { code: "BS", name: "Bahamas", flag: "🇧🇸" },
+  { code: "BH", name: "Bahrain", flag: "🇧🇭" },
+  { code: "BD", name: "Bangladesh", flag: "🇧🇩" },
+  { code: "BB", name: "Barbados", flag: "🇧🇧" },
+  { code: "BY", name: "Belarus", flag: "🇧🇾" },
+  { code: "BE", name: "Belgium", flag: "🇧🇪" },
+  { code: "BZ", name: "Belize", flag: "🇧🇿" },
+  { code: "BJ", name: "Benin", flag: "🇧🇯" },
+  { code: "BT", name: "Bhutan", flag: "🇧🇹" },
+  { code: "BO", name: "Bolivia", flag: "🇧🇴" },
+  { code: "BA", name: "Bosnia & Herzegovina", flag: "🇧🇦" },
+  { code: "BW", name: "Botswana", flag: "🇧🇼" },
+  { code: "BR", name: "Brazil", flag: "🇧🇷" },
+  { code: "BN", name: "Brunei", flag: "🇧🇳" },
+  { code: "BG", name: "Bulgaria", flag: "🇧🇬" },
+  { code: "BF", name: "Burkina Faso", flag: "🇧🇫" },
+  { code: "BI", name: "Burundi", flag: "🇧🇮" },
+  { code: "KH", name: "Cambodia", flag: "🇰🇭" },
+  { code: "CM", name: "Cameroon", flag: "🇨🇲" },
+  { code: "CA", name: "Canada", flag: "🇨🇦" },
+  { code: "CV", name: "Cape Verde", flag: "🇨🇻" },
+  { code: "CF", name: "Central African Republic", flag: "🇨🇫" },
+  { code: "TD", name: "Chad", flag: "🇹🇩" },
+  { code: "CL", name: "Chile", flag: "🇨🇱" },
+  { code: "CN", name: "China", flag: "🇨🇳" },
+  { code: "CO", name: "Colombia", flag: "🇨🇴" },
+  { code: "KM", name: "Comoros", flag: "🇰🇲" },
+  { code: "CD", name: "Congo (DRC)", flag: "🇨🇩" },
+  { code: "CG", name: "Congo (Republic)", flag: "🇨🇬" },
+  { code: "CR", name: "Costa Rica", flag: "🇨🇷" },
+  { code: "CI", name: "Côte d'Ivoire", flag: "🇨🇮" },
+  { code: "HR", name: "Croatia", flag: "🇭🇷" },
+  { code: "CU", name: "Cuba", flag: "🇨🇺" },
+  { code: "CY", name: "Cyprus", flag: "🇨🇾" },
+  { code: "CZ", name: "Czech Republic", flag: "🇨🇿" },
+  { code: "DK", name: "Denmark", flag: "🇩🇰" },
+  { code: "DJ", name: "Djibouti", flag: "🇩🇯" },
+  { code: "DM", name: "Dominica", flag: "🇩🇲" },
+  { code: "DO", name: "Dominican Republic", flag: "🇩🇴" },
+  { code: "EC", name: "Ecuador", flag: "🇪🇨" },
+  { code: "EG", name: "Egypt", flag: "🇪🇬" },
+  { code: "SV", name: "El Salvador", flag: "🇸🇻" },
+  { code: "GQ", name: "Equatorial Guinea", flag: "🇬🇶" },
+  { code: "ER", name: "Eritrea", flag: "🇪🇷" },
+  { code: "EE", name: "Estonia", flag: "🇪🇪" },
+  { code: "SZ", name: "Eswatini", flag: "🇸🇿" },
+  { code: "ET", name: "Ethiopia", flag: "🇪🇹" },
+  { code: "FJ", name: "Fiji", flag: "🇫🇯" },
+  { code: "FI", name: "Finland", flag: "🇫🇮" },
+  { code: "FR", name: "France", flag: "🇫🇷" },
+  { code: "GA", name: "Gabon", flag: "🇬🇦" },
+  { code: "GM", name: "Gambia", flag: "🇬🇲" },
+  { code: "GE", name: "Georgia", flag: "🇬🇪" },
+  { code: "DE", name: "Germany", flag: "🇩🇪" },
+  { code: "GH", name: "Ghana", flag: "🇬🇭" },
+  { code: "GR", name: "Greece", flag: "🇬🇷" },
+  { code: "GD", name: "Grenada", flag: "🇬🇩" },
+  { code: "GT", name: "Guatemala", flag: "🇬🇹" },
+  { code: "GN", name: "Guinea", flag: "🇬🇳" },
+  { code: "GW", name: "Guinea-Bissau", flag: "🇬🇼" },
+  { code: "GY", name: "Guyana", flag: "🇬🇾" },
+  { code: "HT", name: "Haiti", flag: "🇭🇹" },
+  { code: "HN", name: "Honduras", flag: "🇭🇳" },
+  { code: "HU", name: "Hungary", flag: "🇭🇺" },
+  { code: "IS", name: "Iceland", flag: "🇮🇸" },
+  { code: "IN", name: "India", flag: "🇮🇳" },
+  { code: "ID", name: "Indonesia", flag: "🇮🇩" },
+  { code: "IR", name: "Iran", flag: "🇮🇷" },
+  { code: "IQ", name: "Iraq", flag: "🇮🇶" },
+  { code: "IE", name: "Ireland", flag: "🇮🇪" },
+  { code: "IL", name: "Israel", flag: "🇮🇱" },
+  { code: "IT", name: "Italy", flag: "🇮🇹" },
+  { code: "JM", name: "Jamaica", flag: "🇯🇲" },
+  { code: "JP", name: "Japan", flag: "🇯🇵" },
+  { code: "JO", name: "Jordan", flag: "🇯🇴" },
+  { code: "KZ", name: "Kazakhstan", flag: "🇰🇿" },
+  { code: "KE", name: "Kenya", flag: "🇰🇪" },
+  { code: "KI", name: "Kiribati", flag: "🇰🇮" },
+  { code: "KW", name: "Kuwait", flag: "🇰🇼" },
+  { code: "KG", name: "Kyrgyzstan", flag: "🇰🇬" },
+  { code: "LA", name: "Laos", flag: "🇱🇦" },
+  { code: "LV", name: "Latvia", flag: "🇱🇻" },
+  { code: "LB", name: "Lebanon", flag: "🇱🇧" },
+  { code: "LS", name: "Lesotho", flag: "🇱🇸" },
+  { code: "LR", name: "Liberia", flag: "🇱🇷" },
+  { code: "LY", name: "Libya", flag: "🇱🇾" },
+  { code: "LI", name: "Liechtenstein", flag: "🇱🇮" },
+  { code: "LT", name: "Lithuania", flag: "🇱🇹" },
+  { code: "LU", name: "Luxembourg", flag: "🇱🇺" },
+  { code: "MG", name: "Madagascar", flag: "🇲🇬" },
+  { code: "MW", name: "Malawi", flag: "🇲🇼" },
+  { code: "MY", name: "Malaysia", flag: "🇲🇾" },
+  { code: "MV", name: "Maldives", flag: "🇲🇻" },
+  { code: "ML", name: "Mali", flag: "🇲🇱" },
+  { code: "MT", name: "Malta", flag: "🇲🇹" },
+  { code: "MH", name: "Marshall Islands", flag: "🇲🇭" },
+  { code: "MR", name: "Mauritania", flag: "🇲🇷" },
+  { code: "MU", name: "Mauritius", flag: "🇲🇺" },
+  { code: "MX", name: "Mexico", flag: "🇲🇽" },
+  { code: "FM", name: "Micronesia", flag: "🇫🇲" },
+  { code: "MD", name: "Moldova", flag: "🇲🇩" },
+  { code: "MC", name: "Monaco", flag: "🇲🇨" },
+  { code: "MN", name: "Mongolia", flag: "🇲🇳" },
+  { code: "ME", name: "Montenegro", flag: "🇲🇪" },
+  { code: "MA", name: "Morocco", flag: "🇲🇦" },
+  { code: "MZ", name: "Mozambique", flag: "🇲🇿" },
+  { code: "MM", name: "Myanmar", flag: "🇲🇲" },
+  { code: "NA", name: "Namibia", flag: "🇳🇦" },
+  { code: "NR", name: "Nauru", flag: "🇳🇷" },
+  { code: "NP", name: "Nepal", flag: "🇳🇵" },
+  { code: "NL", name: "Netherlands", flag: "🇳🇱" },
+  { code: "NZ", name: "New Zealand", flag: "🇳🇿" },
+  { code: "NI", name: "Nicaragua", flag: "🇳🇮" },
+  { code: "NE", name: "Niger", flag: "🇳🇪" },
+  { code: "NG", name: "Nigeria", flag: "🇳🇬" },
+  { code: "NO", name: "Norway", flag: "🇳🇴" },
+  { code: "OM", name: "Oman", flag: "🇴🇲" },
+  { code: "PK", name: "Pakistan", flag: "🇵🇰" },
+  { code: "PW", name: "Palau", flag: "🇵🇼" },
+  { code: "PA", name: "Panama", flag: "🇵🇦" },
+  { code: "PG", name: "Papua New Guinea", flag: "🇵🇬" },
+  { code: "PY", name: "Paraguay", flag: "🇵🇾" },
+  { code: "PE", name: "Peru", flag: "🇵🇪" },
+  { code: "PH", name: "Philippines", flag: "🇵🇭" },
+  { code: "PL", name: "Poland", flag: "🇵🇱" },
+  { code: "PT", name: "Portugal", flag: "🇵🇹" },
+  { code: "QA", name: "Qatar", flag: "🇶🇦" },
+  { code: "RO", name: "Romania", flag: "🇷🇴" },
+  { code: "RU", name: "Russia", flag: "🇷🇺" },
+  { code: "RW", name: "Rwanda", flag: "🇷🇼" },
+  { code: "KN", name: "Saint Kitts & Nevis", flag: "🇰🇳" },
+  { code: "LC", name: "Saint Lucia", flag: "🇱🇨" },
+  { code: "VC", name: "Saint Vincent & the Grenadines", flag: "🇻🇨" },
+  { code: "WS", name: "Samoa", flag: "🇼🇸" },
+  { code: "SM", name: "San Marino", flag: "🇸🇲" },
+  { code: "ST", name: "São Tomé & Príncipe", flag: "🇸🇹" },
+  { code: "SA", name: "Saudi Arabia", flag: "🇸🇦" },
+  { code: "SN", name: "Senegal", flag: "🇸🇳" },
+  { code: "RS", name: "Serbia", flag: "🇷🇸" },
+  { code: "SC", name: "Seychelles", flag: "🇸🇨" },
+  { code: "SL", name: "Sierra Leone", flag: "🇸🇱" },
+  { code: "SG", name: "Singapore", flag: "🇸🇬" },
+  { code: "SK", name: "Slovakia", flag: "🇸🇰" },
+  { code: "SI", name: "Slovenia", flag: "🇸🇮" },
+  { code: "SB", name: "Solomon Islands", flag: "🇸🇧" },
+  { code: "SO", name: "Somalia", flag: "🇸🇴" },
+  { code: "ZA", name: "South Africa", flag: "🇿🇦" },
+  { code: "SS", name: "South Sudan", flag: "🇸🇸" },
+  { code: "ES", name: "Spain", flag: "🇪🇸" },
+  { code: "LK", name: "Sri Lanka", flag: "🇱🇰" },
+  { code: "SD", name: "Sudan", flag: "🇸🇩" },
+  { code: "SR", name: "Suriname", flag: "🇸🇷" },
+  { code: "SE", name: "Sweden", flag: "🇸🇪" },
+  { code: "CH", name: "Switzerland", flag: "🇨🇭" },
+  { code: "SY", name: "Syria", flag: "🇸🇾" },
+  { code: "TW", name: "Taiwan", flag: "🇹🇼" },
+  { code: "TJ", name: "Tajikistan", flag: "🇹🇯" },
+  { code: "TZ", name: "Tanzania", flag: "🇹🇿" },
+  { code: "TH", name: "Thailand", flag: "🇹🇭" },
+  { code: "TL", name: "Timor-Leste", flag: "🇹🇱" },
+  { code: "TG", name: "Togo", flag: "🇹🇬" },
+  { code: "TO", name: "Tonga", flag: "🇹🇴" },
+  { code: "TT", name: "Trinidad & Tobago", flag: "🇹🇹" },
+  { code: "TN", name: "Tunisia", flag: "🇹🇳" },
+  { code: "TR", name: "Turkey", flag: "🇹🇷" },
+  { code: "TM", name: "Turkmenistan", flag: "🇹🇲" },
+  { code: "TV", name: "Tuvalu", flag: "🇹🇻" },
+  { code: "UG", name: "Uganda", flag: "🇺🇬" },
+  { code: "UA", name: "Ukraine", flag: "🇺🇦" },
+  { code: "AE", name: "United Arab Emirates", flag: "🇦🇪" },
+  { code: "GB", name: "United Kingdom", flag: "🇬🇧" },
+  { code: "US", name: "United States", flag: "🇺🇸" },
+  { code: "UY", name: "Uruguay", flag: "🇺🇾" },
+  { code: "UZ", name: "Uzbekistan", flag: "🇺🇿" },
+  { code: "VU", name: "Vanuatu", flag: "🇻🇺" },
+  { code: "VE", name: "Venezuela", flag: "🇻🇪" },
+  { code: "VN", name: "Vietnam", flag: "🇻🇳" },
+  { code: "YE", name: "Yemen", flag: "🇾🇪" },
+  { code: "ZM", name: "Zambia", flag: "🇿🇲" },
+  { code: "ZW", name: "Zimbabwe", flag: "🇿🇼" },
+];
+
+// ─────────────────────────────────────────────────────────────
+// Country Selector Component
+// ─────────────────────────────────────────────────────────────
+function CountrySelector({
+  value,
+  onChange,
+  error,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  error?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  const selected = COUNTRIES.find((c) => c.code === value);
+  const filtered = search
+    ? COUNTRIES.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
+    : COUNTRIES;
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className={`auth-field ${error ? "has-error" : ""}`} ref={ref}>
+      <div className="auth-field-header">
+        <label className="auth-field-label">Country</label>
+      </div>
+      <div className="auth-input-wrap" style={{ position: "relative" }}>
+        <Globe size={18} className="auth-field-icon" />
+        <button
+          type="button"
+          className="auth-input country-selector-btn"
+          style={{ textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, paddingRight: 36 }}
+          onClick={() => setOpen(!open)}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+        >
+          {selected ? (
+            <><span style={{ fontSize: "1.1rem" }}>{selected.flag}</span><span>{selected.name}</span></>
+          ) : (
+            <span style={{ color: "var(--text-muted)" }}>Select your country</span>
+          )}
+        </button>
+        <ChevronDown
+          size={16}
+          style={{
+            position: "absolute", right: 12, top: "50%", transform: open ? "translateY(-50%) rotate(180deg)" : "translateY(-50%)",
+            color: "var(--text-muted)", transition: "transform 0.2s", pointerEvents: "none",
+          }}
+        />
+        {open && (
+          <div
+            style={{
+              position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0,
+              background: "var(--card-bg)", border: "1px solid var(--border-dark)",
+              borderRadius: "var(--radius-md)", zIndex: 9999,
+              boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+              overflow: "hidden",
+            }}
+            role="listbox"
+          >
+            <div style={{ padding: "0.5rem", borderBottom: "1px solid var(--border-dark)" }}>
+              <input
+                type="text"
+                className="auth-input"
+                placeholder="Search country..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{ fontSize: "0.85rem", padding: "0.4rem 0.7rem", margin: 0 }}
+                autoFocus
+              />
+            </div>
+            <div style={{ maxHeight: "200px", overflowY: "auto" }}>
+              {filtered.length === 0 ? (
+                <div style={{ padding: "0.75rem", color: "var(--text-muted)", fontSize: "0.85rem", textAlign: "center" }}>No results</div>
+              ) : (
+                filtered.map((c) => (
+                  <button
+                    key={c.code}
+                    type="button"
+                    role="option"
+                    aria-selected={value === c.code}
+                    onClick={() => { onChange(c.code); setOpen(false); setSearch(""); }}
+                    style={{
+                      width: "100%", textAlign: "left", background: value === c.code ? "rgba(124,58,237,0.15)" : "transparent",
+                      border: "none", color: "var(--text-primary)", padding: "0.5rem 0.85rem",
+                      cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
+                      fontSize: "0.875rem", fontFamily: "inherit",
+                    }}
+                    onMouseOver={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(124,58,237,0.1)"; }}
+                    onMouseOut={(e) => { (e.currentTarget as HTMLElement).style.background = value === c.code ? "rgba(124,58,237,0.15)" : "transparent"; }}
+                  >
+                    <span style={{ fontSize: "1.1rem", lineHeight: 1 }}>{c.flag}</span>
+                    <span>{c.name}</span>
+                    {value === c.code && <Check size={14} style={{ marginLeft: "auto", color: "var(--accent-phantom)" }} />}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+      {error && (
+        <div className="auth-field-error">
+          <AlertCircle size={13} />
+          <span>{error}</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -363,6 +682,7 @@ function SignUpForm({ onSuccess, onSwitch }: {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [country, setCountry] = useState("");
   const [terms, setTerms] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -379,30 +699,33 @@ function SignUpForm({ onSuccess, onSwitch }: {
     if (touched.password && !validatePasswordStrength(password))
       e.password = "Password doesn't meet requirements.";
     if (touched.confirm && confirm !== password) e.confirm = "Passwords do not match.";
+    if (touched.country && !country) e.country = "Please select your country.";
     if (touched.terms && !terms) e.terms = "You must accept the Terms of Service.";
     return e;
-  }, [name, email, password, confirm, terms, touched]);
+  }, [name, email, password, confirm, country, terms, touched]);
 
   const currentErrors = fieldErrors();
   const isFormValid =
     name.trim() && email && validateEmail(email) &&
-    validatePasswordStrength(password) && confirm === password && terms;
+    validatePasswordStrength(password) && confirm === password && country && terms;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setTouched({ name: true, email: true, password: true, confirm: true, terms: true });
+    setTouched({ name: true, email: true, password: true, confirm: true, country: true, terms: true });
     if (!isFormValid) return;
 
     setLoading(true);
     setGlobalError("");
 
+    const selectedCountry = COUNTRIES.find(c => c.code === country);
     const res = await signUp({
       full_name: name.trim(),
       email,
       password,
       confirm_password: confirm,
       accepted_terms: terms,
-    });
+      country: selectedCountry?.name || country,
+    } as any);
     setLoading(false);
 
     if (res.success) {
@@ -498,6 +821,12 @@ function SignUpForm({ onSuccess, onSwitch }: {
         autoComplete="new-password"
       />
 
+      <CountrySelector
+        value={country}
+        onChange={(v) => { setCountry(v); touch("country"); }}
+        error={currentErrors.country}
+      />
+
       <label className={`auth-checkbox ${currentErrors.terms ? "has-error" : ""}`}>
         <input
           type="checkbox"
@@ -554,7 +883,6 @@ function LoginForm({ onSuccess, onSwitch, onForgot }: {
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [rateLimited, setRateLimited] = useState<{ minutes: number } | null>(null);
@@ -569,7 +897,8 @@ function LoginForm({ onSuccess, onSwitch, onForgot }: {
     setError("");
     setRateLimited(null);
 
-    const res = await login({ email, password, remember_me: remember });
+    // Always use remember_me: true so sessions persist for 30 days
+    const res = await login({ email, password, remember_me: true });
     setLoading(false);
 
     if (res.success && res.user_id) {
@@ -639,17 +968,6 @@ function LoginForm({ onSuccess, onSwitch, onForgot }: {
         }
       />
 
-      <div className="auth-row">
-        <label className="auth-checkbox">
-          <input
-            type="checkbox"
-            checked={remember}
-            onChange={(e) => setRemember(e.target.checked)}
-          />
-          <span className="auth-checkmark" />
-          <span className="auth-checkbox-label">Remember me for 30 days</span>
-        </label>
-      </div>
 
       <button
         type="submit"

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import {
-  ArrowDownUp, ArrowUpRight, BarChart3, Bell, Check, CheckCircle, ChevronDown, ChevronRight, ChevronUp,
+  ArrowDownUp, ArrowUpRight, BarChart3, Bell, Check, CheckCircle, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
   Copy, LayoutDashboard, LineChart, Menu, Plus, Search,
   Send, Settings, Shield, ShieldCheck, Star, Wallet, X, TrendingUp, TrendingDown,
   AlertTriangle, Coins, Users, ArrowDownToLine, ArrowUpToLine, Skull, LogOut, Sliders, Zap, Globe, Lock, ShoppingBag, RotateCcw, ExternalLink,
@@ -3531,14 +3531,41 @@ function ModalBox({ type, close, flash, authUser }: { type: Modal; close: () => 
   };
   const { title, sub } = meta[type] ?? { title: "Action", sub: "" };
 
-  return (
-    <div className="overlay" onClick={e => { if (e.target === e.currentTarget) close(); }}>
-      <div className="modal">
-        <button className="close-btn" onClick={close}><X size={14} /></button>
-        <h2>{title}</h2>
-        <small>{sub}</small>
+  const isFullPage = type === "deposit" || type === "buy" || type === "send";
 
-        {type === "deposit" && (
+  if (isFullPage) {
+    return (
+      <div style={{
+        position: "fixed", inset: 0, zIndex: 600,
+        background: "var(--bg)", display: "flex", flexDirection: "column", overflowY: "auto",
+      }}>
+        {/* Full-page sticky top nav */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 12,
+          padding: "0.9rem 1.25rem", borderBottom: "1px solid var(--border-dark)",
+          background: "var(--card-bg)", position: "sticky", top: 0, zIndex: 10,
+          backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
+        }}>
+          <button
+            onClick={close}
+            style={{
+              background: "rgba(255,255,255,0.07)", border: "1px solid var(--border-dark)",
+              color: "var(--text-primary)", borderRadius: "50%", width: 36, height: 36,
+              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}
+            aria-label="Go back"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <div>
+            <div style={{ fontSize: "1rem", fontWeight: 700, color: "var(--text-primary)" }}>{title}</div>
+            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: 1 }}>{sub}</div>
+          </div>
+        </div>
+        {/* Full-page scrollable content area */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "1.5rem 1.25rem", maxWidth: 520, margin: "0 auto", width: "100%", boxSizing: "border-box" }}>
+
+          {type === "deposit" && (
           <>
             {verifySuccess ? (
               <div style={{ textAlign: 'center', padding: '16px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
@@ -4257,6 +4284,18 @@ function ModalBox({ type, close, flash, authUser }: { type: Modal; close: () => 
           </>
         )}
 
+      </div>
+    </div>
+  );
+  } // end if (isFullPage)
+
+  // Fallback for confirm/create: classic card overlay
+  return (
+    <div className="overlay" onClick={e => { if (e.target === e.currentTarget) close(); }}>
+      <div className="modal">
+        <button className="close-btn" onClick={close}><X size={14} /></button>
+        <h2>{title}</h2>
+        <small>{sub}</small>
         {type === "confirm" && (
           <>
             <div className="confirm-swap-box">
@@ -4272,7 +4311,6 @@ function ModalBox({ type, close, flash, authUser }: { type: Modal; close: () => 
             </button>
           </>
         )}
-
         {type === "create" && (
           <>
             <label className="modal-label">Token name</label>
