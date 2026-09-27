@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   ChevronLeft, Copy, Check, ShieldCheck, Zap, RefreshCw,
-  ExternalLink, AlertTriangle, ArrowDownToLine, Clock
+  ExternalLink, AlertTriangle, Clock
 } from "lucide-react";
 import { api } from "../../services/api";
 import { type PlatformDepositWallet } from "../../types";
@@ -99,7 +99,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
 
   // Load platform deposit wallets from backend
   useEffect(() => {
-    const userAddr = authUser?.wallet_address || authUser?.email || "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
+    const userAddr = authUser?.wallet_address || "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
     api
       .getDepositWallets(userAddr, depositNetwork, depositCoin)
       .then((res) => {
@@ -109,7 +109,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
         }
       })
       .catch(() => {});
-  }, [depositCoin, depositNetwork, authUser?.wallet_address, authUser?.email]);
+  }, [depositCoin, depositNetwork, authUser?.wallet_address]);
 
   const getFallbackAddress = (net: string) => {
     if (net.includes("TRON")) return "TYD9yZ7G8gM2tY9vK8nP7wE6rT5yU4iO3p";
@@ -144,7 +144,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
     setPendingMsg(null);
 
     try {
-      const userAddr = authUser?.wallet_address || authUser?.email || "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
+      const userAddr = authUser?.wallet_address || "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
       const res = await api.verifyOnChainDeposit(
         userAddr,
         cleanHash,
@@ -154,9 +154,11 @@ export const DepositPage: React.FC<DepositPageProps> = ({
       );
 
       if (res.success) {
-        if (res.pending) {
-          setPendingMsg(res.message || "Deposit queued for block confirmation. Your digits will be automatically released once confirmed on-chain or approved by vault admin.");
-          flash("⏳ Deposit queued! Digits release once confirmed on-chain or by admin.");
+        if (res.status === "PENDING") {
+          setPendingMsg(
+            res.message || "Your deposit has been submitted and queued for verification. Digits will release once confirmed."
+          );
+          flash("⏳ Deposit queued for confirmation.");
         } else {
           const creditedTokenAmt = parseFloat(res.credited_amount);
           marketStore.depositFunds(depositCoin, creditedTokenAmt);
@@ -167,7 +169,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
             newBalance: res.new_balance,
             txHash: cleanHash,
           });
-          flash(`🎉 Verified! +$${amtNum.toFixed(2)} USD digits credited immediately!`);
+          flash(`🎉 Verified! +$${amtNum.toFixed(2)} USD credited immediately!`);
         }
       }
     } catch (err: any) {
@@ -189,76 +191,76 @@ export const DepositPage: React.FC<DepositPageProps> = ({
   return (
     <div className="fullpage-modal-wrap" style={{ overflowX: "hidden", touchAction: "pan-y", width: "100%", maxWidth: "100vw" }}>
       {/* Sticky Header */}
-      <header className="fullpage-modal-header" style={{ padding: "0.75rem 1.25rem" }}>
+      <header className="fullpage-modal-header">
         <button type="button" className="fullpage-back-btn" onClick={onClose}>
           <ChevronLeft size={16} />
           <span>Back</span>
         </button>
 
         <div className="fullpage-header-title">
-          <h1 style={{ fontSize: 15 }}>Deposit Crypto</h1>
-          <span style={{ fontSize: 10.5 }}>Vault Multi-Sig Inflow</span>
+          <h1>Deposit Crypto</h1>
+          <span>Direct non-custodial vault funding</span>
         </div>
 
         <div className="fullpage-status-badge">
           <span className="pulse-dot" />
-          <span>VAULT ACTIVE</span>
+          <span>MAINNET ACTIVE</span>
         </div>
       </header>
 
-      {/* Main Single-Page Body */}
-      <div className="deposit-onepage-body">
+      {/* Main Scrollable Body */}
+      <div className="fullpage-modal-body">
         {verifySuccess ? (
           /* Success Receipt Card */
-          <div className="deposit-subcard" style={{ textAlign: "center", padding: "28px 20px", maxWidth: 520, margin: "20px auto" }}>
+          <div className="pro-card" style={{ textAlign: "center", padding: "28px 20px" }}>
             <div
               style={{
-                width: 58,
-                height: 58,
+                width: 64,
+                height: 64,
                 borderRadius: "50%",
                 background: "rgba(16, 185, 129, 0.15)",
                 border: "2px solid #10B981",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                margin: "0 auto 14px",
-                boxShadow: "0 0 20px rgba(16, 185, 129, 0.35)",
+                margin: "0 auto 16px",
+                boxShadow: "0 0 24px rgba(16, 185, 129, 0.35)",
               }}
             >
-              <ShieldCheck size={32} color="#10B981" />
+              <ShieldCheck size={36} color="#10B981" />
             </div>
 
-            <h2 style={{ fontSize: 19, fontWeight: 800, margin: "0 0 6px" }}>
+            <h2 style={{ fontSize: 20, fontWeight: 800, margin: "0 0 6px" }}>
               Deposit Verified & Credited!
             </h2>
-            <p style={{ fontSize: 12.5, color: "var(--muted)", margin: "0 0 16px" }}>
-              Funds confirmed on {depositNetwork.split(" ")[0]} and released into your trading balance.
+            <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 20px" }}>
+              Funds have been confirmed on {depositNetwork.split(" ")[0]} and credited to your balance.
             </p>
 
             <div
               style={{
-                background: "rgba(0, 0, 0, 0.35)",
+                background: "rgba(0, 0, 0, 0.3)",
                 border: "1px solid rgba(255, 255, 255, 0.08)",
-                borderRadius: 12,
-                padding: "14px",
+                borderRadius: 14,
+                padding: "16px",
                 display: "flex",
                 flexDirection: "column",
-                gap: 8,
+                gap: 10,
                 textAlign: "left",
-                marginBottom: 16,
+                marginBottom: 20,
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5 }}>
-                <span style={{ color: "var(--muted)" }}>Digits Credited:</span>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                <span style={{ color: "var(--muted)" }}>Amount Credited:</span>
                 <span style={{ fontWeight: 800, color: "#10B981" }}>
                   +${verifySuccess.usdAmount || "50.00"} USD ({verifySuccess.amount} {verifySuccess.currency})
                 </span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
                 <span style={{ color: "var(--muted)" }}>Network:</span>
                 <span style={{ fontWeight: 600 }}>{depositNetwork}</span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                 <span style={{ color: "var(--muted)" }}>Tx Hash:</span>
                 <span style={{ fontFamily: "monospace", color: "#C4B5FD" }}>
                   {verifySuccess.txHash.slice(0, 10)}...{verifySuccess.txHash.slice(-8)}
@@ -268,12 +270,12 @@ export const DepositPage: React.FC<DepositPageProps> = ({
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  fontSize: 12.5,
-                  paddingTop: 8,
+                  fontSize: 13,
+                  paddingTop: 10,
                   borderTop: "1px solid rgba(255, 255, 255, 0.08)",
                 }}
               >
-                <span style={{ color: "var(--muted)" }}>Available Balance:</span>
+                <span style={{ color: "var(--muted)" }}>Updated Balance:</span>
                 <span style={{ fontWeight: 800, color: "var(--violet, #7C3AED)" }}>
                   ${Number(verifySuccess.newBalance).toFixed(2)} USD
                 </span>
@@ -282,136 +284,180 @@ export const DepositPage: React.FC<DepositPageProps> = ({
 
             <button
               type="button"
-              className="deposit-verify-btn"
+              className="pro-submit-btn"
               onClick={() => onDone(`✅ Credited +$${verifySuccess.usdAmount || "50.00"} USD (${verifySuccess.currency})!`)}
             >
               Done • Return to Dashboard
             </button>
           </div>
         ) : (
-          /* Unified Single-Page 2-Column Grid (No Scrolling) */
-          <div className="deposit-single-grid">
-            {/* LEFT PANEL: Asset Selector & Vault Deposit Address */}
-            <div className="deposit-panel">
-              {/* 1. Asset & Network Selection */}
-              <div className="deposit-subcard">
-                <div className="deposit-subcard-title">
-                  <span>1. Select Asset</span>
-                  <span className="deposit-badge-green">0% Fee • Instant Digits</span>
+          <>
+            {/* 1. Crypto Asset Selector Card */}
+            <div className="pro-card">
+              <div className="pro-card-header">
+                <span className="pro-card-label">1. Select Deposit Asset</span>
+                <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>
+                  0% Fee • Instant
+                </span>
+              </div>
+
+              <div className="asset-selector-grid">
+                {(["USDT", "SOL", "USDC", "BTC", "ETH"] as const).map((sym) => {
+                  const isActive = depositCoin === sym;
+                  const tokenMeta = COIN_METAS[sym];
+                  const tokenPrice =
+                    sym === "USDT" || sym === "USDC"
+                      ? 1.0
+                      : marketStore.getToken(sym)?.numericPrice ||
+                        (sym === "SOL" ? 179.84 : sym === "BTC" ? 77724 : 2650);
+
+                  return (
+                    <button
+                      key={sym}
+                      type="button"
+                      className={`asset-pill ${isActive ? "active" : ""}`}
+                      onClick={() => handleSelectCoin(sym)}
+                    >
+                      <img
+                        src={tokenMeta.iconUrl}
+                        alt={sym}
+                        style={{ width: 24, height: 24, borderRadius: "50%" }}
+                      />
+                      <span className="asset-pill-sym">{sym}</span>
+                      <span className="asset-pill-price">
+                        ${tokenPrice >= 100 ? tokenPrice.toLocaleString(undefined, { maximumFractionDigits: 0 }) : tokenPrice.toFixed(2)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Network Pills */}
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 6 }}>
+                  Select Chain Network:
                 </div>
-
-                <div className="deposit-assets-compact-row">
-                  {(["USDT", "SOL", "USDC", "BTC", "ETH"] as const).map((sym) => {
-                    const isActive = depositCoin === sym;
-                    const tokenMeta = COIN_METAS[sym];
-                    const tokenPrice =
-                      sym === "USDT" || sym === "USDC"
-                        ? 1.0
-                        : marketStore.getToken(sym)?.numericPrice ||
-                          (sym === "SOL" ? 179.84 : sym === "BTC" ? 77724 : 2650);
-
-                    return (
-                      <button
-                        key={sym}
-                        type="button"
-                        className={`deposit-asset-pill ${isActive ? "active" : ""}`}
-                        onClick={() => handleSelectCoin(sym)}
-                      >
-                        <img src={tokenMeta.iconUrl} alt={sym} />
-                        <div className="deposit-asset-pill-text">
-                          <span className="sym">{sym}</span>
-                          <span className="price">${tokenPrice >= 100 ? tokenPrice.toLocaleString(undefined, { maximumFractionDigits: 0 }) : tokenPrice.toFixed(2)}</span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Chain Network Selector */}
-                <div className="deposit-network-row">
+                <div className="network-pills-row">
                   {(COIN_NETWORKS[depositCoin] || []).map((net) => {
                     const isNetActive = depositNetwork === net.networkKey;
                     return (
                       <button
                         key={net.networkKey}
                         type="button"
-                        className={`deposit-network-pill ${isNetActive ? "active" : ""}`}
+                        className={`network-pill ${isNetActive ? "active" : ""}`}
                         onClick={() => setDepositNetwork(net.networkKey)}
                       >
                         <span>{net.label}</span>
-                        <span className="speed">{net.speed}</span>
+                        <span style={{ fontSize: 9.5, opacity: 0.8 }}>({net.speed})</span>
                       </button>
                     );
                   })}
                 </div>
               </div>
+            </div>
 
-              {/* 2. Platform Deposit Vault Address & QR */}
-              <div className="deposit-subcard">
-                <div className="deposit-subcard-title">
-                  <span>2. Vault Deposit Address</span>
-                  <span className="deposit-badge-network">{depositNetwork.split(" ")[0]}</span>
-                </div>
+            {/* 2. QR Code & Deposit Address Card */}
+            <div className="pro-card" style={{ textAlign: "center" }}>
+              <div className="pro-card-header">
+                <span className="pro-card-label">2. Your Deposit Address</span>
+                <span style={{ fontSize: 11, color: "#C4B5FD", fontWeight: 700 }}>
+                  {depositNetwork.split(" ")[0]}
+                </span>
+              </div>
 
-                <div className="vault-address-flex">
-                  <div className="vault-qr-box">
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(
-                        activeDepositAddress
-                      )}&margin=2`}
-                      width={92}
-                      height={92}
-                      alt="Deposit QR"
-                      style={{ display: "block", borderRadius: 6 }}
-                    />
-                  </div>
-                  <div className="vault-addr-info">
-                    <div className="vault-addr-label">Multi-Sig Vault Address</div>
-                    <div className="vault-addr-code">{activeDepositAddress}</div>
-                    <div className="vault-actions-row">
-                      <button
-                        type="button"
-                        className={`vault-copy-btn ${copiedAddr ? "copied" : ""}`}
-                        onClick={handleCopyAddress}
-                      >
-                        {copiedAddr ? <Check size={13} /> : <Copy size={13} />}
-                        <span>{copiedAddr ? "Copied!" : "Copy Address"}</span>
-                      </button>
-                      <a
-                        href={getExplorerLink()}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="vault-explorer-btn"
-                      >
-                        <ExternalLink size={12} />
-                        <span>Explorer</span>
-                      </a>
-                    </div>
-                  </div>
+              <div className="qr-container">
+                <div className="qr-frame">
+                  <div className="qr-scanner-line" />
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(
+                      activeDepositAddress
+                    )}&margin=2`}
+                    width={140}
+                    height={140}
+                    alt="Deposit Address QR"
+                    style={{ display: "block", borderRadius: 8 }}
+                  />
                 </div>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 10 }}>
+                  Scan with Binance, Bybit, Trust Wallet, or Phantom
+                </div>
+              </div>
 
-                <div className="deposit-warning-bar">
-                  <AlertTriangle size={13} style={{ flexShrink: 0 }} />
-                  <span>Send only <b>{depositCoin}</b> via <b>{depositNetwork}</b>. Transferring other assets will result in loss.</span>
-                </div>
+              {/* Monospace Address with Copy */}
+              <div className="address-copy-row">
+                <span className="address-monospace-text">{activeDepositAddress}</span>
+                <button
+                  type="button"
+                  className={`address-copy-btn ${copiedAddr ? "copied" : ""}`}
+                  onClick={handleCopyAddress}
+                >
+                  {copiedAddr ? <Check size={14} /> : <Copy size={14} />}
+                  <span>{copiedAddr ? "Copied!" : "Copy"}</span>
+                </button>
+              </div>
+
+              {/* Explorer Link */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, fontSize: 11.5 }}>
+                <a
+                  href={getExplorerLink()}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    color: "#A78BFA",
+                    textDecoration: "none",
+                    fontWeight: 700,
+                  }}
+                >
+                  <ExternalLink size={12} /> View Platform Vault on Block Explorer
+                </a>
+                <span style={{ color: "var(--muted)", display: "flex", alignItems: "center", gap: 4 }}>
+                  <ShieldCheck size={13} color="#10B981" /> Multi-Sig Vault
+                </span>
+              </div>
+
+              {/* Notice */}
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  background: "rgba(245, 158, 11, 0.08)",
+                  border: "1px solid rgba(245, 158, 11, 0.2)",
+                  fontSize: 11,
+                  color: "#FBBF24",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  textAlign: "left",
+                }}
+              >
+                <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+                <span>
+                  Only transfer <b>{depositCoin}</b> via <b>{depositNetwork}</b>. Sending assets on other chains may result in permanent loss.
+                </span>
               </div>
             </div>
 
-            {/* RIGHT PANEL: Expected Amount & Auto-Release Verification */}
-            <div className="deposit-panel">
-              {/* 3. Expected Amount */}
-              <div className="deposit-subcard">
-                <div className="deposit-subcard-title">
-                  <span>3. Expected Amount</span>
-                  <span style={{ fontSize: 10.5, color: "var(--muted)" }}>Min: $5.00 USD</span>
-                </div>
+            {/* 3. Deposit Amount & Conversion Calculator */}
+            <div className="pro-card">
+              <div className="pro-card-header">
+                <span className="pro-card-label">3. Expected Amount ($ USD)</span>
+                <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>
+                  Min Deposit: $5.00
+                </span>
+              </div>
 
-                <div className="deposit-amount-input-box">
-                  <span className="currency-prefix">$</span>
+              <div className="converter-box">
+                <div className="converter-input-row">
+                  <span className="converter-currency-sym">$</span>
                   <input
                     type="number"
                     min="5"
                     step="5"
+                    className="converter-input"
                     value={depositAmt}
                     onChange={(e) => {
                       setDepositAmt(e.target.value);
@@ -420,96 +466,140 @@ export const DepositPage: React.FC<DepositPageProps> = ({
                     }}
                     placeholder="50.00"
                   />
-                  <span className="currency-suffix">USD</span>
-                  <div className="crypto-approx-tag">
-                    ≈ {cryptoEquivalent < 1 ? cryptoEquivalent.toFixed(6) : cryptoEquivalent.toFixed(2)} {depositCoin}
-                  </div>
+                  <span className="converter-fiat-tag">USD</span>
                 </div>
 
-                <div className="deposit-preset-row">
-                  {[10, 25, 50, 100, 250, 500, 1000].map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      className={`deposit-preset-chip ${parseFloat(depositAmt) === val ? "active" : ""}`}
-                      onClick={() => {
-                        setDepositAmt(String(val));
-                        setVerifyError(null);
-                        setPendingMsg(null);
-                      }}
-                    >
-                      ${val}
-                    </button>
-                  ))}
+                <div className="converter-subrow">
+                  <span className="converter-sub-label">You will transfer approx:</span>
+                  <div className="converter-badge">
+                    <img src={COIN_METAS[depositCoin].iconUrl} width={16} height={16} alt={depositCoin} style={{ borderRadius: "50%" }} />
+                    <span>
+                      ≈ {cryptoEquivalent < 1 ? cryptoEquivalent.toFixed(6) : cryptoEquivalent.toFixed(2)} {depositCoin}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* 4. Instant Auto-Release TxID Verification */}
-              <div className="deposit-subcard deposit-verify-subcard">
-                <div className="deposit-subcard-title">
-                  <span style={{ color: "var(--text)", display: "flex", alignItems: "center", gap: 5 }}>
-                    <Zap size={13} color="#C4B5FD" />
-                    4. Auto-Release Digits (TxID)
-                  </span>
-                  <span className="deposit-badge-network">On-Chain Verified</span>
-                </div>
-
-                <p className="deposit-verify-hint">
-                  After transferring from your wallet or exchange (Binance, Phantom, Trust Wallet), paste your TxID / Signature below to verify and release trading digits.
-                </p>
-
-                <div className="deposit-txid-input-wrap">
-                  <input
-                    type="text"
-                    value={txHash}
-                    onChange={(e) => {
-                      setTxHash(e.target.value);
+              <div className="preset-chips-row">
+                {[10, 25, 50, 100, 250, 500, 1000].map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    className={`preset-chip-btn ${parseFloat(depositAmt) === val ? "active" : ""}`}
+                    onClick={() => {
+                      setDepositAmt(String(val));
                       setVerifyError(null);
                       setPendingMsg(null);
                     }}
-                    placeholder="Paste on-chain TxID / signature hash..."
-                  />
-                </div>
+                  >
+                    ${val}
+                  </button>
+                ))}
+              </div>
+            </div>
 
+            {/* 4. Instant Automated Verification Section */}
+            <div className="pro-card" style={{ background: "rgba(124, 58, 237, 0.08)", borderColor: "rgba(124, 58, 237, 0.25)" }}>
+              <div className="pro-card-header">
+                <span className="pro-card-label" style={{ color: "var(--text)" }}>
+                  <Zap size={14} color="#C4B5FD" />
+                  Instant Auto-Credit Verification
+                </span>
+                <span style={{ fontSize: 10.5, color: "#C4B5FD", fontWeight: 700 }}>
+                  Sub-5s Confirmation
+                </span>
+              </div>
+
+              <p style={{ fontSize: 11.5, color: "var(--muted)", margin: "0 0 10px", lineHeight: 1.4 }}>
+                After submitting the transfer from your external wallet or exchange, paste the Transaction ID (TxID/Signature) below to credit your account immediately.
+              </p>
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <input
+                  type="text"
+                  value={txHash}
+                  onChange={(e) => {
+                    setTxHash(e.target.value);
+                    setVerifyError(null);
+                    setPendingMsg(null);
+                  }}
+                  placeholder="Paste TxID / signature hash..."
+                  style={{
+                    flex: "1 1 200px",
+                    background: "rgba(10, 11, 20, 0.85)",
+                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                    fontSize: 12,
+                    fontFamily: "monospace",
+                    color: "var(--text, #fff)",
+                    outline: "none",
+                    minHeight: 44,
+                  }}
+                />
                 <button
                   type="button"
-                  className="deposit-verify-btn"
+                  className="pro-submit-btn"
                   onClick={handleVerifyOnChainDeposit}
                   disabled={isVerifying || !txHash.trim()}
+                  style={{ flex: "1 1 140px", padding: "0 18px", minHeight: 44, fontSize: 13, margin: 0 }}
                 >
                   {isVerifying ? (
                     <>
                       <RefreshCw size={14} className="animate-spin" />
-                      <span>Verifying On-Chain...</span>
+                      <span>Verifying...</span>
                     </>
                   ) : (
                     <>
                       <Zap size={14} />
-                      <span>Verify & Release Digits</span>
+                      <span>Verify Deposit</span>
                     </>
                   )}
                 </button>
-
-                {/* Status feedback */}
-                {pendingMsg && (
-                  <div className="deposit-feedback-pending">
-                    <Clock size={16} style={{ flexShrink: 0 }} />
-                    <div>
-                      <div style={{ fontWeight: 700 }}>Deposit Submitted • Queued</div>
-                      <div style={{ fontSize: 10.5, opacity: 0.9 }}>{pendingMsg}</div>
-                    </div>
-                  </div>
-                )}
-
-                {verifyError && (
-                  <div className="deposit-feedback-error">
-                    <AlertTriangle size={15} style={{ flexShrink: 0 }} />
-                    <span>{verifyError}</span>
-                  </div>
-                )}
               </div>
+
+              {pendingMsg && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    background: "rgba(245, 158, 11, 0.12)",
+                    border: "1px solid rgba(245, 158, 11, 0.3)",
+                    color: "#FBBF24",
+                    fontSize: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  <Clock size={16} style={{ flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontWeight: 700 }}>Deposit Submitted • Queued for Verification</div>
+                    <div style={{ fontSize: 11, opacity: 0.9 }}>{pendingMsg}</div>
+                  </div>
+                </div>
+              )}
+
+              {verifyError && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    background: "rgba(239, 68, 68, 0.12)",
+                    border: "1px solid rgba(239, 68, 68, 0.3)",
+                    color: "#F87171",
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                  }}
+                >
+                  ⚠️ {verifyError}
+                </div>
+              )}
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>
