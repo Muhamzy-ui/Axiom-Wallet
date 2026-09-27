@@ -291,9 +291,10 @@ export const DepositPage: React.FC<DepositPageProps> = ({
             </button>
           </div>
         ) : (
-          <>
-            {/* 1. Crypto Asset Selector Card */}
-            <div className="pro-card">
+          /* One Single Long Unified Deposit Card */
+          <div className="pro-card">
+            {/* 1. Crypto Asset Selector Section */}
+            <div className="card-section">
               <div className="pro-card-header">
                 <span className="pro-card-label">1. Select Deposit Asset</span>
                 <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>
@@ -356,8 +357,10 @@ export const DepositPage: React.FC<DepositPageProps> = ({
               </div>
             </div>
 
-            {/* 2. QR Code & Deposit Address Card */}
-            <div className="pro-card" style={{ textAlign: "center" }}>
+            <div className="card-divider" />
+
+            {/* 2. QR Code & Deposit Address Section */}
+            <div className="card-section" style={{ textAlign: "center" }}>
               <div className="pro-card-header">
                 <span className="pro-card-label">2. Your Deposit Address</span>
                 <span style={{ fontSize: 11, color: "#C4B5FD", fontWeight: 700 }}>
@@ -441,8 +444,10 @@ export const DepositPage: React.FC<DepositPageProps> = ({
               </div>
             </div>
 
-            {/* 3. Deposit Amount & Conversion Calculator */}
-            <div className="pro-card">
+            <div className="card-divider" />
+
+            {/* 3. Deposit Amount & Conversion Calculator Section */}
+            <div className="card-section">
               <div className="pro-card-header">
                 <span className="pro-card-label">3. Expected Amount ($ USD)</span>
                 <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>
@@ -498,8 +503,18 @@ export const DepositPage: React.FC<DepositPageProps> = ({
               </div>
             </div>
 
+            <div className="card-divider" />
+
             {/* 4. Instant Automated Verification Section */}
-            <div className="pro-card" style={{ background: "rgba(124, 58, 237, 0.08)", borderColor: "rgba(124, 58, 237, 0.25)" }}>
+            <div
+              className="card-section"
+              style={{
+                background: "rgba(124, 58, 237, 0.08)",
+                border: "1px solid rgba(124, 58, 237, 0.25)",
+                borderRadius: 14,
+                padding: "16px",
+              }}
+            >
               <div className="pro-card-header">
                 <span className="pro-card-label" style={{ color: "var(--text)" }}>
                   <Zap size={14} color="#C4B5FD" />
@@ -599,7 +614,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
                 </div>
               )}
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>

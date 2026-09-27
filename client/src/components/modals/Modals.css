@@ -119,29 +119,52 @@
 .fullpage-modal-body {
   flex: 1;
   width: 100%;
-  max-width: 540px;
+  max-width: 560px;
   margin: 0 auto;
   padding: 1.5rem 1.25rem calc(3.5rem + env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  overflow-x: hidden !important;
+  overflow: visible !important;
   touch-action: pan-y;
 }
 
-/* Institutional Card Box */
+/* Institutional Card Box (Single Long Card) */
 .pro-card {
   background: rgba(19, 20, 31, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  padding: 16px;
+  border-radius: 18px;
+  padding: 20px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
   transition: border-color 0.2s ease;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  overflow-x: hidden;
+  overflow: visible !important;
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+  scrollbar-width: none !important;
+}
+
+.pro-card::-webkit-scrollbar,
+.pro-card *::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Elegant Section Divider inside One Long Card */
+.card-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 18px 0;
+  width: 100%;
+}
+
+.card-section {
+  display: flex;
+  flex-direction: column;
 }
 
 .pro-card:hover {

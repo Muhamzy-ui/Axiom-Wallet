@@ -442,9 +442,20 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
               </button>
             </div>
 
-            {/* Available Balance Card */}
-            <div className="pro-card" style={{ background: "rgba(124, 58, 237, 0.08)", borderColor: "rgba(124, 58, 237, 0.25)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            {/* One Long Unified Withdrawal Card */}
+            <div className="pro-card">
+              {/* Header: Available Balance Banner */}
+              <div
+                style={{
+                  background: "rgba(124, 58, 237, 0.1)",
+                  border: "1px solid rgba(124, 58, 237, 0.25)",
+                  borderRadius: 14,
+                  padding: "14px 16px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>
                     Available {mode === "crypto" ? sendCoin : "Cash"} Balance
@@ -459,307 +470,317 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
                   </span>
                 </div>
               </div>
-            </div>
 
-            {mode === "crypto" ? (
-              /* Crypto Mode */
-              <>
-                {/* 1. Asset & Network */}
-                <div className="pro-card">
-                  <div className="pro-card-header">
-                    <span className="pro-card-label">1. Asset & Network</span>
-                  </div>
+              <div className="card-divider" />
 
-                  <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                    {(["USDT", "USDC", "SOL"] as const).map((sym) => (
-                      <button
-                        key={sym}
-                        type="button"
-                        className={`asset-pill ${sendCoin === sym ? "active" : ""}`}
-                        style={{ flex: 1, padding: "8px" }}
-                        onClick={() => handleSelectCoin(sym)}
-                      >
-                        <span className="asset-pill-sym">{sym}</span>
-                        <span className="asset-pill-price">${(balances[sym]?.bal || 0).toFixed(2)}</span>
-                      </button>
-                    ))}
-                  </div>
-
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 6 }}>
-                    Select Rail / Chain:
-                  </div>
-                  <div className="network-pills-row">
-                    {(SEND_NETWORKS[sendCoin] || []).map((n) => (
-                      <button
-                        key={n.networkKey}
-                        type="button"
-                        className={`network-pill ${sendNetwork === n.networkKey ? "active" : ""}`}
-                        onClick={() => setSendNetwork(n.networkKey)}
-                      >
-                        {n.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 2. Recipient Address */}
-                <div className="pro-card">
-                  <div className="pro-card-header">
-                    <span className="pro-card-label">2. Destination Address</span>
-                  </div>
-
-                  <div style={{ position: "relative" }}>
-                    <input
-                      type="text"
-                      className="modal-input"
-                      placeholder={`Paste recipient ${sendNetwork.split(" ")[0]} address...`}
-                      value={recipientAddress}
-                      onChange={(e) => {
-                        setRecipientAddress(e.target.value);
-                        setError(null);
-                      }}
-                      style={{ margin: 0, fontFamily: "monospace", fontSize: 12 }}
-                    />
-                  </div>
-                </div>
-              </>
-            ) : (
-              /* Local Bank Mode */
-              <>
-                {/* 1. Country Selection */}
-                <div className="pro-card">
-                  <div className="pro-card-header">
-                    <span className="pro-card-label">
-                      <Globe size={13} />
-                      1. Payout Country & Currency
-                    </span>
-                    <span style={{ fontSize: 11, color: "var(--violet, #7C3AED)", fontWeight: 700 }}>
-                      190+ Countries Live
-                    </span>
-                  </div>
-
-                  {/* Fast Flags Scroll Rail */}
-                  <div className="popular-flags-rail-wrap">
-                    <div className="popular-flags-rail-label">
-                      <span>Quick Select Country Flag:</span>
-                      <span>Tap to Switch</span>
+              {mode === "crypto" ? (
+                /* Crypto Mode */
+                <>
+                  {/* 1. Asset & Network Section */}
+                  <div className="card-section">
+                    <div className="pro-card-header">
+                      <span className="pro-card-label">1. Asset & Network</span>
                     </div>
-                    <div className="popular-flags-rail">
-                      {POPULAR_COUNTRY_CODES.map((code) => {
-                        const c = getCountryByCode(code);
-                        const isActive = selectedCountry.code === c.code;
-                        return (
-                          <button
-                            key={code}
-                            type="button"
-                            className={`flag-chip-pill ${isActive ? "active" : ""}`}
-                            onClick={() => handleSelectCountry(c)}
-                            title={`${c.name} (${c.currency})`}
-                          >
-                            <CountryFlag code={c.code} flag={c.flag} size={15} />
-                            <span>{c.code}</span>
-                            <span className="flag-chip-sub">({c.currencySymbol})</span>
-                          </button>
-                        );
-                      })}
+
+                    <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                      {(["USDT", "USDC", "SOL"] as const).map((sym) => (
+                        <button
+                          key={sym}
+                          type="button"
+                          className={`asset-pill ${sendCoin === sym ? "active" : ""}`}
+                          style={{ flex: 1, padding: "8px" }}
+                          onClick={() => handleSelectCoin(sym)}
+                        >
+                          <span className="asset-pill-sym">{sym}</span>
+                          <span className="asset-pill-price">${(balances[sym]?.bal || 0).toFixed(2)}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 6 }}>
+                      Select Rail / Chain:
+                    </div>
+                    <div className="network-pills-row">
+                      {(SEND_NETWORKS[sendCoin] || []).map((n) => (
+                        <button
+                          key={n.networkKey}
+                          type="button"
+                          className={`network-pill ${sendNetwork === n.networkKey ? "active" : ""}`}
+                          onClick={() => setSendNetwork(n.networkKey)}
+                        >
+                          {n.label}
+                        </button>
+                      ))}
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    className="country-pill-btn"
-                    onClick={() => setIsCountryModalOpen(true)}
-                    style={{ marginTop: 10 }}
-                  >
-                    <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={28} />
-                    <div style={{ flex: 1 }}>
-                      <div className="country-pill-name">{selectedCountry.name}</div>
-                      <div className="country-pill-currency">
-                        Payout in {selectedCountry.currency} ({selectedCountry.currencySymbol}) · 1 USD = {selectedCountry.rateToUsd >= 100 ? selectedCountry.rateToUsd.toLocaleString() : selectedCountry.rateToUsd} {selectedCountry.currency}
+                  <div className="card-divider" />
+
+                  {/* 2. Destination Address Section */}
+                  <div className="card-section">
+                    <div className="pro-card-header">
+                      <span className="pro-card-label">2. Destination Address</span>
+                    </div>
+
+                    <div style={{ position: "relative" }}>
+                      <input
+                        type="text"
+                        className="modal-input"
+                        placeholder={`Paste recipient ${sendNetwork.split(" ")[0]} address...`}
+                        value={recipientAddress}
+                        onChange={(e) => {
+                          setRecipientAddress(e.target.value);
+                          setError(null);
+                        }}
+                        style={{ margin: 0, fontFamily: "monospace", fontSize: 12 }}
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* Local Bank Mode */
+                <>
+                  {/* 1. Country Selection Section */}
+                  <div className="card-section">
+                    <div className="pro-card-header">
+                      <span className="pro-card-label">
+                        <Globe size={13} />
+                        1. Payout Country & Currency
+                      </span>
+                      <span style={{ fontSize: 11, color: "var(--violet, #7C3AED)", fontWeight: 700 }}>
+                        190+ Countries Live
+                      </span>
+                    </div>
+
+                    {/* Fast Flags Scroll Rail */}
+                    <div className="popular-flags-rail-wrap">
+                      <div className="popular-flags-rail-label">
+                        <span>Quick Select Country Flag:</span>
+                        <span>Tap to Switch</span>
+                      </div>
+                      <div className="popular-flags-rail">
+                        {POPULAR_COUNTRY_CODES.map((code) => {
+                          const c = getCountryByCode(code);
+                          const isActive = selectedCountry.code === c.code;
+                          return (
+                            <button
+                              key={code}
+                              type="button"
+                              className={`flag-chip-pill ${isActive ? "active" : ""}`}
+                              onClick={() => handleSelectCountry(c)}
+                              title={`${c.name} (${c.currency})`}
+                            >
+                              <CountryFlag code={c.code} flag={c.flag} size={15} />
+                              <span>{c.code}</span>
+                              <span className="flag-chip-sub">({c.currencySymbol})</span>
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
-                    <div
-                      style={{
-                        padding: "5px 10px",
-                        borderRadius: 8,
-                        background: "rgba(124, 58, 237, 0.18)",
-                        fontSize: 11.5,
-                        fontWeight: 700,
-                        color: "#C4B5FD",
-                      }}
+
+                    <button
+                      type="button"
+                      className="country-pill-btn"
+                      onClick={() => setIsCountryModalOpen(true)}
+                      style={{ marginTop: 10 }}
                     >
-                      Change
-                    </div>
-                  </button>
-                </div>
-
-                {/* 2. Bank Details */}
-                <div className="pro-card">
-                  <div className="pro-card-header">
-                    <span className="pro-card-label">2. Beneficiary Bank Details</span>
-                  </div>
-
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div>
-                      <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 4, display: "block" }}>
-                        Bank Name
-                      </label>
-                      <select
-                        className="modal-input"
-                        value={bankName}
-                        onChange={(e) => setBankName(e.target.value)}
-                        style={{ margin: 0, height: 42, background: "rgba(10, 11, 20, 0.85)", color: "var(--text)" }}
+                      <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={28} />
+                      <div style={{ flex: 1 }}>
+                        <div className="country-pill-name">{selectedCountry.name}</div>
+                        <div className="country-pill-currency">
+                          Payout in {selectedCountry.currency} ({selectedCountry.currencySymbol}) · 1 USD = {selectedCountry.rateToUsd >= 100 ? selectedCountry.rateToUsd.toLocaleString() : selectedCountry.rateToUsd} {selectedCountry.currency}
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          padding: "5px 10px",
+                          borderRadius: 8,
+                          background: "rgba(124, 58, 237, 0.18)",
+                          fontSize: 11.5,
+                          fontWeight: 700,
+                          color: "#C4B5FD",
+                        }}
                       >
-                        {(selectedCountry.banks || ["Access Bank", "Zenith Bank", "GTBank", "First Bank", "Kuda", "OPay"]).map((b) => (
-                          <option key={b} value={b} style={{ background: "#13131F", color: "#fff" }}>
-                            {b}
-                          </option>
-                        ))}
-                      </select>
+                        Change
+                      </div>
+                    </button>
+                  </div>
+
+                  <div className="card-divider" />
+
+                  {/* 2. Beneficiary Bank Details Section */}
+                  <div className="card-section">
+                    <div className="pro-card-header">
+                      <span className="pro-card-label">2. Beneficiary Bank Details</span>
                     </div>
 
-                    <div>
-                      <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 4, display: "block" }}>
-                        Account Number
-                      </label>
-                      <input
-                        type="text"
-                        className="modal-input"
-                        placeholder="e.g. 0123456789"
-                        value={accountNumber}
-                        onChange={(e) => {
-                          setAccountNumber(e.target.value);
-                          setError(null);
-                        }}
-                        style={{ margin: 0 }}
-                      />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div>
+                        <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 4, display: "block" }}>
+                          Bank Name
+                        </label>
+                        <select
+                          className="modal-input"
+                          value={bankName}
+                          onChange={(e) => setBankName(e.target.value)}
+                          style={{ margin: 0, height: 42, background: "rgba(10, 11, 20, 0.85)", color: "var(--text)" }}
+                        >
+                          {(selectedCountry.banks || ["Access Bank", "Zenith Bank", "GTBank", "First Bank", "Kuda", "OPay"]).map((b) => (
+                            <option key={b} value={b} style={{ background: "#13131F", color: "#fff" }}>
+                              {b}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 4, display: "block" }}>
+                          Account Number
+                        </label>
+                        <input
+                          type="text"
+                          className="modal-input"
+                          placeholder="e.g. 0123456789"
+                          value={accountNumber}
+                          onChange={(e) => {
+                            setAccountNumber(e.target.value);
+                            setError(null);
+                          }}
+                          style={{ margin: 0 }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 4, display: "block" }}>
+                          Account Holder Full Name
+                        </label>
+                        <input
+                          type="text"
+                          className="modal-input"
+                          placeholder="e.g. John Doe"
+                          value={accountName}
+                          onChange={(e) => {
+                            setAccountName(e.target.value);
+                            setError(null);
+                          }}
+                          style={{ margin: 0 }}
+                        />
+                      </div>
                     </div>
-
-                    <div>
-                      <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 4, display: "block" }}>
-                        Account Holder Full Name
-                      </label>
-                      <input
-                        type="text"
-                        className="modal-input"
-                        placeholder="e.g. John Doe"
-                        value={accountName}
-                        onChange={(e) => {
-                          setAccountName(e.target.value);
-                          setError(null);
-                        }}
-                        style={{ margin: 0 }}
-                      />
-                    </div>
                   </div>
-                </div>
-              </>
-            )}
+                </>
+              )}
 
-            {/* 3. Amount Section */}
-            <div className="pro-card">
-              <div className="pro-card-header">
-                <span className="pro-card-label">
-                  {mode === "crypto" ? "3. Amount to Withdraw" : "3. Cash Amount ($ USD)"}
-                </span>
-                <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>
-                  Min: $10.00 USD
-                </span>
-              </div>
+              <div className="card-divider" />
 
-              <div className="converter-box">
-                <div className="converter-row">
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
-                    <span style={{ fontSize: 20, fontWeight: 800, color: "var(--text)" }}>$</span>
-                    <input
-                      type="number"
-                      min="10"
-                      className="converter-input"
-                      value={sendAmt}
-                      onChange={(e) => {
-                        setSendAmt(e.target.value);
-                        setError(null);
-                      }}
-                      placeholder="10.00"
-                    />
-                  </div>
-                  <div className="converter-badge">
-                    <span>{mode === "crypto" ? sendCoin : "USD"}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Percentage Chips */}
-              <div className="preset-chips-row">
-                {["25%", "50%", "75%", "MAX"].map((pct) => (
-                  <button
-                    key={pct}
-                    type="button"
-                    className="preset-chip-btn"
-                    onClick={() => {
-                      const maxBal = mode === "crypto" ? availableCoinBalance : cashBalance;
-                      const fraction = pct === "25%" ? 0.25 : pct === "50%" ? 0.5 : pct === "75%" ? 0.75 : 1.0;
-                      setSendAmt((maxBal * fraction).toFixed(2));
-                      setError(null);
-                    }}
-                  >
-                    {pct}
-                  </button>
-                ))}
-              </div>
-
-              {mode === "bank" && numAmt > 0 && (
-                <div
-                  style={{
-                    marginTop: 10,
-                    padding: "8px 12px",
-                    borderRadius: 10,
-                    background: "rgba(16, 185, 129, 0.1)",
-                    border: "1px solid rgba(16, 185, 129, 0.25)",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    fontSize: 12,
-                  }}
-                >
-                  <span style={{ color: "var(--muted)" }}>You will receive in bank:</span>
-                  <span style={{ fontWeight: 800, color: "#10B981", fontSize: 14 }}>
-                    ≈ {selectedCountry.currencySymbol}{localPayout.toLocaleString()} {selectedCountry.currency}
+              {/* 3. Amount Section */}
+              <div className="card-section">
+                <div className="pro-card-header">
+                  <span className="pro-card-label">
+                    {mode === "crypto" ? "3. Amount to Withdraw" : "3. Cash Amount ($ USD)"}
+                  </span>
+                  <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>
+                    Min: $10.00 USD
                   </span>
                 </div>
-              )}
-            </div>
 
-            {error && (
-              <div
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  background: "rgba(239, 68, 68, 0.12)",
-                  border: "1px solid rgba(239, 68, 68, 0.3)",
-                  color: "#F87171",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <AlertTriangle size={15} />
-                <span>{error}</span>
+                <div className="converter-box">
+                  <div className="converter-row">
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
+                      <span style={{ fontSize: 20, fontWeight: 800, color: "var(--text)" }}>$</span>
+                      <input
+                        type="number"
+                        min="10"
+                        className="converter-input"
+                        value={sendAmt}
+                        onChange={(e) => {
+                          setSendAmt(e.target.value);
+                          setError(null);
+                        }}
+                        placeholder="10.00"
+                      />
+                    </div>
+                    <div className="converter-badge">
+                      <span>{mode === "crypto" ? sendCoin : "USD"}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Percentage Chips */}
+                <div className="preset-chips-row">
+                  {["25%", "50%", "75%", "MAX"].map((pct) => (
+                    <button
+                      key={pct}
+                      type="button"
+                      className="preset-chip-btn"
+                      onClick={() => {
+                        const maxBal = mode === "crypto" ? availableCoinBalance : cashBalance;
+                        const fraction = pct === "25%" ? 0.25 : pct === "50%" ? 0.5 : pct === "75%" ? 0.75 : 1.0;
+                        setSendAmt((maxBal * fraction).toFixed(2));
+                        setError(null);
+                      }}
+                    >
+                      {pct}
+                    </button>
+                  ))}
+                </div>
+
+                {mode === "bank" && numAmt > 0 && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      background: "rgba(16, 185, 129, 0.1)",
+                      border: "1px solid rgba(16, 185, 129, 0.25)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      fontSize: 12,
+                    }}
+                  >
+                    <span style={{ color: "var(--muted)" }}>You will receive in bank:</span>
+                    <span style={{ fontWeight: 800, color: "#10B981", fontSize: 14 }}>
+                      ≈ {selectedCountry.currencySymbol}{localPayout.toLocaleString()} {selectedCountry.currency}
+                    </span>
+                  </div>
+                )}
               </div>
-            )}
 
-            {/* Submit CTA with Mobile Sticky Bar */}
-            <div className="mobile-sticky-action-bar">
-              <button
-                type="button"
-                className="pro-submit-btn"
-                onClick={handleReview}
-              >
-                <Send size={16} />
-                <span>Review & Withdraw {sendAmt ? `$${sendAmt}` : "0.00"}</span>
-              </button>
+              {error && (
+                <div
+                  style={{
+                    marginTop: 14,
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    background: "rgba(239, 68, 68, 0.12)",
+                    border: "1px solid rgba(239, 68, 68, 0.3)",
+                    color: "#F87171",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <AlertTriangle size={15} />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {/* Submit CTA */}
+              <div style={{ marginTop: 18 }}>
+                <button
+                  type="button"
+                  className="pro-submit-btn"
+                  onClick={handleReview}
+                  style={{ width: "100%", margin: 0 }}
+                >
+                  <Send size={16} />
+                  <span>Review & Withdraw {sendAmt ? `$${sendAmt}` : "0.00"}</span>
+                </button>
+              </div>
             </div>
           </>
         )}
