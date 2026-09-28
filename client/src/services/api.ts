@@ -113,11 +113,11 @@ export const api = {
     return res.json();
   },
 
-  async updateAdminDepositWallets(wallets: Partial<PlatformDepositWallet>[]): Promise<{ success: boolean; message: string; wallets: PlatformDepositWallet[] }> {
+  async updateAdminDepositWallets(wallets: Partial<PlatformDepositWallet>[], deactivate_unlisted: boolean = false): Promise<{ success: boolean; message: string; wallets: PlatformDepositWallet[] }> {
     const res = await fetch(`${API_BASE}/admin-api/deposit-wallets/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallets }),
+      body: JSON.stringify({ wallets, deactivate_unlisted }),
     });
     if (!res.ok) {
       const err = await res.json();

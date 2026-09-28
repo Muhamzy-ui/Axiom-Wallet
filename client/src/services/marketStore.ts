@@ -120,7 +120,7 @@ export interface UserOrder {
   price: number;
   timestamp: number;
   dateStr: string;
-  orderType?: "Market" | "Limit" | "TP/SL" | "P2P Transfer";
+  orderType?: "Market" | "Limit" | "TP/SL" | "P2P Transfer" | "Deposit" | "Withdrawal";
   triggerNote?: string;
 }
 
@@ -651,6 +651,28 @@ class MarketStore {
       t.is_liquidity_locked = this.isTokenLiquidityLocked(t.sym);
     });
     this.initSync();
+    // Synchronously restore user balances from localStorage on construction to eliminate $0.00 flash
+    if (typeof window !== "undefined" && window.localStorage) {
+      try {
+        const savedUid = window.localStorage.getItem("axiom_user_id") || window.localStorage.getItem("axiom_wallet_address");
+        const key = savedUid ? `axiom_user_balances_v16_${savedUid}` : "axiom_last_known_balances";
+        const saved = window.localStorage.getItem(key) || window.localStorage.getItem("axiom_last_known_balances");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
+            this.balances = { ...parsed };
+          }
+        }
+        const ordersKey = savedUid ? `axiom_user_orders_v5_${savedUid}` : "axiom_user_orders_v5";
+        const savedOrders = window.localStorage.getItem(ordersKey) || window.localStorage.getItem("axiom_user_orders_v5");
+        if (savedOrders) {
+          const parsed = JSON.parse(savedOrders);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            this.userOrders = parsed;
+          }
+        }
+      } catch { }
+    }
     this.syncBackendTokens();
     this.sortTokensList();
     this.startLiveTicker();
@@ -667,6 +689,14 @@ class MarketStore {
         if (typeof document !== "undefined" && document.hidden) return;
         this.fetchRealMarketData();
       }, 60000);
+
+      // 3. Periodic portfolio sync (4s) to detect incoming UID transfers and deposits
+      setInterval(() => {
+        if (typeof document !== "undefined" && document.hidden) return;
+        if (this.currentUserWallet) {
+          this.syncBackendPortfolio();
+        }
+      }, 4000);
     }
   }
 
@@ -1278,6 +1308,7 @@ class MarketStore {
           this.savePersistedStateNow();
         }
       } catch { }
+      this.syncBackendPortfolio();
     }
 
     this.notify();
@@ -1623,6 +1654,156 @@ class MarketStore {
         this.notify();
         break;
       }
+      case "P2P_TRANSFER": {
+        const { recipientUid, sym, amount, usd, senderUid } = msg.payload;
+        const myUid = this.currentUserId;
+        const myWallet = this.currentUserWallet;
+        if ((myUid && (recipientUid === myUid || recipientUid.toLowerCase() === myUid.toLowerCase())) ||
+            (myWallet && (recipientUid === myWallet || recipientUid.toLowerCase() === myWallet.toLowerCase()))) {
+          const cleanSym = (sym || "").toUpperCase().trim();
+          if (!this.balances[cleanSym]) {
+            this.balances[cleanSym] = { bal: 0, usdValue: 0, name: cleanSym, totalInvested: 0, avgBuyPrice: 1 };
+          }
+          this.balances[cleanSym].bal += amount;
+          const token = this.getToken(cleanSym);
+          const p = token?.numericPrice || 1;
+          this.balances[cleanSym].usdValue = Number((this.balances[cleanSym].bal * p).toFixed(2));
+
+          this.userOrders.unshift({
+            id: `p2p-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            sym: cleanSym,
+            name: token?.name || cleanSym,
+            side: "Buy",
+            amountUsd: usd || (amount * p),
+            tokenAmt: amount,
+            price: p,
+            timestamp: Date.now(),
+            dateStr: "just now",
+            orderType: "P2P Transfer",
+            triggerNote: `Received via UID from ${senderUid || 'User'}: +${amount >= 1000 ? amount.toLocaleString() : amount.toFixed(4)} ${cleanSym}`,
+          });
+          if (this.userOrders.length > 50) this.userOrders = this.userOrders.slice(0, 50);
+
+          this.lastOrderAlert = `💸 Received +${amount >= 1000 ? amount.toLocaleString() : amount.toFixed(4)} ${cleanSym} ($${(usd || amount * p).toFixed(2)}) via UID!`;
+          this.savePersistedStateNow();
+          this.notify();
+        }
+        break;
+      }
+    }
+  }
+
+  async syncBackendPortfolio() {
+    const wallet = this.currentUserWallet;
+    if (!wallet) return;
+    try {
+      const portfolio = await api.getPortfolio(wallet);
+      if (!portfolio) return;
+
+      let hasUpdates = false;
+
+      // 1. Sync Balances
+      if (Array.isArray(portfolio.balances)) {
+        portfolio.balances.forEach((item: any) => {
+          const rawSym = (item.currency || "").toUpperCase().trim();
+          const sym = rawSym.replace(/^\$/, "");
+          if (!sym) return;
+
+          const amt = parseFloat(item.available_amount || "0") || 0;
+          const backendInvested = parseFloat(item.total_invested || "0") || 0;
+          const backendAvgPrice = parseFloat(item.avg_buy_price || "0") || 0;
+          const itemPrice = parseFloat(item.price_usd || "0") || 0;
+
+          const token = this.getToken(sym);
+          const liveP = token && token.numericPrice > 0 ? token.numericPrice : (itemPrice > 0 ? itemPrice : (backendAvgPrice > 0 ? backendAvgPrice : (sym === "USDT" || sym === "USDC" ? 1.0 : 1)));
+
+          const local = this.balances[sym];
+          if (!local) {
+            this.balances[sym] = {
+              bal: amt,
+              usdValue: Number((amt * liveP).toFixed(2)),
+              name: item.name || sym,
+              totalInvested: backendInvested > 0 ? backendInvested : (amt > 0 ? Number((amt * (backendAvgPrice || liveP)).toFixed(2)) : 0),
+              avgBuyPrice: backendAvgPrice > 0 ? backendAvgPrice : liveP,
+            };
+            hasUpdates = true;
+          } else {
+            if (local.bal !== amt) {
+              local.bal = amt;
+              local.usdValue = Number((amt * liveP).toFixed(2));
+              hasUpdates = true;
+            }
+            if (backendInvested > 0) local.totalInvested = backendInvested;
+            if (backendAvgPrice > 0) local.avgBuyPrice = backendAvgPrice;
+          }
+        });
+      }
+
+      // 2. Ingest recent_transactions into userOrders & alert user on new incoming credits
+      if (Array.isArray((portfolio as any).recent_transactions)) {
+        const existingOrderIds = new Set(this.userOrders.map((o: any) => o.id));
+        let hasNewTx = false;
+        const uid = this.currentUserId || wallet;
+        const seenTxKey = `axiom_seen_tx_${uid}`;
+        const rawSeen = (typeof window !== "undefined" && window.localStorage) ? (localStorage.getItem(seenTxKey) || "[]") : "[]";
+        let seenSet = new Set<string>();
+        try { seenSet = new Set(JSON.parse(rawSeen)); } catch {}
+
+        (portfolio as any).recent_transactions.forEach((tx: any) => {
+          if (!existingOrderIds.has(tx.id)) {
+            const isDeposit = tx.type === "deposit";
+            const isP2P = tx.type === "p2p_receive";
+            const orderType: any = isP2P ? "P2P Transfer" : isDeposit ? "Deposit" : "Market";
+            const side = (tx.side === "SELL") ? "Sell" : "Buy";
+
+            const newOrder: UserOrder = {
+              id: tx.id,
+              sym: tx.currency,
+              name: tx.currency,
+              side: side,
+              amountUsd: tx.usd_value || 0,
+              tokenAmt: tx.amount || 0,
+              price: tx.price || (tx.amount > 0 ? (tx.usd_value / tx.amount) : 0),
+              timestamp: tx.timestamp || Date.now(),
+              dateStr: tx.date || new Date().toLocaleString(),
+              orderType: orderType,
+              triggerNote: tx.note || (isP2P ? `Received via UID Transfer` : isDeposit ? `Confirmed Deposit` : undefined),
+            };
+
+            this.userOrders.push(newOrder);
+            existingOrderIds.add(tx.id);
+            hasNewTx = true;
+
+            // Trigger floating notification for new credit
+            if (!seenSet.has(tx.id) && (isP2P || isDeposit)) {
+              if (isP2P) {
+                this.lastOrderAlert = `💸 Received +${tx.amount} ${tx.currency} via UID! ($${(tx.usd_value || 0).toFixed(2)})`;
+              } else if (isDeposit) {
+                this.lastOrderAlert = `✅ Deposit Credited! +${tx.amount} ${tx.currency} ($${(tx.usd_value || 0).toFixed(2)}) is now available.`;
+              }
+              seenSet.add(tx.id);
+            }
+          }
+        });
+
+        if (hasNewTx) {
+          this.userOrders.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+          if (this.userOrders.length > 50) this.userOrders = this.userOrders.slice(0, 50);
+          if (typeof window !== "undefined" && window.localStorage) {
+            try {
+              localStorage.setItem(seenTxKey, JSON.stringify(Array.from(seenSet)));
+            } catch {}
+          }
+          hasUpdates = true;
+        }
+      }
+
+      if (hasUpdates) {
+        this.savePersistedStateNow();
+        this.notify();
+      }
+    } catch {
+      // silently keep working
     }
   }
 
@@ -1950,6 +2131,18 @@ class MarketStore {
       localStorage.setItem(recipientOrdersKey, JSON.stringify(recOrders.slice(0, 50)));
     } catch {}
 
+    // Broadcast instant cross-tab notification
+    this.broadcast({
+      type: "P2P_TRANSFER",
+      payload: {
+        recipientUid,
+        senderUid: this.currentUserId || "Axiom User",
+        sym: cleanSym,
+        amount,
+        usd: Number((amount * p).toFixed(2))
+      }
+    });
+
     this.savePersistedStateNow();
     this.notify();
 
@@ -1960,7 +2153,7 @@ class MarketStore {
     };
   }
 
-  // Deposit funds (Minimum: $5.00)
+  // Deposit funds
   depositFunds(sym: string, amount: number): { success: boolean; message: string } {
     if (amount <= 0 || isNaN(amount)) return { success: false, message: "Enter a valid deposit amount" };
     const token = this.getToken(sym);
@@ -1970,9 +2163,6 @@ class MarketStore {
         ? token.numericPrice
         : (sym === "SOL" ? 179.84 : sym === "BTC" ? 77724.0 : sym === "ETH" ? 2650.0 : 1.0);
     const usdVal = amount * p;
-    if (usdVal < 4.90) {
-      return { success: false, message: "Minimum deposit is $5.00" };
-    }
 
     if (!this.balances[sym]) {
       this.balances[sym] = {
@@ -1985,11 +2175,11 @@ class MarketStore {
     }
 
     this.balances[sym].bal += amount;
-    this.balances[sym].usdValue = this.balances[sym].bal * p;
+    this.balances[sym].usdValue = Number((this.balances[sym].bal * p).toFixed(2));
     this.balances[sym].totalInvested = (this.balances[sym].totalInvested || 0) + usdVal;
     this.balances[sym].avgBuyPrice = p;
 
-    // Record in userOrders so fiat onramp & crypto purchases appear in trade activity
+    // Record in userOrders so deposits appear in trade activity
     this.userOrders.unshift({
       id: `dep-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       sym,
@@ -2000,10 +2190,12 @@ class MarketStore {
       price: p,
       timestamp: Date.now(),
       dateStr: "just now",
-      orderType: "Market",
-      triggerNote: `Onramp / Deposit: +${amount >= 1000 ? amount.toLocaleString(undefined, { maximumFractionDigits: 1 }) : amount.toFixed(4)} ${sym}`,
+      orderType: "Deposit",
+      triggerNote: `Confirmed Deposit: +${amount >= 1000 ? amount.toLocaleString(undefined, { maximumFractionDigits: 1 }) : amount.toFixed(4)} ${sym}`,
     });
     if (this.userOrders.length > 50) this.userOrders = this.userOrders.slice(0, 50);
+
+    this.lastOrderAlert = `✅ Deposit Credited! +${amount >= 1000 ? amount.toLocaleString() : amount.toFixed(4)} ${sym} ($${usdVal.toFixed(2)}) is now available.`;
 
     this.savePersistedStateNow();
     this.notify();

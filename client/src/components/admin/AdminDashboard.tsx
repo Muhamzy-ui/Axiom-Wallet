@@ -9,7 +9,7 @@ import {
   Globe, Lock, BarChart2, Shield, Skull, TrendingUp, TrendingDown,
   Copy, RotateCcw, Sparkles, ExternalLink, Edit3, Trash2,
   Sun, Moon, Menu, Smartphone, Eye, EyeOff, Trophy, ShieldCheck,
-  Upload, Image
+  Upload, Image, QrCode, CheckCircle2, AlertCircle, HelpCircle, ChevronUp
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -3825,23 +3825,142 @@ function DepositsPage({ metrics, loading, search }: { metrics: AdminMetrics; loa
 }
 
 
-/* ══════════════════════ PAGE 4.5: DEPOSIT WALLETS (MULTI-NETWORK POOL) ═════════ */
+/* ══════════════════════ PAGE 4.5: DEPOSIT WALLETS (INTUITIVE RECEIVING MANAGER) ═════════ */
+interface ChainConfig {
+  key: string;
+  network: string;
+  primaryOrderIndex: number;
+  coinLabel: string;
+  badge: string;
+  badgeBg: string;
+  badgeColor: string;
+  tagline: string;
+  formatGuide: string;
+  iconBg: string;
+  iconSymbol: string;
+  placeholder: string;
+  validate: (addr: string) => { isValid: boolean; warning?: string };
+}
+
+const SUPPORTED_CHAINS: ChainConfig[] = [
+  {
+    key: 'tron',
+    network: 'TRON (TRC-20)',
+    primaryOrderIndex: 1,
+    coinLabel: 'USDT (TRC-20)',
+    badge: 'Most Popular',
+    badgeBg: 'rgba(239, 68, 68, 0.15)',
+    badgeColor: '#EF4444',
+    tagline: 'Primary deposit rail for Tether USDT. Fast transactions and ultra-low network fees.',
+    formatGuide: 'TRON address starts with uppercase "T" (34 characters)',
+    iconBg: 'linear-gradient(135deg, #EF4444, #B91C1C)',
+    iconSymbol: 'TRX',
+    placeholder: 'TYD9yZ7G8gM2tY9vK8nP7wE6rT5yU4iO3p',
+    validate: (addr: string) => {
+      const a = addr.trim();
+      if (!a) return { isValid: false, warning: 'Address is required to receive USDT TRC-20' };
+      if (!a.startsWith('T')) return { isValid: false, warning: 'TRON addresses must start with capital "T"' };
+      if (a.length !== 34) return { isValid: false, warning: `TRON addresses are 34 characters (currently ${a.length})` };
+      return { isValid: true };
+    }
+  },
+  {
+    key: 'bsc',
+    network: 'BNB Chain (BEP-20)',
+    primaryOrderIndex: 6,
+    coinLabel: 'USDT & BNB (BEP-20)',
+    badge: 'Low Fees',
+    badgeBg: 'rgba(245, 158, 11, 0.15)',
+    badgeColor: '#F59E0B',
+    tagline: 'Binance Smart Chain deposits for USDT (BEP-20) and native BNB.',
+    formatGuide: 'EVM address starts with "0x" (42 characters)',
+    iconBg: 'linear-gradient(135deg, #F59E0B, #D97706)',
+    iconSymbol: 'BNB',
+    placeholder: '0x71C836e522F5b8Fbe40d34341A5a507E78e1215B',
+    validate: (addr: string) => {
+      const a = addr.trim();
+      if (!a) return { isValid: false, warning: 'Address is required to receive BEP-20 deposits' };
+      if (!a.startsWith('0x')) return { isValid: false, warning: 'BNB Chain addresses must start with "0x"' };
+      if (a.length !== 42) return { isValid: false, warning: `EVM addresses are 42 characters (currently ${a.length})` };
+      return { isValid: true };
+    }
+  },
+  {
+    key: 'solana',
+    network: 'Solana (SPL)',
+    primaryOrderIndex: 11,
+    coinLabel: 'SOL, USDT & USDC',
+    badge: 'High Speed',
+    badgeBg: 'rgba(139, 92, 246, 0.15)',
+    badgeColor: '#8B5CF6',
+    tagline: 'High-speed Solana network for SOL and SPL token deposits.',
+    formatGuide: 'Solana Base58 address (32 to 44 characters)',
+    iconBg: 'linear-gradient(135deg, #8B5CF6, #6D28D9)',
+    iconSymbol: 'SOL',
+    placeholder: '8ZgC8Q3f8sC9b9T4vB2nK8mP7wE6rT5yU4iO3pA2sD1f',
+    validate: (addr: string) => {
+      const a = addr.trim();
+      if (!a) return { isValid: false, warning: 'Address is required to receive Solana deposits' };
+      if (a.startsWith('0x') || a.startsWith('T')) return { isValid: false, warning: 'Must be a valid Solana Base58 address (not EVM or TRON)' };
+      if (a.length < 32 || a.length > 44) return { isValid: false, warning: `Solana addresses are 32-44 characters (currently ${a.length})` };
+      return { isValid: true };
+    }
+  },
+  {
+    key: 'ethereum',
+    network: 'Ethereum (ERC-20)',
+    primaryOrderIndex: 16,
+    coinLabel: 'ETH & USDT (ERC-20)',
+    badge: 'Mainnet',
+    badgeBg: 'rgba(59, 130, 246, 0.15)',
+    badgeColor: '#3B82F6',
+    tagline: 'Ethereum Mainnet deposits for native ETH and ERC-20 tokens.',
+    formatGuide: 'Ethereum address starts with "0x" (42 characters)',
+    iconBg: 'linear-gradient(135deg, #3B82F6, #1D4ED8)',
+    iconSymbol: 'ETH',
+    placeholder: '0x71C836e522F5b8Fbe40d34341A5a507E78e1215B',
+    validate: (addr: string) => {
+      const a = addr.trim();
+      if (!a) return { isValid: false, warning: 'Address is required to receive Ethereum deposits' };
+      if (!a.startsWith('0x')) return { isValid: false, warning: 'Ethereum addresses must start with "0x"' };
+      if (a.length !== 42) return { isValid: false, warning: `Ethereum addresses are 42 characters (currently ${a.length})` };
+      return { isValid: true };
+    }
+  },
+  {
+    key: 'bitcoin',
+    network: 'Bitcoin (BTC)',
+    primaryOrderIndex: 21,
+    coinLabel: 'Bitcoin (Native BTC)',
+    badge: 'Native BTC',
+    badgeBg: 'rgba(249, 115, 22, 0.15)',
+    badgeColor: '#F97316',
+    tagline: 'Native Bitcoin blockchain deposits (SegWit bc1..., Legacy 1..., or Taproot).',
+    formatGuide: 'Bitcoin address starts with "bc1", "1", or "3"',
+    iconBg: 'linear-gradient(135deg, #F97316, #C2410C)',
+    iconSymbol: 'BTC',
+    placeholder: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+    validate: (addr: string) => {
+      const a = addr.trim();
+      if (!a) return { isValid: false, warning: 'Address is required to receive Bitcoin deposits' };
+      if (!a.startsWith('bc1') && !a.startsWith('1') && !a.startsWith('3')) {
+        return { isValid: false, warning: 'Bitcoin addresses must start with "bc1", "1", or "3"' };
+      }
+      if (a.length < 26 || a.length > 62) return { isValid: false, warning: `Bitcoin addresses are 26-62 characters (currently ${a.length})` };
+      return { isValid: true };
+    }
+  }
+];
+
 function DepositWalletsPage({ loading: parentLoading }: { loading: boolean }) {
   const [wallets, setWallets] = useState<PlatformDepositWallet[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [selectedNetwork, setSelectedNetwork] = useState<string>('ALL');
+  const [expandedQr, setExpandedQr] = useState<Record<string, boolean>>({});
+  const [showBackupPool, setShowBackupPool] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState<string | null>(null);
-  const toast_ = (m: string) => { setToast(m); setTimeout(() => setToast(null), 3500); };
 
-  const NETWORKS = [
-    'ALL',
-    'TRON (TRC-20)',
-    'BNB Chain (BEP-20)',
-    'Solana (SPL)',
-    'Ethereum (ERC-20)',
-    'Bitcoin (BTC)'
-  ];
+  const toast_ = (m: string) => { setToast(m); setTimeout(() => setToast(null), 3500); };
 
   const fetchWallets = useCallback(async () => {
     try {
@@ -3861,24 +3980,72 @@ function DepositWalletsPage({ loading: parentLoading }: { loading: boolean }) {
     fetchWallets();
   }, [fetchWallets]);
 
-  const handleUpdateField = (id: number, field: keyof PlatformDepositWallet, value: any) => {
-    setWallets(prev => prev.map(w => w.id === id ? { ...w, [field]: value } : w));
-  };
+  // Find primary wallet for a given chain definition
+  const getPrimaryWallet = (chain: ChainConfig): PlatformDepositWallet => {
+    // 1. Look for wallet with primary label or exact primary order_index
+    const byOrder = wallets.find(w => w.order_index === chain.primaryOrderIndex);
+    if (byOrder) return byOrder;
 
-  const handleAddWallet = () => {
-    const net = selectedNetwork === 'ALL' ? 'TRON (TRC-20)' : selectedNetwork;
-    const newIdx = wallets.length + 1;
-    const newWallet: PlatformDepositWallet = {
-      id: Date.now(),
-      order_index: newIdx,
-      label: `Hot Vault #${newIdx} (${net})`,
+    // 2. Look by network match
+    const byNet = wallets.find(w => {
+      const n = (w.network || '').toLowerCase();
+      const target = chain.network.toLowerCase().split(' ')[0];
+      return n.includes(target);
+    });
+    if (byNet) return byNet;
+
+    // 3. Fallback draft object
+    return {
+      id: Date.now() + chain.primaryOrderIndex,
+      order_index: chain.primaryOrderIndex,
+      label: `${chain.network} Primary Receiving Wallet`,
       address: '',
-      network: net,
+      network: chain.network,
       is_active: true,
       total_received_usd: '0.00'
     };
-    setWallets(prev => [...prev, newWallet]);
-    toast_(`Added new ${net} wallet draft. Enter address & click Save.`);
+  };
+
+  // Get secondary/backup wallets for a given chain
+  const getBackupWallets = (chain: ChainConfig): PlatformDepositWallet[] => {
+    const primary = getPrimaryWallet(chain);
+    return wallets.filter(w => {
+      if (w.id === primary.id || w.order_index === primary.order_index) return false;
+      const n = (w.network || '').toLowerCase();
+      const target = chain.network.toLowerCase().split(' ')[0];
+      return n.includes(target);
+    });
+  };
+
+  const handleUpdatePrimary = (chain: ChainConfig, field: keyof PlatformDepositWallet, value: any) => {
+    const primary = getPrimaryWallet(chain);
+    setWallets(prev => {
+      const exists = prev.some(w => w.id === primary.id || w.order_index === primary.order_index);
+      if (exists) {
+        return prev.map(w => (w.id === primary.id || w.order_index === primary.order_index) ? { ...w, [field]: value } : w);
+      }
+      return [...prev, { ...primary, [field]: value }];
+    });
+  };
+
+  const handleUpdateBackup = (id: number, field: keyof PlatformDepositWallet, value: any) => {
+    setWallets(prev => prev.map(w => w.id === id ? { ...w, [field]: value } : w));
+  };
+
+  const handleAddBackupWallet = (chain: ChainConfig) => {
+    const newIdx = wallets.length + 1;
+    const newW: PlatformDepositWallet = {
+      id: Date.now(),
+      order_index: newIdx,
+      label: `${chain.network} Backup Vault #${newIdx}`,
+      address: '',
+      network: chain.network,
+      is_active: true,
+      total_received_usd: '0.00'
+    };
+    setWallets(prev => [...prev, newW]);
+    setShowBackupPool(prev => ({ ...prev, [chain.key]: true }));
+    toast_(`Added new backup wallet for ${chain.network}. Enter address and click Save.`);
   };
 
   const handleSave = async () => {
@@ -3887,7 +4054,7 @@ function DepositWalletsPage({ loading: parentLoading }: { loading: boolean }) {
       const res = await api.updateAdminDepositWallets(wallets);
       if (res.success) {
         setWallets(res.wallets);
-        toast_("✅ All Deposit Wallets successfully updated and synced live!");
+        toast_("✅ All receiving wallet addresses saved & synced live to user deposit modals!");
       }
     } catch (e: any) {
       toast_("❌ Failed to update wallets: " + (e.message || "Unknown error"));
@@ -3896,223 +4063,355 @@ function DepositWalletsPage({ loading: parentLoading }: { loading: boolean }) {
     }
   };
 
-  const filteredWallets = selectedNetwork === 'ALL'
-    ? wallets
-    : wallets.filter(w => (w.network || '').toLowerCase().includes(selectedNetwork.toLowerCase()) || selectedNetwork.toLowerCase().includes((w.network || '').toLowerCase()));
-
-  const activeCount = wallets.filter(w => w.is_active).length;
+  const activeWalletsCount = SUPPORTED_CHAINS.filter(c => getPrimaryWallet(c).is_active).length;
   const totalVolume = wallets.reduce((sum, w) => sum + Number(w.total_received_usd || 0), 0);
 
   if (loading || parentLoading) return <LoadingSpinner />;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 22, maxWidth: 1100, margin: '0 auto' }}>
       {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
 
-      {/* Top Header & Save Button */}
+      {/* Top Header & Save Action */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 800 }}>Platform Multi-Network Deposit Wallets</div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: C.text, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span>Deposit Receiving Wallets</span>
+            <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20, background: 'rgba(16,185,129,0.15)', color: C.green, border: `1px solid ${C.green}30` }}>
+              LIVE CONFIGURATION
+            </span>
+          </div>
           <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>
-            Manage receiving wallets across TRON, BNB Chain, Solana, Ethereum, and Bitcoin. Edit or change any address anytime.
+            Set where customer deposit funds go. When users deposit crypto, they receive these exact addresses.
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <Btn onClick={handleAddWallet} style={{ background: C.surface2, border: `1px solid ${C.border}`, color: C.text, padding: '10px 16px', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, cursor: 'pointer' }}>
-            <Plus size={15} /> Add Wallet
-          </Btn>
-          <Btn onClick={handleSave} style={{ background: C.violet, color: '#fff', padding: '10px 22px', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, cursor: 'pointer' }}>
-            {saving ? <RefreshCw size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={15} />}
-            {saving ? 'Saving...' : 'Save All Changes'}
+          <Btn onClick={handleSave} style={{ background: C.violet, color: '#fff', padding: '11px 26px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: 13, cursor: 'pointer', boxShadow: '0 4px 16px rgba(124,58,237,0.35)' }}>
+            {saving ? <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={16} />}
+            {saving ? 'Saving...' : 'Save Receiving Addresses'}
           </Btn>
         </div>
       </div>
 
-      {/* Summary Stat Cards */}
+      {/* Summary KPI Strip */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
-        <StatCard icon={<Shield />} label="Active Platform Wallets" value={`${activeCount} / ${wallets.length}`} color={C.green} />
-        <StatCard icon={<Zap />} label="Supported Chains" value="TRON · BSC · SOL · ETH · BTC" color={C.violet} />
-        <StatCard icon={<DollarSign />} label="Total Pool Volume" value={`$${totalVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} color={C.amber} />
+        <StatCard icon={<ShieldCheck />} label="Active Receiving Chains" value={`${activeWalletsCount} / 5 Active`} color={C.green} />
+        <StatCard icon={<Zap />} label="Supported Currencies" value="USDT · SOL · ETH · BTC · BNB" color={C.violet} />
+        <StatCard icon={<DollarSign />} label="Total Deposited Volume" value={`$${totalVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} color={C.amber} />
       </div>
 
-      {/* Exodus / Multi-Wallet Setup Guide Banner */}
-      <div style={{ padding: '14px 18px', background: 'rgba(124, 58, 237, 0.08)', borderRadius: 12, border: '1px solid rgba(124, 58, 237, 0.25)', display: 'flex', alignItems: 'center', gap: 14 }}>
-        <Sparkles size={20} color={C.violet} style={{ flexShrink: 0 }} />
-        <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-          <b>💡 How to link your personal wallet (Exodus, Trust Wallet, MetaMask):</b><br />
-          Open Exodus on your phone or PC, click <b>Receive</b> for each asset (TRON for USDT TRC-20, BSC for USDT BEP-20, Solana, Ethereum, Bitcoin), then copy & paste your receive addresses into the corresponding network cards below. Whenever users deposit funds, they drop straight into your Exodus wallet!
+      {/* Client-Friendly Step-by-Step Instructions Banner */}
+      <div style={{ padding: '16px 20px', background: 'rgba(124, 58, 237, 0.08)', borderRadius: 14, border: '1px solid rgba(124, 58, 237, 0.22)', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+        <Sparkles size={22} color={C.violet} style={{ flexShrink: 0, marginTop: 2 }} />
+        <div style={{ fontSize: 13, lineHeight: 1.6, color: C.text }}>
+          <b style={{ color: C.violet, fontSize: 14 }}>💡 How to connect your personal wallet (Exodus, Trust Wallet, Binance, MetaMask):</b>
+          <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 8, color: C.muted }}>
+            <div><b>Step 1:</b> Open your wallet app (e.g. Exodus) & tap <b>Receive</b>.</div>
+            <div><b>Step 2:</b> Copy the receiving address for each network below.</div>
+            <div><b>Step 3:</b> Paste the address in the box & click <b>Save Receiving Addresses</b>.</div>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12, color: C.green, fontWeight: 600 }}>
+            ✓ Whenever any user deposits on Axiom, funds are paid straight to your personal receiving addresses.
+          </div>
         </div>
       </div>
 
-      {/* Network Filter Pills with Count Badges */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: C.muted, marginRight: 4 }}>Select Network Pool:</span>
-        {NETWORKS.map(net => {
-          const count = net === 'ALL'
-            ? wallets.length
-            : wallets.filter(w => (w.network || '').toLowerCase().includes(net.split(' ')[0].toLowerCase())).length;
+      {/* 5 Network Cards - Clean, Intuitive, No Technical Confusion */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        {SUPPORTED_CHAINS.map(chain => {
+          const primaryWallet = getPrimaryWallet(chain);
+          const validation = chain.validate(primaryWallet.address || '');
+          const isQrOpen = !!expandedQr[chain.key];
+          const isBackupOpen = !!showBackupPool[chain.key];
+          const backupWallets = getBackupWallets(chain);
+
           return (
-            <button
-              key={net}
-              type="button"
-              onClick={() => setSelectedNetwork(net)}
+            <Card
+              key={chain.key}
               style={{
-                padding: '6px 14px',
-                borderRadius: 20,
-                fontSize: 12,
-                fontWeight: 700,
-                border: 'none',
-                cursor: 'pointer',
-                background: selectedNetwork === net ? C.violet : C.surface2,
-                color: selectedNetwork === net ? '#fff' : C.muted,
-                transition: 'all 150ms',
                 display: 'flex',
-                alignItems: 'center',
-                gap: 6
+                flexDirection: 'column',
+                gap: 16,
+                padding: '22px 24px',
+                border: `1px solid ${primaryWallet.is_active ? C.border : 'rgba(239,68,68,0.3)'}`,
+                background: primaryWallet.is_active ? C.surface : 'rgba(239,68,68,0.02)',
+                borderRadius: 16,
+                transition: 'all 200ms ease'
               }}
             >
-              <span>{net === 'ALL' ? 'All Chains' : net}</span>
-              <span style={{
-                fontSize: 10,
-                padding: '1px 6px',
-                borderRadius: 10,
-                background: selectedNetwork === net ? 'rgba(255,255,255,0.25)' : C.surface,
-                color: selectedNetwork === net ? '#fff' : C.text
-              }}>
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Pool Header for Selected Network */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: C.text }}>
-            {selectedNetwork === 'ALL' ? 'Platform Multi-Chain Vaults (25 Wallets Pool)' : `${selectedNetwork} Pool (5 Dedicated Vaults)`}
-          </div>
-          <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>
-            {selectedNetwork === 'ALL'
-              ? 'Displaying all 25 wallets across 5 chains. Enter or update your receiving addresses and click "Save All Changes".'
-              : `Fill in all 5 ${selectedNetwork} receiving addresses. When users deposit via ${selectedNetwork}, the system randomly routes to 1 of these 5 addresses.`}
-          </div>
-        </div>
-        <div style={{ fontSize: 12, fontWeight: 700, color: C.violet, background: 'rgba(124,58,237,0.12)', padding: '6px 14px', borderRadius: 8, whiteSpace: 'nowrap' }}>
-          {filteredWallets.length} / 5 Slots
-        </div>
-      </div>
-
-      {/* Wallets Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 290px), 1fr))', gap: 16 }}>
-        {filteredWallets.map((w, index) => {
-          const slotNum = (index % 5) + 1;
-          return (
-          <Card key={w.id} style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 20, border: `1px solid ${w.is_active ? C.border : 'rgba(239,68,68,0.3)'}`, background: w.is_active ? C.surface : 'rgba(239,68,68,0.03)', borderRadius: 14 }}>
-            {/* Vault Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: C.violet, color: '#fff', fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  #{slotNum}
-                </span>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 800 }}>{w.label || `Vault Slot #${slotNum}`}</div>
-                  <div style={{ fontSize: 11, color: C.muted }}>{w.network || 'Solana (SPL)'} · Global ID #{w.order_index || index + 1}</div>
+              {/* Network Title & Active Switch Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 12,
+                    background: chain.iconBg,
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 900,
+                    fontSize: 14,
+                    letterSpacing: '0.5px',
+                    boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
+                    flexShrink: 0
+                  }}>
+                    {chain.iconSymbol}
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 16, fontWeight: 900, color: C.text }}>{chain.coinLabel}</span>
+                      <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>({chain.network})</span>
+                      <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 12, background: chain.badgeBg, color: chain.badgeColor, letterSpacing: '0.5px' }}>
+                        {chain.badge}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>
+                      {chain.tagline}
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleUpdateField(w.id, 'is_active', !w.is_active)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
-                title="Toggle Active Status"
-              >
-                <span style={{ fontSize: 11, fontWeight: 700, color: w.is_active ? C.green : C.red }}>
-                  {w.is_active ? 'ACTIVE' : 'DISABLED'}
-                </span>
-                {w.is_active ? <ToggleRight size={28} color={C.green} /> : <ToggleLeft size={28} color={C.muted} />}
-              </button>
-            </div>
 
-            {/* Network Selector */}
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 }}>
-                Blockchain Network
-              </label>
-              <select
-                value={w.network || 'Solana (SPL)'}
-                onChange={e => handleUpdateField(w.id, 'network', e.target.value)}
-                style={{ width: '100%', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 12px', color: C.text, fontSize: 13, outline: 'none', cursor: 'pointer' }}
-              >
-                <option value="TRON (TRC-20)">TRON (TRC-20) — (USDT TRC20)</option>
-                <option value="BNB Chain (BEP-20)">BNB Chain (BEP-20) — (USDT & BNB)</option>
-                <option value="Solana (SPL)">Solana (SPL) — (SOL, USDT, USDC)</option>
-                <option value="Ethereum (ERC-20)">Ethereum (ERC-20) — (ETH & USDT)</option>
-                <option value="Bitcoin (BTC)">Bitcoin (BTC) — (Native BTC)</option>
-              </select>
-            </div>
-
-            {/* Label Input */}
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 6 }}>
-                Vault Name / Label
-              </label>
-              <input
-                type="text"
-                value={w.label}
-                onChange={e => handleUpdateField(w.id, 'label', e.target.value)}
-                style={{ width: '100%', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 12px', color: C.text, fontSize: 13, outline: 'none' }}
-                placeholder="e.g. Exodus TRON Vault"
-              />
-            </div>
-
-            {/* Address Input */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  Receiving Address ({w.network})
-                </label>
+                {/* Status Toggle Switch */}
                 <button
                   type="button"
-                  onClick={() => {
-                    copyToClipboard(w.address);
-                    toast_(`Copied address to clipboard!`);
+                  onClick={() => handleUpdatePrimary(chain, 'is_active', !primaryWallet.is_active)}
+                  style={{
+                    background: primaryWallet.is_active ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                    border: `1px solid ${primaryWallet.is_active ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                    borderRadius: 30,
+                    padding: '6px 14px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    transition: 'all 150ms'
                   }}
-                  style={{ background: 'none', border: 'none', color: C.violet, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700 }}
+                  title="Toggle accepting deposits on this chain"
                 >
-                  <Copy size={12} /> Copy
+                  <span style={{ fontSize: 11, fontWeight: 800, color: primaryWallet.is_active ? C.green : C.red }}>
+                    {primaryWallet.is_active ? 'RECEIVING ACTIVE' : 'PAUSED'}
+                  </span>
+                  {primaryWallet.is_active ? <ToggleRight size={26} color={C.green} /> : <ToggleLeft size={26} color={C.red} />}
                 </button>
               </div>
-              <input
-                type="text"
-                value={w.address}
-                onChange={e => handleUpdateField(w.id, 'address', e.target.value)}
-                style={{ width: '100%', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 8, padding: '9px 12px', color: C.text, fontSize: 12, fontFamily: 'monospace', outline: 'none' }}
-                placeholder={
-                  (w.network || '').includes('TRON') ? 'TRON address (starts with T...)' :
-                  (w.network || '').includes('BNB') || (w.network || '').includes('Ethereum') ? 'EVM address (0x...)' :
-                  (w.network || '').includes('Bitcoin') ? 'Bitcoin address (bc1... or 1...)' :
-                  'Solana Base58 address...'
-                }
-              />
-            </div>
 
-            {/* Card Footer */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.muted }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <Shield size={12} color={C.green} /> Status: <b style={{ color: w.is_active ? C.green : C.red }}>{w.is_active ? 'Active on Platform' : 'Disabled'}</b>
-              </span>
-              <span>Total Received: <b style={{ color: C.text }}>${Number(w.total_received_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></span>
-            </div>
-          </Card>
+              {/* Address Input Field & Tools */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                    Your Receiving Address ({chain.network})
+                  </label>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedQr(prev => ({ ...prev, [chain.key]: !prev[chain.key] }))}
+                      style={{
+                        background: isQrOpen ? 'rgba(124,58,237,0.15)' : 'none',
+                        border: isQrOpen ? `1px solid ${C.violet}50` : 'none',
+                        color: isQrOpen ? C.violet : C.muted,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        padding: '3px 8px',
+                        borderRadius: 6
+                      }}
+                    >
+                      <QrCode size={13} /> {isQrOpen ? 'Hide QR' : 'Show QR'}
+                    </button>
+                    {primaryWallet.address && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          copyToClipboard(primaryWallet.address);
+                          toast_(`Copied ${chain.network} receiving address!`);
+                        }}
+                        style={{ background: 'none', border: 'none', color: C.violet, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700 }}
+                      >
+                        <Copy size={13} /> Copy
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ position: 'relative', width: '100%' }}>
+                  <input
+                    type="text"
+                    value={primaryWallet.address || ''}
+                    onChange={e => handleUpdatePrimary(chain, 'address', e.target.value.trim())}
+                    placeholder={`Paste ${chain.network} address (e.g. ${chain.placeholder})`}
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      background: C.surface2,
+                      border: `1px solid ${
+                        !primaryWallet.address ? C.border :
+                        validation.isValid ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)'
+                      }`,
+                      borderRadius: 10,
+                      padding: '12px 14px',
+                      color: C.text,
+                      fontSize: 13,
+                      fontFamily: 'monospace',
+                      fontWeight: 600,
+                      outline: 'none',
+                      transition: 'border 150ms ease'
+                    }}
+                  />
+                </div>
+
+                {/* Validation and Format Helper */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, marginTop: 2, flexWrap: 'wrap', gap: 6 }}>
+                  <div>
+                    {primaryWallet.address ? (
+                      validation.isValid ? (
+                        <span style={{ color: C.green, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <CheckCircle2 size={13} /> Valid {chain.network} address format
+                        </span>
+                      ) : (
+                        <span style={{ color: C.red, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <AlertCircle size={13} /> {validation.warning}
+                        </span>
+                      )
+                    ) : (
+                      <span style={{ color: C.amber, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <HelpCircle size={13} /> {chain.formatGuide}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ color: C.muted }}>
+                    Deposited: <b style={{ color: C.text }}>${Number(primaryWallet.total_received_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>
+                  </div>
+                </div>
+              </div>
+
+              {/* QR Code Preview Drawer */}
+              {isQrOpen && primaryWallet.address && (
+                <div style={{
+                  padding: 16,
+                  borderRadius: 12,
+                  background: C.surface2,
+                  border: `1px solid ${C.border}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 18,
+                  animation: 'fadeIn 200ms ease'
+                }}>
+                  <div style={{ background: '#fff', padding: 8, borderRadius: 10, display: 'inline-block', flexShrink: 0 }}>
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(primaryWallet.address)}`}
+                      alt="Deposit QR"
+                      style={{ width: 120, height: 120, display: 'block' }}
+                    />
+                  </div>
+                  <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+                    <div style={{ fontWeight: 800, color: C.text, fontSize: 13, marginBottom: 4 }}>
+                      Customer QR Code Preview ({chain.coinLabel})
+                    </div>
+                    <div style={{ color: C.muted, marginBottom: 6 }}>
+                      When a client selects <b>{chain.coinLabel}</b> on the deposit screen, this exact QR code and address are presented.
+                    </div>
+                    <div style={{ fontSize: 11, fontFamily: 'monospace', color: chain.badgeColor, wordBreak: 'break-all', background: 'rgba(0,0,0,0.2)', padding: '6px 10px', borderRadius: 6 }}>
+                      {primaryWallet.address}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Secondary / Backup Pool (Collapsible for Power Users) */}
+              <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowBackupPool(prev => ({ ...prev, [chain.key]: !prev[chain.key] }))}
+                    style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700 }}
+                  >
+                    {isBackupOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    <span>Advanced: Additional Backup Addresses for {chain.network} ({backupWallets.length})</span>
+                  </button>
+                  {isBackupOpen && (
+                    <button
+                      type="button"
+                      onClick={() => handleAddBackupWallet(chain)}
+                      style={{ background: C.surface2, border: `1px solid ${C.border}`, color: C.text, padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                    >
+                      <Plus size={12} /> Add Backup Address
+                    </button>
+                  )}
+                </div>
+
+                {isBackupOpen && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12, background: C.surface2, borderRadius: 10 }}>
+                    <div style={{ fontSize: 11, color: C.muted }}>
+                      By default, 100% of deposits go to your Primary Receiving Address above. If you want to distribute or rotate incoming deposits across secondary addresses, you can configure backup vaults below.
+                    </div>
+                    {backupWallets.length === 0 ? (
+                      <div style={{ fontSize: 12, color: C.muted, fontStyle: 'italic', padding: '8px 0' }}>
+                        No additional backup addresses configured for {chain.network}. All deposits route to your primary address above.
+                      </div>
+                    ) : (
+                      backupWallets.map(b => (
+                        <div key={b.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, width: 90 }}>
+                            Backup #{b.order_index}:
+                          </span>
+                          <input
+                            type="text"
+                            value={b.address || ''}
+                            onChange={e => handleUpdateBackup(b.id, 'address', e.target.value.trim())}
+                            placeholder="Secondary wallet address..."
+                            style={{ flex: 1, minWidth: 220, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: '6px 10px', color: C.text, fontSize: 11, fontFamily: 'monospace' }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateBackup(b.id, 'is_active', !b.is_active)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                          >
+                            <span style={{ fontSize: 10, fontWeight: 700, color: b.is_active ? C.green : C.muted }}>
+                              {b.is_active ? 'ACTIVE' : 'OFF'}
+                            </span>
+                            {b.is_active ? <ToggleRight size={22} color={C.green} /> : <ToggleLeft size={22} color={C.muted} />}
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </Card>
           );
         })}
       </div>
 
-      {/* Bottom Save Button */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
-        <Btn onClick={handleSave} style={{ background: C.violet, color: '#fff', padding: '10px 24px', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, cursor: 'pointer' }}>
-          {saving ? <RefreshCw size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={15} />}
-          {saving ? 'Saving...' : 'Save All Changes'}
+      {/* Prominent Bottom Save Action Bar */}
+      <div style={{
+        position: 'sticky',
+        bottom: 16,
+        padding: '16px 22px',
+        background: C.surface,
+        borderRadius: 16,
+        border: `1px solid ${C.border}`,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 12,
+        zIndex: 10
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <CheckCircle2 size={18} color={C.green} />
+          <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
+            Ready to update receiving addresses for all 5 blockchains.
+          </span>
+        </div>
+        <Btn onClick={handleSave} style={{ background: C.violet, color: '#fff', padding: '12px 28px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: 14, cursor: 'pointer', boxShadow: '0 4px 18px rgba(124,58,237,0.4)' }}>
+          {saving ? <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={16} />}
+          {saving ? 'Saving Changes...' : 'Save Receiving Addresses'}
         </Btn>
       </div>
     </div>

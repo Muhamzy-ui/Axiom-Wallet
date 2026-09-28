@@ -5170,35 +5170,39 @@ select:focus-visible {
   box-shadow: 0 3px 14px rgba(239, 68, 68, 0.35);
 }
 
-/* Pair Search Bottom Sheet Modal */
+/* Pair Search Top Sheet Modal (Drops down from top on mobile so buy/sell buttons don't block it) */
 .dex-pair-modal-backdrop {
   display: none;
   position: fixed;
   inset: 0;
-  z-index: 99;
-  background: rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(8px);
-  align-items: flex-end;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(10px);
+  align-items: flex-start;
+  justify-content: center;
 }
 
 .dex-pair-modal-sheet {
   width: 100%;
+  max-width: 600px;
   max-height: 82vh;
   background: #0E0F18;
-  border-top-left-radius: 20px;
-  border-top-right-radius: 20px;
+  border-bottom-left-radius: 24px;
+  border-bottom-right-radius: 24px;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-bottom: none;
+  border-top: none;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 -16px 50px rgba(0, 0, 0, 0.8);
-  animation: dexSlideUp 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.85);
+  animation: dexSlideDown 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@keyframes dexSlideUp {
+@keyframes dexSlideDown {
   from {
-    transform: translateY(100%);
+    transform: translateY(-100%);
   }
 
   to {
@@ -5499,6 +5503,8 @@ select:focus-visible {
 
   .dex-pair-modal-backdrop {
     display: flex !important;
+    align-items: flex-start !important;
+    z-index: 99999 !important;
   }
 
   .chart-control {
@@ -8028,13 +8034,13 @@ select:focus-visible {
   color: #6D28D9 !important;
 }
 
-/* Pair Search Bottom Sheet Modal */
+/* Pair Search Top Sheet Modal */
 [data-theme="light"] .dex-pair-modal-sheet {
   background: #FFFFFF !important;
-  border-top-color: #E2E8F0 !important;
+  border-bottom-color: #E2E8F0 !important;
   border-left-color: #E2E8F0 !important;
   border-right-color: #E2E8F0 !important;
-  box-shadow: 0 -16px 50px rgba(0, 0, 0, 0.15) !important;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.15) !important;
 }
 
 [data-theme="light"] .dex-sheet-header {

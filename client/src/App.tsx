@@ -4,7 +4,7 @@ import {
   Copy, LayoutDashboard, LineChart, Menu, Plus, Search,
   Send, Settings, Shield, ShieldCheck, Star, Wallet, X, TrendingUp, TrendingDown,
   AlertTriangle, Coins, Users, ArrowDownToLine, ArrowUpToLine, Skull, LogOut, Sliders, Zap, Globe, Lock, ShoppingBag, RotateCcw, ExternalLink,
-  Sun, Moon, CreditCard, RefreshCw, Clock, Crown, Flame, Activity, Trophy, Eye, EyeOff, Camera
+  Sun, Moon, CreditCard, RefreshCw, Clock, Crown, Flame, Activity, Trophy, Eye, EyeOff, Camera, Share
 } from "lucide-react";
 import "./index.css";
 import { AdminDashboard } from "./components/admin/AdminDashboard";
@@ -28,7 +28,7 @@ import { CountrySelectModal } from "./components/modals/CountrySelectModal";
 import { getCountryByCode, CountryInfo, syncDollarRateFromBackend } from "./constants/countries";
 import { CountryFlag } from "./components/common/CountryFlag";
 import { AxiomLogo } from "./components/common/AxiomLogo";
-import { generatePhantomAvatar, PHANTOM_AVATAR_PRESETS, type AvatarPreset } from "./utils/avatar";
+import { generatePhantomAvatar, generatePresetAvatar, PHANTOM_AVATAR_PRESETS, type AvatarPreset } from "./utils/avatar";
 
 type View = "trade" | "wallet" | "swap" | "admin" | "profile" | "leaderboard";
 type Modal = "deposit" | "send" | "confirm" | "create" | "buy" | "withdraw" | "profit" | "";
@@ -1009,7 +1009,7 @@ function UserOrdersList({
                               onClick={() => onOpenProfitCard(s)}
                               title="Share PnL card"
                             >
-                              <Camera size={11} />
+                              <Share size={11} />
                               <span>PnL</span>
                             </button>
                           )}
@@ -2223,10 +2223,10 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                               fontWeight: 800,
                               cursor: "pointer",
                             }}
-                            title="Generate and download verified PnL profit screenshot"
+                            title="Generate and share verified PnL card"
                           >
-                            <Camera size={12} />
-                            <span>📸 PnL Card</span>
+                            <Share size={12} />
+                            <span>Share PnL</span>
                           </button>
                           <span className={`user-pos-badge ${pos.hasPosition ? (isDipping ? "dipping" : "active") : "empty"}`}>
                             {pos.hasPosition ? (isDipping ? `🔻 DIPPING (${pos.pnlPct.toFixed(1)}%)` : "HOLDING") : "NO POSITION"}
@@ -2317,8 +2317,8 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                             onClick={() => onOpenProfitCard && onOpenProfitCard(m.sym)}
                             className="pos-share-pnl-btn"
                           >
-                            <Camera size={13} />
-                            <span>📸 Share PnL Card</span>
+                            <Share size={13} />
+                            <span>Share PnL Card</span>
                           </button>
                         </>
                       ) : (
@@ -2560,8 +2560,8 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                       onClick={() => onOpenProfitCard && onOpenProfitCard(m.sym)}
                       className="pos-share-pnl-btn"
                     >
-                      <Camera size={13} />
-                      <span>📸 Share PnL Card</span>
+                      <Share size={13} />
+                      <span>Share PnL Card</span>
                     </button>
                   </div>
                 ) : (
@@ -2902,7 +2902,9 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
     const list: MarketToken[] = [];
     const added = new Set<string>();
 
-    default8Syms.forEach(sym => {
+    // Include major tokens and stablecoins
+    const candidateTokens = [...default8Syms, "USDT", "USDC"];
+    candidateTokens.forEach(sym => {
       const t = marketStore.getToken(sym);
       if (t) {
         list.push(t);
@@ -2916,22 +2918,42 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
       const rawSym = (sym || "").toUpperCase().trim();
       const cleanSym = rawSym.replace(/^\$/, "");
       if (b.bal > 0.000001 && !added.has(cleanSym) && !added.has(rawSym)) {
-        const t = marketStore.getToken(cleanSym);
-        if (t) {
-          list.push(t);
-          added.add(cleanSym);
-          added.add(rawSym);
+        let t = marketStore.getToken(cleanSym);
+        if (!t) {
+          t = {
+            sym: cleanSym,
+            name: b.name || cleanSym,
+            price: b.avgBuyPrice ? `$${b.avgBuyPrice.toFixed(2)}` : "$1.00",
+            numericPrice: b.avgBuyPrice || 1.0,
+            solPrice: "0.0055 SOL",
+            change: "+0.00%",
+            changeNum: 0,
+            cap: "$1M",
+            fdv: "$1M",
+            liq: "$100K",
+            pos: true,
+            supply: 1000000000,
+            m5: { val: "0%", up: true },
+            h1: { val: "0%", up: true },
+            h6: { val: "0%", up: true },
+            h24: { val: "0%", up: true },
+            txns: 0, buys: 0, sells: 0, vol: 0, buyVol: 0, sellVol: 0, traders: 0, buyers: 0, sellers: 0,
+            imageUrl: cleanSym === "USDT" ? COIN_IMGS.USDT : undefined,
+          };
         }
+        list.push(t);
+        added.add(cleanSym);
+        added.add(rawSym);
       }
     });
 
-    return list.map(token => {
+    const mapped = list.map(token => {
       const rawSym = (token.sym || "").toUpperCase().trim();
       const cleanSym = rawSym.replace(/^\$/, "");
       const isStable = cleanSym === "USDC" || cleanSym === "USDT";
       const b = rawBalances[token.sym] || rawBalances[cleanSym] || rawBalances[`$${cleanSym}`] || rawBalances[rawSym];
       const balNum = b?.bal || 0;
-      const effectivePrice = token.numericPrice > 0 ? token.numericPrice : (b?.avgBuyPrice || 0);
+      const effectivePrice = token.numericPrice > 0 ? token.numericPrice : (b?.avgBuyPrice || (isStable ? 1.0 : 0));
       const userUsd = isStable ? balNum : (balNum * effectivePrice);
       const invested = b?.totalInvested !== undefined && b?.totalInvested > 0 ? b.totalInvested : (balNum * (b?.avgBuyPrice || effectivePrice));
       const pnlUsd = isStable ? 0 : (userUsd - invested);
@@ -2941,7 +2963,7 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
       return {
         sym: cleanSym,
         name: cleanSym === "USDC" ? "USD Coin" : cleanSym === "USDT" ? "Tether USD" : cleanSym === "SOL" ? "Solana" : (token.name || b?.name || cleanSym),
-        imageUrl: token.imageUrl,
+        imageUrl: token.imageUrl || (cleanSym === "USDT" ? COIN_IMGS.USDT : undefined),
         poolAddress: token.poolAddress,
         price: token.price,
         numericPrice: effectivePrice,
@@ -2957,6 +2979,21 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
         isRugged: !!token.is_rugged,
       };
     });
+
+    // Requirement 7: Any coin where user has a balance (e.g. USDT, SOL, or bought coin) MUST BE AT THE VERY TOP!
+    // Sorted descending by userUsd value so highest balance is #1.
+    mapped.sort((a, b) => {
+      const aHasMoney = a.userUsd > 0.005 || a.balNum > 0.000001;
+      const bHasMoney = b.userUsd > 0.005 || b.balNum > 0.000001;
+      if (aHasMoney && !bHasMoney) return -1;
+      if (!aHasMoney && bHasMoney) return 1;
+      if (aHasMoney && bHasMoney) {
+        return b.userUsd - a.userUsd;
+      }
+      return 0;
+    });
+
+    return mapped;
   }, [rawBalances, tick]);
 
   const boughtCoins = useMemo(() => {
@@ -3246,14 +3283,14 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
                               justifyContent: 'center',
                               padding: '2px 5px',
                               borderRadius: 5,
-                              background: 'rgba(16, 185, 129, 0.12)',
-                              border: '1px solid rgba(16, 185, 129, 0.3)',
-                              color: '#10B981',
+                              background: isProfit ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                              border: `1px solid ${isProfit ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                              color: isProfit ? '#10B981' : '#EF4444',
                               cursor: 'pointer',
                             }}
-                            title={`Screenshot & download ${b.sym} profit card`}
+                            title={`Share ${b.sym} PnL card`}
                           >
-                            <Camera size={11} />
+                            <Share size={11} />
                           </span>
                         </div>
                       );
@@ -4130,7 +4167,7 @@ function ProfileView({
   };
 
   const handleSelectPreset = (preset: AvatarPreset) => {
-    const newAvatar = generatePhantomAvatar(preset.id + profileUsername);
+    const newAvatar = generatePresetAvatar(preset);
     setProfileAvatarUrl(newAvatar);
     setProfileError(null);
     setProfileSavedMsg(null);
@@ -4238,36 +4275,61 @@ function ProfileView({
       <div className="profile-hero">
         <div className="profile-hero-glow" />
         <div className="profile-hero-top">
-          <div
-            className="profile-avatar-large"
-            style={{ position: "relative", overflow: "hidden", cursor: "pointer" }}
-            onClick={() => fileInputRef.current?.click()}
-            title="Click to change your avatar image"
-          >
-            {profileAvatarUrl ? (
-              <img
-                src={profileAvatarUrl}
-                alt="Profile Avatar"
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                onError={(e) => { (e.target as any).src = generatePhantomAvatar(profileUsername); }}
-              />
-            ) : (
-              userInitials
-            )}
-            <div style={{
-              position: "absolute",
-              bottom: 0,
-              left: 0,
-              right: 0,
-              background: "rgba(0,0,0,0.65)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "4px 0",
-              color: "#fff"
-            }}>
-              <Camera size={13} />
+          <div style={{ position: "relative", width: 78, height: 78, flexShrink: 0 }}>
+            <div
+              className="profile-avatar-large"
+              style={{
+                width: "100%",
+                height: "100%",
+                borderRadius: "50%",
+                overflow: "hidden",
+                cursor: "pointer",
+                border: "2.5px solid rgba(167, 139, 250, 0.5)",
+                boxShadow: "0 0 20px rgba(124, 58, 237, 0.35)",
+                background: "linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              onClick={() => fileInputRef.current?.click()}
+              title="Click to change your avatar image"
+            >
+              {profileAvatarUrl ? (
+                <img
+                  src={profileAvatarUrl}
+                  alt="Profile Avatar"
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  onError={(e) => { (e.target as any).src = generatePhantomAvatar(profileUsername); }}
+                />
+              ) : (
+                <span style={{ fontSize: 24, fontWeight: 800, color: "#fff" }}>{userInitials}</span>
+              )}
             </div>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+              title="Upload new avatar image"
+              style={{
+                position: "absolute",
+                bottom: -2,
+                right: -2,
+                width: 26,
+                height: 26,
+                borderRadius: "50%",
+                background: "linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)",
+                border: "2px solid #0B0D17",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#fff",
+                cursor: "pointer",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.5)",
+                padding: 0,
+                zIndex: 2,
+              }}
+            >
+              <Camera size={12} />
+            </button>
           </div>
           <div className="profile-hero-info">
             <div className="profile-name-row">
@@ -4443,76 +4505,61 @@ function ProfileView({
             </div>
           )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 20, alignItems: "center" }}>
-            {/* Avatar Preview with Camera overlay & Upload */}
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-              <div
-                style={{
-                  width: 84,
-                  height: 84,
-                  borderRadius: "50%",
-                  position: "relative",
-                  overflow: "hidden",
-                  border: "2.5px solid #7C3AED",
-                  boxShadow: "0 0 16px rgba(124, 58, 237, 0.4)",
-                  cursor: "pointer",
-                  background: "#1E1B2E"
-                }}
-                onClick={() => fileInputRef.current?.click()}
-                title="Click to upload photo from your device"
-              >
-                <img
-                  src={profileAvatarUrl}
-                  alt="Avatar"
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  onError={(e) => { (e.target as any).src = generatePhantomAvatar(profileUsername); }}
-                />
-                <div style={{
-                  position: "absolute",
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  background: "rgba(0,0,0,0.65)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: "4px 0",
-                  color: "#fff"
-                }}>
-                  <Camera size={14} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Top row: Avatar + Floating Edit Badge + Username input + Save */}
+            <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ position: "relative", width: 80, height: 80, flexShrink: 0 }}>
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    borderRadius: "50%",
+                    overflow: "hidden",
+                    border: "2.5px solid #7C3AED",
+                    boxShadow: "0 0 16px rgba(124, 58, 237, 0.4)",
+                    cursor: "pointer",
+                    background: "#1E1B2E",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Click to upload custom avatar"
+                >
+                  <img
+                    src={profileAvatarUrl}
+                    alt="Avatar"
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    onError={(e) => { (e.target as any).src = generatePhantomAvatar(profileUsername); }}
+                  />
                 </div>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                  title="Upload photo"
+                  style={{
+                    position: "absolute",
+                    bottom: -2,
+                    right: -2,
+                    width: 26,
+                    height: 26,
+                    borderRadius: "50%",
+                    background: "linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)",
+                    border: "2px solid #0B0D17",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#fff",
+                    cursor: "pointer",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.5)",
+                    padding: 0,
+                  }}
+                >
+                  <Camera size={12} />
+                </button>
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                style={{ display: "none" }}
-                onChange={handleAvatarFileUpload}
-              />
-              <button
-                type="button"
-                onClick={handleRandomizeAvatar}
-                style={{
-                  background: "rgba(124, 58, 237, 0.15)",
-                  border: "1px solid rgba(167, 139, 250, 0.3)",
-                  color: "#C4B5FD",
-                  borderRadius: 6,
-                  padding: "4px 10px",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5
-                }}
-              >
-                <RefreshCw size={11} /> 🎲 Randomize
-              </button>
-            </div>
 
-            {/* Username and Presets Column */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div>
+              <div style={{ flex: 1, minWidth: 200 }}>
                 <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", display: "block", marginBottom: 6 }}>
                   Trader Username
                 </label>
@@ -4549,64 +4596,93 @@ function ProfileView({
                       cursor: profileSaving ? "wait" : "pointer",
                       display: "inline-flex",
                       alignItems: "center",
-                      gap: 6
+                      gap: 6,
+                      whiteSpace: "nowrap"
                     }}
                   >
                     {profileSaving ? "Saving..." : "Save Profile"}
                   </button>
                 </div>
               </div>
+            </div>
 
-              {/* Avatar Presets Row */}
-              <div>
-                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5, display: "block", marginBottom: 6 }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={handleAvatarFileUpload}
+            />
+
+            {/* Avatar Presets Row */}
+            <div style={{ marginTop: 6 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>
                   Choose Identity Preset
                 </span>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                  {PHANTOM_AVATAR_PRESETS.map((preset) => (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => handleSelectPreset(preset)}
-                      style={{
-                        background: preset.gradient,
-                        border: "2px solid rgba(255,255,255,0.2)",
-                        borderRadius: "50%",
-                        width: 38,
-                        height: 38,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 16,
-                        cursor: "pointer",
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-                        transition: "transform 150ms",
-                      }}
-                      title={preset.name}
-                    >
-                      {preset.icon}
-                    </button>
-                  ))}
+                <button
+                  type="button"
+                  onClick={handleRandomizeAvatar}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#C4B5FD",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: 0
+                  }}
+                >
+                  <RefreshCw size={11} /> 🎲 Randomize
+                </button>
+              </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                {PHANTOM_AVATAR_PRESETS.map((preset) => (
                   <button
+                    key={preset.id}
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => handleSelectPreset(preset)}
                     style={{
-                      background: "rgba(255,255,255,0.06)",
-                      border: "1.5px dashed rgba(255,255,255,0.25)",
+                      background: preset.gradient,
+                      border: "2px solid rgba(255,255,255,0.2)",
                       borderRadius: "50%",
-                      width: 38,
-                      height: 38,
+                      width: 40,
+                      height: 40,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      color: "var(--muted)",
-                      cursor: "pointer"
+                      fontSize: 18,
+                      cursor: "pointer",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+                      transition: "transform 150ms",
                     }}
-                    title="Upload photo from device"
+                    title={preset.name}
                   >
-                    <Camera size={16} />
+                    {preset.icon}
                   </button>
-                </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1.5px dashed rgba(255,255,255,0.25)",
+                    borderRadius: "50%",
+                    width: 40,
+                    height: 40,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "var(--muted)",
+                    cursor: "pointer"
+                  }}
+                  title="Upload photo from device"
+                >
+                  <Camera size={16} />
+                </button>
               </div>
             </div>
           </div>
@@ -5307,8 +5383,26 @@ function AppShell({
 
 /* ── ROOT APP ────────────────────────────────────────────────────────────── */
 export default function App() {
-  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(() => {
+    if (typeof window === "undefined" || !window.localStorage) return null;
+    const isUnlocked = localStorage.getItem("axiom_unlocked_session") === "true";
+    const raw = localStorage.getItem("axiom_auth_user");
+    if (isUnlocked && raw) {
+      try {
+        const u = JSON.parse(raw);
+        if (u && (u.wallet_address || u.user_id || u.email)) {
+          return u;
+        }
+      } catch {}
+    }
+    return null;
+  });
+  const [authChecked, setAuthChecked] = useState<boolean>(() => {
+    if (typeof window === "undefined" || !window.localStorage) return false;
+    const isUnlocked = localStorage.getItem("axiom_unlocked_session") === "true";
+    const raw = localStorage.getItem("axiom_auth_user");
+    return Boolean(isUnlocked && raw);
+  });
 
   const checkIsAdminPath = () => {
     if (typeof window === "undefined") return false;
@@ -5367,6 +5461,10 @@ export default function App() {
     getMe()
       .then((user) => {
         setAuthUser(user);
+        if (typeof localStorage !== "undefined") {
+          localStorage.setItem("axiom_unlocked_session", "true");
+          localStorage.setItem("axiom_auth_user", JSON.stringify(user));
+        }
         try {
           marketStore.setUser(user);
         } catch (e) {
@@ -5380,6 +5478,13 @@ export default function App() {
       })
       .catch((err) => {
         console.warn("Failed checking session status:", err);
+        if (err?.message?.includes("401") || err?.status === 401) {
+          if (typeof localStorage !== "undefined") {
+            localStorage.removeItem("axiom_unlocked_session");
+            localStorage.removeItem("axiom_auth_user");
+          }
+          setAuthUser(null);
+        }
       })
       .finally(() => {
         clearTimeout(safetyTimer);
@@ -5407,7 +5512,13 @@ export default function App() {
   }
 
   const handleLogout = async () => {
-    await logout();
+    try {
+      await logout();
+    } catch {}
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem("axiom_unlocked_session");
+      localStorage.removeItem("axiom_auth_user");
+    }
     setAuthUser(null);
     marketStore.setUser(null);
   };
@@ -5434,6 +5545,10 @@ export default function App() {
     return (
       <PhantomAuth
         onAuth={(user) => {
+          if (typeof localStorage !== "undefined") {
+            localStorage.setItem("axiom_unlocked_session", "true");
+            localStorage.setItem("axiom_auth_user", JSON.stringify(user));
+          }
           setAuthUser(user);
           marketStore.setUser(user);
           if (user?.wallet_address) {

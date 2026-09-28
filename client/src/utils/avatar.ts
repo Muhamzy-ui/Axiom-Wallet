@@ -55,11 +55,6 @@ export function generatePhantomAvatar(seed: string): string {
         <stop offset="0%" stop-color="${color3}" stop-opacity="0.8" />
         <stop offset="100%" stop-color="${color2}" stop-opacity="0" />
       </radialGradient>
-      <linearGradient id="g3" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="${color1}" />
-        <stop offset="50%" stop-color="${color2}" />
-        <stop offset="100%" stop-color="${color3}" />
-      </linearGradient>
     </defs>
     <rect width="100" height="100" rx="50" fill="url(#g1)" />
     <circle cx="${cx2}" cy="${cy2}" r="38" fill="url(#g2)" />
@@ -68,5 +63,24 @@ export function generatePhantomAvatar(seed: string): string {
     <circle cx="50" cy="50" r="8" fill="#FFFFFF" />
   </svg>`;
 
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+export function generatePresetAvatar(preset: AvatarPreset): string {
+  const colors = preset.gradient.match(/#[0-9a-fA-F]{6}/g) || ["#7C3AED", "#3B82F6"];
+  const c1 = colors[0] || "#7C3AED";
+  const c2 = colors[1] || colors[0] || "#3B82F6";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+    <defs>
+      <linearGradient id="pgrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="${c1}" />
+        <stop offset="100%" stop-color="${c2}" />
+      </linearGradient>
+    </defs>
+    <rect width="100" height="100" rx="50" fill="url(#pgrad)" />
+    <circle cx="50" cy="50" r="38" fill="rgba(255, 255, 255, 0.14)" stroke="${preset.accent}" stroke-width="2" />
+    <circle cx="50" cy="50" r="28" fill="rgba(0, 0, 0, 0.25)" />
+    <text x="50" y="58" font-size="32" text-anchor="middle" dominant-baseline="middle">${preset.icon}</text>
+  </svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }

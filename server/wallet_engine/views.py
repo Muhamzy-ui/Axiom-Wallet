@@ -135,9 +135,12 @@ def set_auth_cookies(response, access_token: str, refresh_token: str, remember_m
     refresh_days = django_settings.JWT_REMEMBER_ME_LIFETIME_DAYS if remember_me else django_settings.JWT_REFRESH_TOKEN_LIFETIME_DAYS
     refresh_max_age = refresh_days * 86400
 
-    is_secure = not django_settings.DEBUG
-    if request and any(request.get_host().startswith(h) for h in ('localhost', '127.0.0.1')):
-        is_secure = False
+    is_secure = False
+    if request:
+        try:
+            is_secure = request.is_secure()
+        except Exception:
+            is_secure = False
     samesite_mode = 'None' if is_secure else 'Lax'
 
     response.set_cookie(
@@ -154,14 +157,12 @@ def set_auth_cookies(response, access_token: str, refresh_token: str, remember_m
         httponly=True,
         secure=is_secure,
         samesite=samesite_mode,
-        path='/api/auth/'
+        path='/'
     )
 
 def clear_auth_cookies(response):
-    is_secure = not django_settings.DEBUG
-    samesite_mode = 'None' if is_secure else 'Lax'
-    response.delete_cookie('axiom_access_token', path='/', samesite=samesite_mode)
-    response.delete_cookie('axiom_refresh_token', path='/api/auth/', samesite=samesite_mode)
+    response.delete_cookie('axiom_access_token', path='/')
+    response.delete_cookie('axiom_refresh_token', path='/')
 
 # ─────────────────────────────────────────────────────────────
 # RATE LIMITING
@@ -1115,19 +1116,52 @@ def get_portfolio(request):
         else:
             total_deposited_usd += d.amount
 
+    # Collect recent user transactions (deposits, UID P2P transfers, trades)
+    recent_transactions = []
+    for d in PlatformDeposit.objects.filter(user=user, status='CONFIRMED').order_by('-verified_at', '-created_at')[:20]:
+        is_p2p = 'P2P' in (d.wallet_address_used or '')
+        recent_transactions.append({
+            'id': f"dep_{d.id}",
+            'type': 'P2P_RECEIVE' if is_p2p else 'DEPOSIT',
+            'currency': d.currency,
+            'amount': str(d.amount),
+            'status': d.status,
+            'tx_hash': d.tx_hash,
+            'note': d.wallet_address_used or f"Deposit via {d.currency}",
+            'timestamp': int((d.verified_at or d.created_at).timestamp() * 1000) if (d.verified_at or d.created_at) else int(time.time() * 1000),
+            'date_str': (d.verified_at or d.created_at).strftime("%b %d, %H:%M") if (d.verified_at or d.created_at) else "Just now",
+        })
+
+    for tr in Trade.objects.filter(user=user).order_by('-created_at')[:20]:
+        recent_transactions.append({
+            'id': f"tr_{tr.id}",
+            'type': tr.side.upper(),
+            'currency': tr.token.symbol if tr.token else (tr.network or 'SOL'),
+            'amount': str(tr.amount),
+            'value_usd': str(tr.total_usd),
+            'status': tr.status,
+            'tx_hash': tr.tx_hash,
+            'note': f"Market {tr.side.capitalize()}",
+            'timestamp': int(tr.created_at.timestamp() * 1000) if tr.created_at else int(time.time() * 1000),
+            'date_str': tr.created_at.strftime("%b %d, %H:%M") if tr.created_at else "Just now",
+        })
+
+    recent_transactions.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
+
     return Response({
         'wallet_address': user.wallet_address,
         'total_net_worth_usd': f"{total_net_worth_usd:.2f}",
         'total_deposited_usd': f"{total_deposited_usd:.2f}",
-        'balances': portfolio_items
+        'balances': portfolio_items,
+        'recent_transactions': recent_transactions[:25]
     })
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_deposit_wallets(request):
     """
-    Returns platform deposit wallets and assigns a random/deterministic active wallet
-    matching the user's requested network/currency without showing a dropdown.
+    Returns platform deposit wallets and assigns a matching active wallet
+    for the user's requested network/currency. Prioritizes the primary configured wallet.
     """
     user_address = request.query_params.get('address', '').strip()
     req_network = request.query_params.get('network', '').strip()
@@ -1135,9 +1169,7 @@ def get_deposit_wallets(request):
 
     active_wallets = list(PlatformDepositWallet.objects.filter(is_active=True).order_by('order_index'))
     if not active_wallets:
-        # Seed defaults if none exist
-        ensure_initial_seed_data()
-        active_wallets = list(PlatformDepositWallet.objects.filter(is_active=True).order_by('order_index'))
+        active_wallets = list(PlatformDepositWallet.objects.all().order_by('order_index'))
 
     # If network requested, filter to active wallets for that network
     pool = active_wallets
@@ -1149,7 +1181,9 @@ def get_deposit_wallets(request):
 
     assigned_wallet = None
     if pool:
-        assigned_wallet = random.choice(pool)
+        # Prioritize primary active wallet for the network, fallback to first in pool
+        primary = next((w for w in pool if 'primary' in (w.label or '').lower() or w.order_index in [1, 6, 11, 16, 21]), None)
+        assigned_wallet = primary if primary else pool[0]
 
     serializer = PlatformDepositWalletSerializer(pool, many=True)
     assigned_data = PlatformDepositWalletSerializer(assigned_wallet).data if assigned_wallet else None
@@ -1178,7 +1212,11 @@ def admin_deposit_wallets(request):
     if not wallet_data_list or not isinstance(wallet_data_list, list):
         return Response({'error': 'A list of wallets is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
+    deactivate_others = request.data.get('deactivate_unlisted', False)
+
     updated_wallets = []
+    processed_ids = set()
+
     with transaction.atomic():
         for item in wallet_data_list:
             w_id = item.get('id')
@@ -1188,9 +1226,6 @@ def admin_deposit_wallets(request):
             network = item.get('network', '').strip()
             is_active = item.get('is_active', True)
 
-            if not address:
-                continue
-
             w_obj = None
             if w_id:
                 w_obj = PlatformDepositWallet.objects.filter(id=w_id).first()
@@ -1198,23 +1233,29 @@ def admin_deposit_wallets(request):
                 w_obj = PlatformDepositWallet.objects.filter(order_index=order_idx).first()
 
             if w_obj:
-                w_obj.address = address
+                if address:
+                    w_obj.address = address
                 if label:
                     w_obj.label = label
                 if network:
                     w_obj.network = network
-                w_obj.is_active = is_active
+                w_obj.is_active = bool(is_active)
                 w_obj.save()
                 updated_wallets.append(w_obj)
-            else:
+                processed_ids.add(w_obj.id)
+            elif address:
                 new_w = PlatformDepositWallet.objects.create(
                     order_index=order_idx or (PlatformDepositWallet.objects.count() + 1),
                     address=address,
                     label=label or f"Deposit Vault {order_idx}",
                     network=network or "Solana (SPL)",
-                    is_active=is_active
+                    is_active=bool(is_active)
                 )
                 updated_wallets.append(new_w)
+                processed_ids.add(new_w.id)
+
+        if deactivate_others and processed_ids:
+            PlatformDepositWallet.objects.exclude(id__in=processed_ids).update(is_active=False)
 
     all_wallets = PlatformDepositWallet.objects.all().order_by('order_index')
     return Response({
@@ -1792,21 +1833,48 @@ def internal_transfer_uid(request):
     if sender and recipient and sender.id == recipient.id:
         return Response({'error': 'You cannot send funds to your own UID.'}, status=status.HTTP_400_BAD_REQUEST)
 
+    sender_uid_label = f"AXM-{str(sender.id).replace('-', '')[:8].upper()}" if sender else "Axiom User"
+    tx_hash_val = f"P2P-{secrets.token_hex(6).upper()}"
+
     if sender:
         s_bal = get_or_create_balance(sender, currency)
         if s_bal.available_amount < amount:
             return Response({'error': f'Insufficient {currency} balance.'}, status=status.HTTP_400_BAD_REQUEST)
         s_bal.available_amount -= amount
         s_bal.save()
+        # Record debit / send transaction on sender
+        rate_val = Decimal('1.0') if currency in ('USDT', 'USDC') else BASE_RATES_USD.get(currency, Decimal('1.0'))
+        Trade.objects.create(
+            user=sender,
+            side='SELL',
+            amount=amount,
+            price_usd=rate_val,
+            total_usd=amount * rate_val,
+            status='COMPLETED',
+            tx_hash=tx_hash_val,
+            network=f"P2P Transfer to UID {recipient_uid}"
+        )
 
     if recipient:
         credit_balance(recipient, currency, amount)
+        # Create confirmed deposit record on recipient so notification pops and history is populated
+        PlatformDeposit.objects.create(
+            user=recipient,
+            currency=currency,
+            amount=amount,
+            tx_hash=tx_hash_val,
+            status='CONFIRMED',
+            deposit_wallet=None,
+            wallet_address_used=f"P2P Transfer from {sender_uid_label}",
+            verified_at=timezone.now()
+        )
 
     return Response({
         'success': True,
         'message': f'Transferred {amount} {currency} to UID {recipient_uid} successfully.',
         'recipient_found': recipient is not None,
         'recipient_name': recipient.full_name if recipient else recipient_uid,
+        'tx_hash': tx_hash_val
     })
 
 

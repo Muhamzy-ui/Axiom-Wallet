@@ -67,18 +67,20 @@ export const ProfitShareModal: React.FC<ProfitShareModalProps> = ({
   };
 
   // Position calculation
+  // Position calculation
   const pos = marketStore.getUserPosition(selectedSym);
-  const hasRealPosition = pos && pos.hasPosition && pos.invested > 0;
+  const hasRealPosition = !!(pos && pos.hasPosition && pos.invested > 0);
 
   // Resolved numbers for the card
   const metrics = useMemo(() => {
-    if (isCustomMode || !hasRealPosition) {
+    if (isCustomMode) {
       const inv = parseFloat(customInvested) || 3355.30;
       const cur = parseFloat(customCurrentVal) || 69675.76;
       const profit = cur - inv;
-      const pct = inv > 0 ? (profit / inv) * 100 : 2001.83;
-      const mult = inv > 0 ? cur / inv : 20.8;
+      const pct = inv > 0 ? (profit / inv) * 100 : 0;
+      const mult = inv > 0 ? cur / inv : 1;
       return {
+        hasPosition: true,
         invested: inv,
         currentVal: cur,
         profitUsd: profit,
@@ -89,12 +91,26 @@ export const ProfitShareModal: React.FC<ProfitShareModalProps> = ({
       };
     }
 
+    if (!hasRealPosition) {
+      return {
+        hasPosition: false,
+        invested: 0,
+        currentVal: 0,
+        profitUsd: 0,
+        profitPct: 0,
+        multiplier: 0,
+        coinAmount: `0.00 ${selectedSym}`,
+        avgEntry: "—",
+      };
+    }
+
     const inv = pos.invested;
     const cur = pos.currentVal;
     const profit = pos.pnlUsd;
     const pct = pos.pnlPct;
     const mult = inv > 0 ? cur / inv : 1;
     return {
+      hasPosition: true,
       invested: inv,
       currentVal: cur,
       profitUsd: profit,
@@ -122,10 +138,12 @@ export const ProfitShareModal: React.FC<ProfitShareModalProps> = ({
     ctx.scale(2, 2);
 
     const isPhoton = theme === "photon";
+    const isLoss = metrics.hasPosition && (metrics.profitPct < 0 || metrics.profitUsd < 0);
+    const brandColor = isLoss ? "#EF4444" : "#10B981";
+    const brandGlow = isLoss ? "#EF4444" : "#00FFA3";
 
     // 1. Background
     if (isPhoton) {
-      // Deep OLED dark rounded card
       const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
       bgGrad.addColorStop(0, "#090A11");
       bgGrad.addColorStop(0.5, "#0D0E17");
@@ -135,30 +153,31 @@ export const ProfitShareModal: React.FC<ProfitShareModalProps> = ({
 
       // Subtle mesh glow at top right
       const glowGrad = ctx.createRadialGradient(width - 80, 100, 10, width - 80, 100, 360);
-      glowGrad.addColorStop(0, "rgba(16, 185, 129, 0.12)");
+      glowGrad.addColorStop(0, isLoss ? "rgba(239, 68, 68, 0.12)" : "rgba(16, 185, 129, 0.12)");
       glowGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
       ctx.fillStyle = glowGrad;
       ctx.fillRect(0, 0, width, height);
     } else {
-      // Degen Poster Theme - Cyber Neon Forest
+      // Degen Poster Theme
       const bgGrad = ctx.createLinearGradient(0, 0, width, height);
-      bgGrad.addColorStop(0, "#03140C");
-      bgGrad.addColorStop(0.4, "#062215");
-      bgGrad.addColorStop(1, "#020B07");
+      bgGrad.addColorStop(0, isLoss ? "#1A0505" : "#03140C");
+      bgGrad.addColorStop(0.4, isLoss ? "#2B0909" : "#062215");
+      bgGrad.addColorStop(1, isLoss ? "#0E0202" : "#020B07");
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, width, height);
 
-      // Glowing radial aura in center
       const aura = ctx.createRadialGradient(width / 2, height / 2 - 40, 50, width / 2, height / 2 - 40, 420);
-      aura.addColorStop(0, "rgba(0, 255, 163, 0.18)");
-      aura.addColorStop(0.7, "rgba(16, 185, 129, 0.05)");
+      aura.addColorStop(0, isLoss ? "rgba(239, 68, 68, 0.22)" : "rgba(0, 255, 163, 0.18)");
+      aura.addColorStop(0.7, isLoss ? "rgba(239, 68, 68, 0.06)" : "rgba(16, 185, 129, 0.05)");
       aura.addColorStop(1, "rgba(0, 0, 0, 0)");
       ctx.fillStyle = aura;
       ctx.fillRect(0, 0, width, height);
     }
 
     // Card border
-    ctx.strokeStyle = isPhoton ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 255, 163, 0.25)";
+    ctx.strokeStyle = isPhoton
+      ? (isLoss ? "rgba(239, 68, 68, 0.2)" : "rgba(255, 255, 255, 0.08)")
+      : (isLoss ? "rgba(239, 68, 68, 0.4)" : "rgba(0, 255, 163, 0.25)");
     ctx.lineWidth = 2;
     ctx.strokeRect(1, 1, width - 2, height - 2);
 
@@ -188,7 +207,7 @@ export const ProfitShareModal: React.FC<ProfitShareModalProps> = ({
 
       // Token Header
       // Token Icon circle
-      ctx.fillStyle = "#10B981";
+      ctx.fillStyle = brandColor;
       ctx.beginPath();
       ctx.arc(66, 126, 26, 0, Math.PI * 2);
       ctx.fill();
@@ -206,15 +225,15 @@ export const ProfitShareModal: React.FC<ProfitShareModalProps> = ({
       ctx.fillText(`${selectedSym}  ›`, 104, 126);
 
       // Open badge
-      ctx.fillStyle = "rgba(59, 130, 246, 0.2)";
+      ctx.fillStyle = metrics.hasPosition ? "rgba(59, 130, 246, 0.2)" : "rgba(148, 163, 184, 0.15)";
       ctx.beginPath();
-      ctx.roundRect(104, 136, 68, 22, 6);
+      ctx.roundRect(104, 136, 100, 22, 6);
       ctx.fill();
-      ctx.strokeStyle = "rgba(59, 130, 246, 0.5)";
+      ctx.strokeStyle = metrics.hasPosition ? "rgba(59, 130, 246, 0.5)" : "rgba(148, 163, 184, 0.3)";
       ctx.stroke();
-      ctx.fillStyle = "#60A5FA";
+      ctx.fillStyle = metrics.hasPosition ? "#60A5FA" : "#94A3B8";
       ctx.font = "bold 11px Inter, -apple-system, sans-serif";
-      ctx.fillText("Open •", 116, 151);
+      ctx.fillText(metrics.hasPosition ? "Position Open •" : "No Position •", 112, 151);
 
       // Chart Box Area (Height: ~300px)
       const chartTop = 190;
@@ -223,101 +242,131 @@ export const ProfitShareModal: React.FC<ProfitShareModalProps> = ({
       const chartRight = width - 40;
       const chartW = chartRight - chartLeft;
 
-      // Price target line across the top of the rally
-      ctx.strokeStyle = "rgba(16, 185, 129, 0.25)";
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.moveTo(chartLeft, 270);
-      ctx.lineTo(chartRight - 90, 270);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Green price pill on the right
-      ctx.fillStyle = "#10B981";
-      ctx.beginPath();
-      ctx.roundRect(chartRight - 84, 258, 84, 24, 6);
-      ctx.fill();
-      ctx.fillStyle = "#000000";
-      ctx.font = "bold 12px Inter, -apple-system, sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText(tokenData.cap || "$2.4M", chartRight - 42, 274);
-      ctx.textAlign = "left";
-
-      // Generate smooth bezier curve path exactly like reference screenshot
-      // Curve starts flat on left, has gentle dips, then ramps steeply upward
-      const pts = [
-        { x: chartLeft, y: 440 },
-        { x: chartLeft + chartW * 0.15, y: 436 },
-        { x: chartLeft + chartW * 0.28, y: 442 },
-        { x: chartLeft + chartW * 0.40, y: 438 },
-        { x: chartLeft + chartW * 0.52, y: 432 },
-        { x: chartLeft + chartW * 0.62, y: 420 },
-        { x: chartLeft + chartW * 0.72, y: 380 },
-        { x: chartLeft + chartW * 0.82, y: 310 },
-        { x: chartLeft + chartW * 0.90, y: 282 },
-        { x: chartRight, y: 268 }
-      ];
-
-      // Fill area under curve
-      const areaGrad = ctx.createLinearGradient(0, 250, 0, chartBottom);
-      areaGrad.addColorStop(0, "rgba(16, 185, 129, 0.35)");
-      areaGrad.addColorStop(0.5, "rgba(16, 185, 129, 0.12)");
-      areaGrad.addColorStop(1, "rgba(16, 185, 129, 0.0)");
-
-      ctx.beginPath();
-      ctx.moveTo(pts[0].x, pts[0].y);
-      for (let i = 0; i < pts.length - 1; i++) {
-        const xc = (pts[i].x + pts[i + 1].x) / 2;
-        const yc = (pts[i].y + pts[i + 1].y) / 2;
-        ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
-      }
-      ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
-      ctx.lineTo(chartRight, chartBottom);
-      ctx.lineTo(chartLeft, chartBottom);
-      ctx.closePath();
-      ctx.fillStyle = areaGrad;
-      ctx.fill();
-
-      // Draw the vibrant neon green curve
-      ctx.beginPath();
-      ctx.moveTo(pts[0].x, pts[0].y);
-      for (let i = 0; i < pts.length - 1; i++) {
-        const xc = (pts[i].x + pts[i + 1].x) / 2;
-        const yc = (pts[i].y + pts[i + 1].y) / 2;
-        ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
-      }
-      ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
-      ctx.strokeStyle = "#10B981";
-      ctx.lineWidth = 4;
-      ctx.shadowColor = "#10B981";
-      ctx.shadowBlur = 12;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      // Draw buy entry circles with '+' along the curve (Matching the screenshot!)
-      const buyBubbleIndices = [1, 2, 4, 6, 7, 8];
-      buyBubbleIndices.forEach((idx) => {
-        const pt = pts[idx];
-        const bubbleY = pt.y - 18;
-        // Outer green circle
-        ctx.fillStyle = "#10B981";
+      if (!metrics.hasPosition) {
+        // CLEAN NO OPEN POSITION STATE
+        ctx.fillStyle = "rgba(255, 255, 255, 0.02)";
         ctx.beginPath();
-        ctx.arc(pt.x, bubbleY, 12, 0, Math.PI * 2);
+        ctx.roundRect(chartLeft, chartTop, chartW, 290, 16);
         ctx.fill();
-        ctx.strokeStyle = "#000000";
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
         ctx.stroke();
 
-        // Plus icon inside
-        ctx.strokeStyle = "#000000";
-        ctx.lineWidth = 2.5;
+        ctx.textAlign = "center";
+        ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+        ctx.font = "bold 22px Inter, -apple-system, sans-serif";
+        ctx.fillText(`No Active Position in $${selectedSym}`, width / 2, chartTop + 120);
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
+        ctx.font = "500 14px Inter, -apple-system, sans-serif";
+        ctx.fillText(`Buy or Swap $${selectedSym} on Axiom DEX to activate your verified PnL share card`, width / 2, chartTop + 155);
+        ctx.textAlign = "left";
+      } else {
+        // Price target line
+        ctx.strokeStyle = isLoss ? "rgba(239, 68, 68, 0.25)" : "rgba(16, 185, 129, 0.25)";
+        ctx.setLineDash([4, 4]);
         ctx.beginPath();
-        ctx.moveTo(pt.x - 5, bubbleY);
-        ctx.lineTo(pt.x + 5, bubbleY);
-        ctx.moveTo(pt.x, bubbleY - 5);
-        ctx.lineTo(pt.x, bubbleY + 5);
+        ctx.moveTo(chartLeft, 270);
+        ctx.lineTo(chartRight - 90, 270);
         ctx.stroke();
-      });
+        ctx.setLineDash([]);
+
+        // Price pill on the right
+        ctx.fillStyle = brandColor;
+        ctx.beginPath();
+        ctx.roundRect(chartRight - 84, 258, 84, 24, 6);
+        ctx.fill();
+        ctx.fillStyle = "#FFFFFF";
+        ctx.font = "bold 12px Inter, -apple-system, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(tokenData.cap || "$2.4M", chartRight - 42, 274);
+        ctx.textAlign = "left";
+
+        // Generate smooth bezier curve path
+        const pts = isLoss ? [
+          { x: chartLeft, y: 270 },
+          { x: chartLeft + chartW * 0.15, y: 280 },
+          { x: chartLeft + chartW * 0.28, y: 275 },
+          { x: chartLeft + chartW * 0.40, y: 310 },
+          { x: chartLeft + chartW * 0.52, y: 340 },
+          { x: chartLeft + chartW * 0.62, y: 360 },
+          { x: chartLeft + chartW * 0.72, y: 410 },
+          { x: chartLeft + chartW * 0.82, y: 430 },
+          { x: chartLeft + chartW * 0.90, y: 442 },
+          { x: chartRight, y: 450 }
+        ] : [
+          { x: chartLeft, y: 440 },
+          { x: chartLeft + chartW * 0.15, y: 436 },
+          { x: chartLeft + chartW * 0.28, y: 442 },
+          { x: chartLeft + chartW * 0.40, y: 438 },
+          { x: chartLeft + chartW * 0.52, y: 432 },
+          { x: chartLeft + chartW * 0.62, y: 420 },
+          { x: chartLeft + chartW * 0.72, y: 380 },
+          { x: chartLeft + chartW * 0.82, y: 310 },
+          { x: chartLeft + chartW * 0.90, y: 282 },
+          { x: chartRight, y: 268 }
+        ];
+
+        // Fill area under curve
+        const areaGrad = ctx.createLinearGradient(0, 250, 0, chartBottom);
+        areaGrad.addColorStop(0, isLoss ? "rgba(239, 68, 68, 0.35)" : "rgba(16, 185, 129, 0.35)");
+        areaGrad.addColorStop(0.5, isLoss ? "rgba(239, 68, 68, 0.12)" : "rgba(16, 185, 129, 0.12)");
+        areaGrad.addColorStop(1, isLoss ? "rgba(239, 68, 68, 0.0)" : "rgba(16, 185, 129, 0.0)");
+
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 0; i < pts.length - 1; i++) {
+          const xc = (pts[i].x + pts[i + 1].x) / 2;
+          const yc = (pts[i].y + pts[i + 1].y) / 2;
+          ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
+        }
+        ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+        ctx.lineTo(chartRight, chartBottom);
+        ctx.lineTo(chartLeft, chartBottom);
+        ctx.closePath();
+        ctx.fillStyle = areaGrad;
+        ctx.fill();
+
+        // Draw curve with glow
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 0; i < pts.length - 1; i++) {
+          const xc = (pts[i].x + pts[i + 1].x) / 2;
+          const yc = (pts[i].y + pts[i + 1].y) / 2;
+          ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
+        }
+        ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+        ctx.strokeStyle = brandColor;
+        ctx.lineWidth = 4;
+        ctx.shadowColor = brandColor;
+        ctx.shadowBlur = 12;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Entry bubble points
+        const buyBubbleIndices = [1, 2, 4, 6, 7, 8];
+        buyBubbleIndices.forEach((idx) => {
+          const pt = pts[idx];
+          const bubbleY = pt.y - 18;
+          ctx.fillStyle = brandColor;
+          ctx.beginPath();
+          ctx.arc(pt.x, bubbleY, 12, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "#000000";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          ctx.strokeStyle = "#000000";
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(pt.x - 5, bubbleY);
+          ctx.lineTo(pt.x + 5, bubbleY);
+          if (!isLoss) {
+            ctx.moveTo(pt.x, bubbleY - 5);
+            ctx.lineTo(pt.x, bubbleY + 5);
+          }
+          ctx.stroke();
+        });
+      }
 
       // Timeframe Pills Row (LIVE, 1H, 4H, 1D, 7D, ALL)
       const tfY = 520;
@@ -356,16 +405,21 @@ export const ProfitShareModal: React.FC<ProfitShareModalProps> = ({
       ctx.font = "600 16px Inter, -apple-system, sans-serif";
       ctx.fillText(metrics.coinAmount, 40, 662);
 
-      // Right: Profit Amount & Percentage Gain
+      // Right: Profit Amount & Percentage
       ctx.textAlign = "right";
-      ctx.fillStyle = "#10B981";
+      ctx.fillStyle = !metrics.hasPosition ? "rgba(255, 255, 255, 0.4)" : brandColor;
       ctx.font = "900 40px Inter, -apple-system, sans-serif";
-      const sign = metrics.profitUsd >= 0 ? "+" : "-";
+      const sign = metrics.profitUsd > 0 ? "+" : metrics.profitUsd < 0 ? "-" : "";
       ctx.fillText(`${sign}$${Math.abs(metrics.profitUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, width - 40, 630);
 
       // Percentage pill
       ctx.font = "bold 20px Inter, -apple-system, sans-serif";
-      ctx.fillText(`▲ ${metrics.profitPct >= 0 ? "+" : ""}${metrics.profitPct.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`, width - 40, 664);
+      if (!metrics.hasPosition) {
+        ctx.fillText(`0.00% PnL`, width - 40, 664);
+      } else {
+        const arrow = metrics.profitPct >= 0 ? "▲ +" : "▼ ";
+        ctx.fillText(`${arrow}${metrics.profitPct.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`, width - 40, 664);
+      }
       ctx.textAlign = "left";
 
       // Sub-metrics Box (Invested & Avg Entry)
@@ -427,7 +481,7 @@ export const ProfitShareModal: React.FC<ProfitShareModalProps> = ({
 
       // Verified Axiom P2P Settlement
       ctx.textAlign = "right";
-      ctx.fillStyle = "#10B981";
+      ctx.fillStyle = brandColor;
       ctx.font = "bold 13px Inter, -apple-system, sans-serif";
       ctx.fillText("✓ Verified On Axiom", width - 65, footerY + 36);
 
@@ -439,41 +493,61 @@ export const ProfitShareModal: React.FC<ProfitShareModalProps> = ({
     } else {
       // ──────────────── DEGEN MULTIPLIER POSTER (Image 2 Style) ────────────────
       // Top Mascot / Badge
-      ctx.fillStyle = "#00FFA3";
+      ctx.fillStyle = brandGlow;
       ctx.beginPath();
-      ctx.roundRect(width / 2 - 80, 45, 160, 36, 18);
+      ctx.roundRect(width / 2 - 95, 45, 190, 36, 18);
       ctx.fill();
       ctx.fillStyle = "#000000";
       ctx.font = "900 14px Inter, -apple-system, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("⚡ AXIOM DEGEN", width / 2, 68);
+      ctx.fillText(isLoss ? "⚡ AXIOM PNL" : "⚡ AXIOM DEGEN", width / 2, 68);
 
       // Big Title (Token Symbol)
       ctx.fillStyle = "#FFFFFF";
       ctx.font = "900 58px Inter, -apple-system, sans-serif";
       ctx.fillText(selectedSym, width / 2, 160);
 
-      // GIANT NEON MULTIPLIER (e.g. 2.1X, 20.8X)
-      const multText = `${metrics.multiplier.toFixed(1)}X`;
-      ctx.fillStyle = "#00FFA3";
-      ctx.font = "900 130px Inter, -apple-system, sans-serif";
-      ctx.shadowColor = "#00FFA3";
-      ctx.shadowBlur = 28;
-      ctx.fillText(multText, width / 2, 310);
-      ctx.shadowBlur = 0;
+      // MULTIPLIER OR NO POSITION TEXT (NO FAKE 2.X WHEN NO POSITION!)
+      if (!metrics.hasPosition) {
+        ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
+        ctx.font = "900 80px Inter, -apple-system, sans-serif";
+        ctx.fillText("NO POSITION", width / 2, 290);
 
-      // Profit PnL Badge
-      ctx.fillStyle = "rgba(0, 255, 163, 0.15)";
-      ctx.beginPath();
-      ctx.roundRect(width / 2 - 190, 350, 380, 56, 28);
-      ctx.fill();
-      ctx.strokeStyle = "#00FFA3";
-      ctx.lineWidth = 2;
-      ctx.stroke();
+        // Subtitle badge
+        ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+        ctx.beginPath();
+        ctx.roundRect(width / 2 - 180, 340, 360, 52, 26);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
 
-      ctx.fillStyle = "#00FFA3";
-      ctx.font = "bold 28px Inter, -apple-system, sans-serif";
-      ctx.fillText(`+${metrics.profitPct.toFixed(1)}% GAIN`, width / 2, 388);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+        ctx.font = "bold 20px Inter, -apple-system, sans-serif";
+        ctx.fillText(`0.00% PnL • Trade to Activate`, width / 2, 373);
+      } else {
+        const multText = `${metrics.multiplier < 1 ? metrics.multiplier.toFixed(2) : metrics.multiplier.toFixed(1)}X`;
+        ctx.fillStyle = brandGlow;
+        ctx.font = "900 130px Inter, -apple-system, sans-serif";
+        ctx.shadowColor = brandGlow;
+        ctx.shadowBlur = 28;
+        ctx.fillText(multText, width / 2, 310);
+        ctx.shadowBlur = 0;
+
+        // Profit / Loss PnL Badge
+        ctx.fillStyle = isLoss ? "rgba(239, 68, 68, 0.18)" : "rgba(0, 255, 163, 0.15)";
+        ctx.beginPath();
+        ctx.roundRect(width / 2 - 190, 350, 380, 56, 28);
+        ctx.fill();
+        ctx.strokeStyle = brandGlow;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.fillStyle = brandGlow;
+        ctx.font = "bold 28px Inter, -apple-system, sans-serif";
+        const signStr = metrics.profitPct >= 0 ? `+${metrics.profitPct.toFixed(1)}% GAIN` : `${metrics.profitPct.toFixed(1)}% LOSS`;
+        ctx.fillText(signStr, width / 2, 388);
+      }
 
       // Middle Stats Grid (Invested, Value, Return)
       const statTop = 450;
@@ -481,18 +555,19 @@ export const ProfitShareModal: React.FC<ProfitShareModalProps> = ({
       ctx.beginPath();
       ctx.roundRect(60, statTop, width - 120, 260, 20);
       ctx.fill();
-      ctx.strokeStyle = "rgba(0, 255, 163, 0.2)";
+      ctx.strokeStyle = isLoss ? "rgba(239, 68, 68, 0.3)" : "rgba(0, 255, 163, 0.2)";
       ctx.stroke();
 
-      // Row 1: Total Profit
+      // Row 1: Total Profit / Loss
       ctx.textAlign = "left";
       ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
       ctx.font = "600 16px Inter, -apple-system, sans-serif";
-      ctx.fillText("Net Profit:", 90, statTop + 45);
+      ctx.fillText(isLoss ? "Net Loss:" : "Net Profit:", 90, statTop + 45);
       ctx.textAlign = "right";
-      ctx.fillStyle = "#00FFA3";
+      ctx.fillStyle = !metrics.hasPosition ? "rgba(255, 255, 255, 0.4)" : brandGlow;
       ctx.font = "900 28px Inter, -apple-system, sans-serif";
-      ctx.fillText(`+$${metrics.profitUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, width - 90, statTop + 46);
+      const pnlSign = metrics.profitUsd > 0 ? "+" : metrics.profitUsd < 0 ? "-" : "";
+      ctx.fillText(`${pnlSign}$${Math.abs(metrics.profitUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, width - 90, statTop + 46);
 
       // Row 2: Portfolio Value
       ctx.textAlign = "left";
@@ -524,14 +599,14 @@ export const ProfitShareModal: React.FC<ProfitShareModalProps> = ({
       ctx.font = "bold 20px Inter, -apple-system, sans-serif";
       ctx.fillText(metrics.avgEntry, width - 90, statTop + 225);
 
-      // Trader Brag Footer (Matching @AYUBTOMI from Image 2!)
+      // Trader Brag Footer (Matching reference)
       const footY = 760;
       ctx.textAlign = "center";
       ctx.fillStyle = "#FFFFFF";
       ctx.font = "900 32px Inter, -apple-system, sans-serif";
       ctx.fillText(`👤 ${userName.toUpperCase()}`, width / 2, footY);
 
-      ctx.fillStyle = "#00FFA3";
+      ctx.fillStyle = brandGlow;
       ctx.font = "bold 16px monospace";
       ctx.fillText(`UID: ${userUid}`, width / 2, footY + 36);
 
@@ -624,18 +699,18 @@ export const ProfitShareModal: React.FC<ProfitShareModalProps> = ({
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{
               width: 32, height: 32, borderRadius: 10,
-              background: "rgba(16, 185, 129, 0.15)",
-              border: "1px solid rgba(16, 185, 129, 0.3)",
+              background: metrics.hasPosition && metrics.profitPct < 0 ? "rgba(239, 68, 68, 0.15)" : "rgba(16, 185, 129, 0.15)",
+              border: `1px solid ${metrics.hasPosition && metrics.profitPct < 0 ? "rgba(239, 68, 68, 0.3)" : "rgba(16, 185, 129, 0.3)"}`,
               display: "flex", alignItems: "center", justifyContent: "center"
             }}>
-              <Camera size={16} color="#10B981" />
+              <Share2 size={16} color={metrics.hasPosition && metrics.profitPct < 0 ? "#EF4444" : "#10B981"} />
             </div>
             <div>
               <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: "#fff" }}>
-                Profit Screenshot Card
+                PnL Share Card
               </h2>
               <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                Generate & download your verified trade PnL brag card
+                Generate & share your verified trade PnL card
               </span>
             </div>
           </div>
