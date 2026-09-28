@@ -5156,7 +5156,7 @@ function AppShell({
         >
           <div className="ios26-island-content">
             <div className="ios26-icon-wrap">
-              <AxiomLogo size={18} withGlow={false} />
+              <AxiomLogo size={22} withGlow={false} />
             </div>
             <div className="ios26-text-wrap">
               <span className="ios26-title">
@@ -5186,8 +5186,8 @@ function AppShell({
       )}
 
       <header className="app-header">
-        <button className="app-brand" onClick={() => navigateTo("wallet")} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <AxiomLogo size={26} />
+        <button className="app-brand" onClick={() => navigateTo("wallet")} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <AxiomLogo size={32} />
           <span>AXIOM</span>
         </button>
         <nav className="app-nav">

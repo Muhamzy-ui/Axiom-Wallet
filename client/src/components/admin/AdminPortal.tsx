@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Shield, Lock, Eye, EyeOff, ArrowRight, ArrowLeft, KeyRound, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { api } from '../../services/api';
 import { AdminDashboard } from './AdminDashboard';
+import { AxiomLogo } from '../common/AxiomLogo';
 
 interface AdminPortalProps {
   onExit?: () => void;
@@ -138,18 +139,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExit }) => {
         {/* Header Badge & Icon */}
         <div style={{ textAlign: 'center', marginBottom: '28px' }}>
           <div style={{
-            width: '64px',
-            height: '64px',
-            borderRadius: '16px',
-            background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.25) 0%, rgba(91, 33, 182, 0.4) 100%)',
-            border: '1px solid rgba(167, 139, 250, 0.4)',
+            width: '68px',
+            height: '68px',
+            borderRadius: '18px',
+            background: 'rgba(15, 17, 26, 0.9)',
+            border: '1px solid rgba(167, 139, 250, 0.45)',
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
             marginBottom: '16px',
-            boxShadow: '0 0 24px rgba(124, 58, 237, 0.35)'
+            boxShadow: '0 0 30px rgba(124, 58, 237, 0.45)'
           }}>
-            <Shield size={32} color="#A78BFA" />
+            <AxiomLogo size={50} />
           </div>
 
           <div style={{

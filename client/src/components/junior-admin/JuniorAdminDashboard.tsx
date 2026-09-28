@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { JuniorAdmin, JuniorAdminMetrics, WithdrawalRequest } from '../../types';
+import { AxiomLogo } from '../common/AxiomLogo';
 
 interface JuniorAdminDashboardProps {
   juniorAdmin: JuniorAdmin;
@@ -286,18 +287,7 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
         justifyContent: 'space-between'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '12px',
-            background: 'linear-gradient(135deg, #06b6d4 0%, #6366f1 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 0 20px rgba(6, 182, 212, 0.35)'
-          }}>
-            <Shield size={22} color="#fff" />
-          </div>
+          <AxiomLogo size={38} />
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontWeight: 800, fontSize: '16px', letterSpacing: '-0.3px', color: '#fff' }}>

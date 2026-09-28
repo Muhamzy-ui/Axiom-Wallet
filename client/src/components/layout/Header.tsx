@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Shield, Copy, Check, Lock, ChevronDown, LayoutDashboard, Wallet } from 'lucide-react';
 import { copyToClipboard } from '../../services/clipboard';
+import { AxiomLogo } from '../common/AxiomLogo';
 
 interface HeaderProps {
   walletAddress: string;
@@ -49,19 +50,7 @@ export const Header: React.FC<HeaderProps> = ({
         style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}
         onClick={() => isAdminView && onToggleAdmin()}
       >
-        <div style={{
-          width: '36px',
-          height: '36px',
-          borderRadius: '10px',
-          background: '#7C3AED',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 2px 10px rgba(124, 58, 237, 0.35)',
-          flexShrink: 0,
-        }}>
-          <Shield size={18} color="#FFFFFF" />
-        </div>
+        <AxiomLogo size={34} />
         <div>
           <h2 style={{ fontSize: '1.15rem', fontWeight: 800, letterSpacing: '-0.02em', color: '#FFFFFF', margin: 0, lineHeight: 1.1 }}>
             Axiom

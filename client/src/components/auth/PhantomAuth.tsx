@@ -696,9 +696,9 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
             <div className="phantom-content">
               <div>
                 <div className="phantom-mascot-wrapper">
-                  <div className="phantom-glow-halo" />
-                  <div className="phantom-mascot-circle">
-                    <Wallet size={34} className="phantom-mascot-icon" />
+                  <div className="phantom-glow-halo" style={{ background: "radial-gradient(circle, rgba(168, 85, 247, 0.45) 0%, rgba(6, 182, 212, 0.25) 50%, transparent 70%)" }} />
+                  <div className="phantom-mascot-circle" style={{ background: "rgba(15, 17, 26, 0.85)", border: "1.5px solid rgba(168, 85, 247, 0.45)", boxShadow: "0 0 30px rgba(168, 85, 247, 0.35)" }}>
+                    <AxiomLogo size={52} withGlow={true} />
                   </div>
                 </div>
 
@@ -1252,9 +1252,9 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
             <form className="phantom-content" onSubmit={handleUnlockSubmit}>
               <div>
                 <div className="phantom-mascot-wrapper">
-                  <div className="phantom-glow-halo" />
-                  <div className="phantom-mascot-circle">
-                    <Lock size={30} className="phantom-mascot-icon" />
+                  <div className="phantom-glow-halo" style={{ background: "radial-gradient(circle, rgba(168, 85, 247, 0.45) 0%, rgba(6, 182, 212, 0.25) 50%, transparent 70%)" }} />
+                  <div className="phantom-mascot-circle" style={{ background: "rgba(15, 17, 26, 0.85)", border: "1.5px solid rgba(168, 85, 247, 0.45)", boxShadow: "0 0 30px rgba(168, 85, 247, 0.35)" }}>
+                    <AxiomLogo size={52} withGlow={true} />
                   </div>
                 </div>
 

@@ -23,6 +23,7 @@ import { Sparkline } from '../common/Sparkline';
 import { useTheme } from '../../services/themeContext';
 import { copyToClipboard } from '../../services/clipboard';
 import { setCustomDollarRate, getCustomDollarRate } from '../../constants/countries';
+import { AxiomLogo } from '../common/AxiomLogo';
 
 /* ── Design tokens ─────────────────────────────────────────────── */
 const C = {
@@ -6428,11 +6429,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
           </button>
 
           {/* Brand Logo & Name */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            <div style={{ width: 28, height: 28, borderRadius: 8, background: C.violet, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Zap size={14} color="#fff" />
-            </div>
-            <div style={{ fontWeight: 800, fontSize: 13, whiteSpace: 'nowrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            <AxiomLogo size={28} />
+            <div style={{ fontWeight: 800, fontSize: 14, whiteSpace: 'nowrap', letterSpacing: '-0.3px' }}>
               Axiom <span style={{ color: C.muted, fontWeight: 500, fontSize: 11 }}>Admin</span>
             </div>
           </div>

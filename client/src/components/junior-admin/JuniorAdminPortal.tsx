@@ -3,6 +3,7 @@ import { Shield, Lock, User, ArrowRight, ArrowLeft, KeyRound, AlertCircle, Eye, 
 import { api } from '../../services/api';
 import { JuniorAdmin } from '../../types';
 import { JuniorAdminDashboard } from './JuniorAdminDashboard';
+import { AxiomLogo } from '../common/AxiomLogo';
 
 export const JuniorAdminPortal: React.FC = () => {
   const [currentJa, setCurrentJa] = useState<JuniorAdmin | null>(null);
@@ -174,18 +175,18 @@ export const JuniorAdminPortal: React.FC = () => {
           {/* Header */}
           <div style={{ textAlign: 'center', marginBottom: '28px' }}>
             <div style={{
-              width: '64px',
-              height: '64px',
-              borderRadius: '16px',
-              background: 'linear-gradient(135deg, rgba(34, 209, 248, 0.25) 0%, rgba(99, 102, 241, 0.35) 100%)',
-              border: '1px solid rgba(34, 209, 248, 0.4)',
+              width: '68px',
+              height: '68px',
+              borderRadius: '18px',
+              background: 'rgba(12, 17, 28, 0.9)',
+              border: '1px solid rgba(34, 209, 248, 0.45)',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
               marginBottom: '16px',
-              boxShadow: '0 0 25px rgba(34, 209, 248, 0.3)'
+              boxShadow: '0 0 30px rgba(34, 209, 248, 0.4)'
             }}>
-              <Shield size={32} color="#22D1F8" />
+              <AxiomLogo size={50} />
             </div>
 
             <div style={{

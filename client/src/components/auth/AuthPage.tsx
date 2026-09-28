@@ -13,6 +13,7 @@ import { useTheme } from "../../services/themeContext";
 import { copyToClipboard } from "../../services/clipboard";
 import "./AuthPage.css";
 import { CountrySelectModal } from "../modals/CountrySelectModal";
+import { AxiomLogo } from "../common/AxiomLogo";
 
 // ─────────────────────────────────────────────────────────────
 // Country data with flag emoji
@@ -468,8 +469,8 @@ function BrandingPanel({ view }: { view: AuthView }) {
 
       {/* Brand Header */}
       <div className="brand-top-bar">
-        <div className="brand-logo">
-          <div className="brand-logo-icon">A</div>
+        <div className="brand-logo" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <AxiomLogo size={36} />
           <span className="brand-logo-text">AXIOM</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -701,6 +702,9 @@ function SignUpForm({ onSuccess, onSwitch }: {
   return (
     <form className="auth-form" onSubmit={handleSubmit} noValidate>
       <div className="auth-form-header">
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+          <AxiomLogo size={46} />
+        </div>
         <h2 className="auth-card-title">Create your account</h2>
         <p className="auth-card-sub">Join thousands of decentralized traders on Axiom Wallet</p>
       </div>
@@ -877,6 +881,9 @@ function LoginForm({ onSuccess, onSwitch, onForgot }: {
   return (
     <form className="auth-form" onSubmit={handleSubmit} noValidate>
       <div className="auth-form-header">
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+          <AxiomLogo size={46} />
+        </div>
         <h2 className="auth-card-title">Welcome back</h2>
         <p className="auth-card-sub">Enter your credentials to access your trading wallet</p>
       </div>
@@ -1308,8 +1315,8 @@ export function AuthPage({ onAuth, initialView = "login", resetToken }: AuthPage
     <div className="auth-page-container">
       {/* Mobile-Only Topbar */}
       <header className="auth-mobile-header">
-        <div className="brand-logo">
-          <div className="brand-logo-icon">A</div>
+        <div className="brand-logo" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <AxiomLogo size={32} />
           <span className="brand-logo-text">AXIOM</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
