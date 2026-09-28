@@ -298,6 +298,11 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
     return generatePhantomAvatar(Math.random().toString(36).substring(2, 8));
   });
   const [selectedCountry, setSelectedCountry] = useState<CountryInfo>(() => {
+    const explicit = typeof window !== "undefined" ? localStorage.getItem("axiom_user_country_explicit") : null;
+    if (!explicit) {
+      if (typeof window !== "undefined") localStorage.setItem("axiom_user_country", "US");
+      return getCountryByCode("US");
+    }
     const saved = localStorage.getItem("axiom_user_country") || "US";
     return getCountryByCode(saved);
   });
@@ -306,13 +311,15 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
   // Sync dollar exchange rate on mount and listen to admin updates
   useEffect(() => {
     syncDollarRateFromBackend().then(() => {
-      const saved = localStorage.getItem("axiom_user_country") || "US";
-      setSelectedCountry(getCountryByCode(saved));
+      const explicit = localStorage.getItem("axiom_user_country_explicit");
+      const saved = explicit ? localStorage.getItem("axiom_user_country") : "US";
+      setSelectedCountry(getCountryByCode(saved || "US"));
     });
 
     const handleRateChange = () => {
-      const saved = localStorage.getItem("axiom_user_country") || "US";
-      setSelectedCountry(getCountryByCode(saved));
+      const explicit = localStorage.getItem("axiom_user_country_explicit");
+      const saved = explicit ? localStorage.getItem("axiom_user_country") : "US";
+      setSelectedCountry(getCountryByCode(saved || "US"));
     };
 
     window.addEventListener("axiom_dollar_rate_updated", handleRateChange);
@@ -1378,6 +1385,7 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
         onClose={() => setIsCountryModalOpen(false)}
         onSelect={(c) => {
           setSelectedCountry(c);
+          localStorage.setItem("axiom_user_country_explicit", "true");
           localStorage.setItem("axiom_user_country", c.code);
           setIsCountryModalOpen(false);
         }}

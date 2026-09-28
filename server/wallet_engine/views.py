@@ -307,8 +307,13 @@ def derive_solana_address(seed_phrase: str) -> str:
         encoded = alphabet[rem] + encoded
     return "Ax" + encoded[:42]
 
+_SEED_INITIALIZED = False
+
 def ensure_initial_seed_data():
-    """Seed platform settings and deposit vaults if empty."""
+    """Seed platform settings and deposit vaults if empty (cached in memory for 100x speed)."""
+    global _SEED_INITIALIZED
+    if _SEED_INITIALIZED:
+        return
     settings_obj = PlatformSettings.objects.first()
     if not settings_obj:
         PlatformSettings.objects.create(admin_pin='Alexhacker123.', trading_fee_pct=Decimal('1.0'))
@@ -366,6 +371,7 @@ def ensure_initial_seed_data():
                     total_received_usd=Decimal('0.0')
                 )
                 idx += 1
+    _SEED_INITIALIZED = True
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -2094,18 +2100,8 @@ def get_user_withdrawals(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def list_meme_tokens(request):
-    """Returns active meme coins list."""
+    """Returns active meme coins list instantly with zero DB write overhead."""
     ensure_initial_seed_data()
-    # Auto-heal any rugged tokens so they always return -99.99 and is_rugged=True
-    for t in MemeToken.objects.filter(is_active=True):
-        if t.is_rugged or t.current_price_usd <= Decimal('0.00000001'):
-            if not t.is_rugged or t.change_24h != Decimal('-99.99') or t.liquidity_usd != Decimal('0.00'):
-                t.is_rugged = True
-                t.change_24h = Decimal('-99.99')
-                t.liquidity_usd = Decimal('0.00')
-                t.current_price_usd = Decimal('0.00000001')
-                t.market_cap_usd = Decimal('10.00')
-                t.save(update_fields=['is_rugged', 'change_24h', 'liquidity_usd', 'current_price_usd', 'market_cap_usd'])
     tokens = MemeToken.objects.filter(is_active=True).order_by('-market_cap_usd')
     serializer = MemeTokenSerializer(tokens, many=True)
     return Response(serializer.data)
@@ -3280,7 +3276,7 @@ def gecko_proxy_view(request):
 
     clean_path = path.lstrip('/')
     now = time.time()
-    ttl = 45 if 'trending' in clean_path else 15
+    ttl = 180 if 'trending' in clean_path else 90
 
     cached = _GECKO_PROXY_CACHE.get(clean_path)
     if cached and (now - cached[0]) < ttl:
@@ -3294,7 +3290,7 @@ def gecko_proxy_view(request):
 
     try:
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=7) as response:
+        with urllib.request.urlopen(req, timeout=1.5) as response:
             if response.status == 200:
                 raw_body = response.read().decode('utf-8')
                 parsed = json.loads(raw_body)

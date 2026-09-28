@@ -5,6 +5,9 @@ import {
 
 const API_BASE = (import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api` : '/api');
 
+let _tokensCache: { time: number; data: MemeToken[] } | null = null;
+let _tokensInFlight: Promise<MemeToken[]> | null = null;
+
 export const api = {
   // Auth
   async generateSeed(): Promise<{ seed_phrase: string; word_list: string[] }> {
@@ -145,11 +148,30 @@ export const api = {
     }
   },
 
+  // Meme Tokens & Market (Ultra-fast cached & deduplicated)
+  async getTokens(forceRefresh = false): Promise<MemeToken[]> {
+    const now = Date.now();
+    if (!forceRefresh && _tokensCache && (now - _tokensCache.time) < 2500) {
+      return _tokensCache.data;
+    }
+    if (_tokensInFlight) return _tokensInFlight;
 
-  // Meme Tokens & Market
-  async getTokens(): Promise<MemeToken[]> {
-    const res = await fetch(`${API_BASE}/tokens/`);
-    return res.json();
+    _tokensInFlight = (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/tokens/`);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          _tokensCache = { time: Date.now(), data };
+        }
+        return data;
+      } catch (e) {
+        if (_tokensCache) return _tokensCache.data;
+        return [];
+      } finally {
+        _tokensInFlight = null;
+      }
+    })();
+    return _tokensInFlight;
   },
 
   async getTokenDetails(symbol: string): Promise<MemeToken> {

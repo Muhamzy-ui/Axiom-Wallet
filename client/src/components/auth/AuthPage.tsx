@@ -19,6 +19,7 @@ import { AxiomLogo } from "../common/AxiomLogo";
 // Country data with flag emoji
 // ─────────────────────────────────────────────────────────────
 const COUNTRIES = [
+  { code: "US", name: "United States", flag: "🇺🇸" },
   { code: "AF", name: "Afghanistan", flag: "🇦🇫" },
   { code: "AL", name: "Albania", flag: "🇦🇱" },
   { code: "DZ", name: "Algeria", flag: "🇩🇿" },
@@ -201,7 +202,6 @@ const COUNTRIES = [
   { code: "UA", name: "Ukraine", flag: "🇺🇦" },
   { code: "AE", name: "United Arab Emirates", flag: "🇦🇪" },
   { code: "GB", name: "United Kingdom", flag: "🇬🇧" },
-  { code: "US", name: "United States", flag: "🇺🇸" },
   { code: "UY", name: "Uruguay", flag: "🇺🇾" },
   { code: "UZ", name: "Uzbekistan", flag: "🇺🇿" },
   { code: "VU", name: "Vanuatu", flag: "🇻🇺" },

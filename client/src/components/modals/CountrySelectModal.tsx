@@ -16,7 +16,7 @@ export const CountrySelectModal: React.FC<CountrySelectModalProps> = ({
   isOpen,
   onClose,
   onSelect,
-  selectedCode = "NG",
+  selectedCode = "US",
   title = "Select Country & Currency",
   hideRates = false,
 }) => {

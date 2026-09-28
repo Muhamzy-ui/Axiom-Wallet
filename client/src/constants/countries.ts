@@ -13,6 +13,17 @@ export interface CountryInfo {
 export const COUNTRIES: CountryInfo[] = [
   // ── Popular / High Volume Countries ──
   {
+    code: "US",
+    name: "United States",
+    flag: "🇺🇸",
+    currency: "USD",
+    currencySymbol: "$",
+    rateToUsd: 1,
+    popular: true,
+    paymentMethods: ["Debit / Credit Card (Visa & Mastercard)", "Instant ACH Bank Transfer", "Apple Pay / Google Pay", "Wire Transfer"],
+    banks: ["JPMorgan Chase", "Bank of America", "Wells Fargo", "Citibank", "Capital One", "U.S. Bank", "PNC Bank", "Truist", "TD Bank", "Charles Schwab"]
+  },
+  {
     code: "NG",
     name: "Nigeria",
     flag: "🇳🇬",
@@ -38,17 +49,6 @@ export const COUNTRIES: CountryInfo[] = [
       "Union Bank of Nigeria",
       "FCMB (First City Monument Bank)"
     ]
-  },
-  {
-    code: "US",
-    name: "United States",
-    flag: "🇺🇸",
-    currency: "USD",
-    currencySymbol: "$",
-    rateToUsd: 1,
-    popular: true,
-    paymentMethods: ["Debit / Credit Card (Visa & Mastercard)", "Instant ACH Bank Transfer", "Apple Pay / Google Pay", "Wire Transfer"],
-    banks: ["JPMorgan Chase", "Bank of America", "Wells Fargo", "Citibank", "Capital One", "U.S. Bank", "PNC Bank", "Truist", "TD Bank", "Charles Schwab"]
   },
   {
     code: "GB",
@@ -331,7 +331,7 @@ export const COUNTRIES: CountryInfo[] = [
   { code: "ZW", name: "Zimbabwe", flag: "🇿🇼", currency: "USD", currencySymbol: "$", rateToUsd: 1 },
 ];
 
-export const DEFAULT_COUNTRY = COUNTRIES.find((c) => c.code === "US") || COUNTRIES[1]; // United States
+export const DEFAULT_COUNTRY = COUNTRIES.find((c) => c.code === "US") || COUNTRIES[0]; // United States (USD)
 
 let inMemoryDollarRate: number | null = null;
 

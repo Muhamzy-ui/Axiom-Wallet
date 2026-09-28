@@ -634,6 +634,8 @@ class MarketStore {
   private tickerInterval: any = null;
   private pollInterval: any = null;
   private channel: BroadcastChannel | null = null;
+  private isSyncingTokens: boolean = false;
+  private isFetchingRealMarket: boolean = false;
   private momentums: Record<string, number> = {};
   private priceAnchors: Record<string, number> = {};
   private marketCycles: Record<string, { baselinePrice: number; phase: "impulse" | "pullback" | "consolidation"; phaseTicksLeft: number; totalCycleGains: number }> = {};
@@ -654,15 +656,17 @@ class MarketStore {
     this.startLiveTicker();
     this.fetchRealMarketData();
     if (typeof window !== "undefined") {
-      // 1. Ultra-fast backend token sync every 2 seconds: ensures cross-device pump/dump reflects instantly without page reload
+      // 1. Fast backend token sync with in-flight lock: guarantees instant reflect without UI or thread congestion
       setInterval(() => {
+        if (typeof document !== "undefined" && document.hidden) return;
         this.syncBackendTokens();
-      }, 2000);
+      }, 3500);
 
-      // 2. Periodic external market data poll (45s to avoid third-party rate limits)
+      // 2. Periodic external market data poll (60s to avoid third-party rate limits)
       this.pollInterval = setInterval(() => {
+        if (typeof document !== "undefined" && document.hidden) return;
         this.fetchRealMarketData();
-      }, 45000);
+      }, 60000);
     }
   }
 
@@ -812,6 +816,8 @@ class MarketStore {
   }
 
   async syncBackendTokens(): Promise<boolean> {
+    if (this.isSyncingTokens) return false;
+    this.isSyncingTokens = true;
     try {
       const backendTokens = await api.getTokens();
       if (!Array.isArray(backendTokens) || backendTokens.length === 0) return false;
@@ -978,10 +984,14 @@ class MarketStore {
     } catch (err) {
       console.warn("syncBackendTokens error:", err);
       return false;
+    } finally {
+      this.isSyncingTokens = false;
     }
   }
 
   async fetchRealMarketData() {
+    if (this.isFetchingRealMarket) return;
+    this.isFetchingRealMarket = true;
     try {
       const [majors, trending] = await Promise.all([
         fetchGeckoMajors(),
@@ -1052,6 +1062,8 @@ class MarketStore {
       }
     } catch (err) {
       console.warn("fetchRealMarketData error:", err);
+    } finally {
+      this.isFetchingRealMarket = false;
     }
   }
 
