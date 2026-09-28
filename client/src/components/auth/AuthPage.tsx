@@ -282,6 +282,7 @@ function CountrySelector({
         onSelect={(c) => onChange(c.code)}
         selectedCode={value}
         title="Select Country of Residence"
+        hideRates={true}
       />
     </div>
   );
@@ -637,7 +638,7 @@ function SignUpForm({ onSuccess, onSwitch }: {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [country, setCountry] = useState("");
+  const [country, setCountry] = useState("US");
   const [terms, setTerms] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -684,6 +685,7 @@ function SignUpForm({ onSuccess, onSwitch }: {
     setLoading(false);
 
     if (res.success) {
+      localStorage.setItem("axiom_user_country", country || "US");
       onSuccess(res.seed_phrase || "", email);
     } else {
       if (res.field) {

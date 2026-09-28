@@ -9,6 +9,7 @@ interface CountrySelectModalProps {
   onSelect: (country: CountryInfo) => void;
   selectedCode?: string;
   title?: string;
+  hideRates?: boolean;
 }
 
 export const CountrySelectModal: React.FC<CountrySelectModalProps> = ({
@@ -17,6 +18,7 @@ export const CountrySelectModal: React.FC<CountrySelectModalProps> = ({
   onSelect,
   selectedCode = "NG",
   title = "Select Country & Currency",
+  hideRates = false,
 }) => {
   const [search, setSearch] = useState("");
   const [filterRegion, setFilterRegion] = useState<"ALL" | "POPULAR" | "AFRICA" | "AMERICAS" | "EUROPE" | "ASIA">("POPULAR");
@@ -136,7 +138,7 @@ export const CountrySelectModal: React.FC<CountrySelectModalProps> = ({
                 {title}
               </div>
               <div style={{ fontSize: 11.5, color: "var(--text-muted, #94A3B8)", marginTop: 1 }}>
-                Select your local region and fiat currency
+                {hideRates ? "Select your country of residence" : "Select your local region and fiat currency"}
               </div>
             </div>
           </div>
@@ -348,8 +350,12 @@ export const CountrySelectModal: React.FC<CountrySelectModalProps> = ({
                     </div>
                     <div style={{ fontSize: 11, color: "var(--text-muted, #94A3B8)", marginTop: 2, display: "flex", gap: 8, alignItems: "center" }}>
                       <span style={{ fontWeight: 600, color: "#C4B5FD" }}>{c.currency} ({c.currencySymbol})</span>
-                      <span>·</span>
-                      <span>1 USD ≈ {c.rateToUsd >= 100 ? c.rateToUsd.toLocaleString() : c.rateToUsd} {c.currency}</span>
+                      {!hideRates && (
+                        <>
+                          <span>·</span>
+                          <span>1 USD ≈ {c.rateToUsd >= 100 ? c.rateToUsd.toLocaleString() : c.rateToUsd} {c.currency}</span>
+                        </>
+                      )}
                     </div>
                   </div>
 

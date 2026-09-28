@@ -331,7 +331,7 @@ export const COUNTRIES: CountryInfo[] = [
   { code: "ZW", name: "Zimbabwe", flag: "🇿🇼", currency: "USD", currencySymbol: "$", rateToUsd: 1 },
 ];
 
-export const DEFAULT_COUNTRY = COUNTRIES[0]; // Nigeria
+export const DEFAULT_COUNTRY = COUNTRIES.find((c) => c.code === "US") || COUNTRIES[1]; // United States
 
 let inMemoryDollarRate: number | null = null;
 
@@ -395,13 +395,14 @@ export async function syncDollarRateFromBackend(): Promise<number> {
 }
 
 export function getCountryByCode(code: string): CountryInfo {
-  const targetCode = (code || "NG").toUpperCase();
+  const targetCode = (code || "US").toUpperCase();
   const found = COUNTRIES.find((c) => c.code.toUpperCase() === targetCode) || DEFAULT_COUNTRY;
   if (found.code === "NG") {
     return { ...found, rateToUsd: getCustomDollarRate() };
   }
   return { ...found };
 }
+
 
 export function searchCountries(query: string): CountryInfo[] {
   const dynRate = getCustomDollarRate();

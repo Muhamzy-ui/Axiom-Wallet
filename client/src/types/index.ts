@@ -29,6 +29,7 @@ export interface MemeToken {
   contract_address?: string;
   is_active: boolean;
   is_rugged: boolean;
+  pair_currency?: string;
   created_at: string;
   chart_points?: { price: number; timestamp: string }[];
   user_holders_count?: number;

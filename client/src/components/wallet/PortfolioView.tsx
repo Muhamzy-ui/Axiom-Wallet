@@ -210,29 +210,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
 
   return (
     <div style={{ width: '100%', margin: '0 auto' }}>
-      {/* Toast Notification */}
-      {faucetNotice && (
-        <div style={{
-          position: 'fixed',
-          top: '24px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: '#10B981',
-          color: '#ffffff',
-          padding: '0.6rem 1.25rem',
-          borderRadius: '9999px',
-          fontWeight: 600,
-          fontSize: '0.85rem',
-          boxShadow: '0 8px 20px rgba(16, 185, 129, 0.3)',
-          zIndex: 9999,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-        }}>
-          <Sparkles size={16} />
-          <span>{faucetNotice}</span>
-        </div>
-      )}
+
 
       {/* Top Dashboard Grid: Hero Balance (Left) + Market Spotlight (Right) */}
       <div className="dashboard-grid">

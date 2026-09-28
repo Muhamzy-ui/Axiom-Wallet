@@ -21,13 +21,13 @@ export const Header: React.FC<HeaderProps> = ({
 
   const copyAddress = () => {
     if (!walletAddress) return;
-    copyToClipboard(walletAddress);
+    copyToClipboard(userUid);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const shortAddress = walletAddress
-    ? `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`
+  const userUid = walletAddress
+    ? `AXM-${walletAddress.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase()}`
     : 'Not Connected';
 
   return (
@@ -122,7 +122,7 @@ export const Header: React.FC<HeaderProps> = ({
             }}
           >
             {copied ? <Check size={13} color="#10B981" /> : <Copy size={13} color="#94A3B8" />}
-            <span style={{ fontFamily: 'monospace' }}>{copied ? 'Copied!' : shortAddress}</span>
+            <span style={{ fontFamily: 'monospace' }}>{copied ? 'Copied!' : userUid}</span>
           </button>
         )}
 

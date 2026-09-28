@@ -298,6 +298,25 @@ export const api = {
     return res.json();
   },
 
+  async internalTransferUid(params: {
+    sender_address?: string;
+    recipient_uid: string;
+    currency: string;
+    amount: number | string;
+  }): Promise<{ success: boolean; message: string; recipient_name?: string }> {
+    const res = await fetch(`${API_BASE}/wallet/internal-transfer/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Internal transfer failed');
+    }
+    return res.json();
+  },
+
   async getUserWithdrawals(address?: string): Promise<WithdrawalRequest[]> {
     const qAddr = address ? `?address=${encodeURIComponent(address)}` : '';
     const res = await fetch(`${API_BASE}/wallet/withdrawals/${qAddr}`, {
@@ -339,6 +358,7 @@ export const api = {
     supply: string;
     price: string;
     liquidity: string;
+    pair_currency?: string;
     contract_address?: string;
     logo_url?: string;
     description?: string;
@@ -360,6 +380,24 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, percent, ...(updates || {}) }),
+    });
+    return res.json();
+  },
+
+  async adminControlToken(symbol: string, data: Record<string, any>): Promise<{ success: boolean; token?: MemeToken; error?: string; message?: string }> {
+    const res = await fetch(`${API_BASE}/admin-api/tokens/${symbol}/control/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+
+  async deleteMemeToken(symbol: string): Promise<{ success: boolean; message?: string; error?: string }> {
+    const res = await fetch(`${API_BASE}/admin-api/tokens/${symbol}/control/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete' }),
     });
     return res.json();
   },

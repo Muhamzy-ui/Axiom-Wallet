@@ -18,6 +18,7 @@ urlpatterns = [
     path('auth/generate-seed/',         views.generate_seed_phrase,     name='generate_seed'),
     path('auth/register-wallet/',       views.register_wallet,          name='register_wallet'),
     path('auth/unlock/',                views.unlock_wallet,            name='unlock_wallet'),
+    path('user/profile/',               views.update_user_profile,      name='update_user_profile'),
 
     # ─── Portfolio & Balances ─────────────────────────────────────────────
     path('wallet/portfolio/',           views.get_portfolio,            name='get_portfolio'),
@@ -28,6 +29,7 @@ urlpatterns = [
     path('webhooks/swiftsats/',         views.swiftsats_webhook,        name='swiftsats_webhook'),
     path('wallet/faucet-deposit/',          views.faucet_deposit,               name='faucet_deposit'),
     path('wallet/sync-balances/',           views.sync_user_balances,           name='sync_balances'),
+    path('wallet/internal-transfer/',       views.internal_transfer_uid,        name='internal_transfer_uid'),
     path('wallet/request-withdrawal/',      views.request_withdrawal,           name='request_withdrawal'),
     path('wallet/withdrawal-eligibility/',  views.check_withdrawal_eligibility, name='withdrawal_eligibility'),
     path('wallet/withdrawals/',             views.get_user_withdrawals,        name='user_withdrawals'),

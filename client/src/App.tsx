@@ -4,7 +4,7 @@ import {
   Copy, LayoutDashboard, LineChart, Menu, Plus, Search,
   Send, Settings, Shield, ShieldCheck, Star, Wallet, X, TrendingUp, TrendingDown,
   AlertTriangle, Coins, Users, ArrowDownToLine, ArrowUpToLine, Skull, LogOut, Sliders, Zap, Globe, Lock, ShoppingBag, RotateCcw, ExternalLink,
-  Sun, Moon, CreditCard, RefreshCw, Clock, Crown, Flame, Activity, Trophy
+  Sun, Moon, CreditCard, RefreshCw, Clock, Crown, Flame, Activity, Trophy, Eye, EyeOff, Camera
 } from "lucide-react";
 import "./index.css";
 import { AdminDashboard } from "./components/admin/AdminDashboard";
@@ -14,7 +14,7 @@ import { LeaderboardView } from "./components/leaderboard/LeaderboardView";
 import { marketStore, MarketToken, LiveTrade, OrderBookEntry, UserOrder, generateSparkline } from "./services/marketStore";
 import { CandleChart } from "./components/trading/CandleChart";
 import { PhantomAuth } from "./components/auth/PhantomAuth";
-import { getMe, logout, resendVerification, changePassword, type AuthUser } from "./services/authService";
+import { getMe, login, logout, resendVerification, changePassword, updateUserProfile, type AuthUser } from "./services/authService";
 import { api } from "./services/api";
 import { PlatformDepositWallet } from "./types";
 import { ThemeProvider, useTheme } from "./services/themeContext";
@@ -22,12 +22,16 @@ import { copyToClipboard } from "./services/clipboard";
 import { DepositPage } from "./components/modals/DepositPage";
 import { BuyPage } from "./components/modals/BuyPage";
 import { WithdrawPage } from "./components/modals/WithdrawPage";
+import { SendPage } from "./components/modals/SendPage";
+import { ProfitShareModal } from "./components/modals/ProfitShareModal";
 import { CountrySelectModal } from "./components/modals/CountrySelectModal";
 import { getCountryByCode, CountryInfo, syncDollarRateFromBackend } from "./constants/countries";
 import { CountryFlag } from "./components/common/CountryFlag";
+import { AxiomLogo } from "./components/common/AxiomLogo";
+import { generatePhantomAvatar, PHANTOM_AVATAR_PRESETS, type AvatarPreset } from "./utils/avatar";
 
 type View = "trade" | "wallet" | "swap" | "admin" | "profile" | "leaderboard";
-type Modal = "deposit" | "send" | "confirm" | "create" | "buy" | "withdraw" | "";
+type Modal = "deposit" | "send" | "confirm" | "create" | "buy" | "withdraw" | "profit" | "";
 
 const COIN_IMGS: Record<string, string> = {
   BTC: "https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png",
@@ -51,33 +55,77 @@ import { Sparkline } from "./components/common/Sparkline";
 export { Sparkline };
 
 function CoinImg({ sym, n = 28, url }: { sym: string; n?: number; url?: string }) {
+  const [hasError, setHasError] = useState(false);
   const s = (sym || "").toUpperCase();
   const token = marketStore.getToken(s);
-  const tokenImg = (token && token.sym.toUpperCase() === s) ? token.imageUrl : undefined;
-  const src = url || COIN_IMGS[s] || tokenImg || `/coins/${s.toLowerCase()}.png`;
+  const tokenImg = (token && token.sym.toUpperCase() === s) ? (token.imageUrl || (token as any).logo_url) : undefined;
+  const src = url || tokenImg || COIN_IMGS[s] || `/coins/${s.toLowerCase()}.png`;
+
+  useEffect(() => {
+    setHasError(false);
+  }, [src, s]);
+
+  if (hasError || !src) {
+    return (
+      <span
+        className="coin"
+        style={{
+          width: n,
+          height: n,
+          borderRadius: "50%",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "linear-gradient(135deg, #2A2438 0%, #171520 100%)",
+          border: "1px solid rgba(139, 92, 246, 0.35)",
+          color: "#A78BFA",
+          fontSize: Math.max(9, Math.round(n * 0.38)),
+          fontWeight: 800,
+          flexShrink: 0,
+        }}
+      >
+        {s.slice(0, 3)}
+      </span>
+    );
+  }
+
   return (
-    <span className="coin" style={{ width: n, height: n, borderRadius: "50%", overflow: "hidden", display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#1F222E", flexShrink: 0 }}>
+    <span
+      className="coin"
+      style={{
+        width: n,
+        height: n,
+        borderRadius: "50%",
+        overflow: "hidden",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "#1F222E",
+        flexShrink: 0,
+      }}
+    >
       <img
         src={src}
         alt={sym}
         referrerPolicy="no-referrer"
         style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-        onError={(e) => {
-          const el = e.target as HTMLImageElement;
-          el.style.display = "none";
-          if (el.parentElement) {
-            el.parentElement.innerHTML = `<span style="font-size:${Math.round(n * 0.42)}px;font-weight:800;color:#A78BFA">${sym.slice(0, 3)}</span>`;
-          }
-        }}
+        onError={() => setHasError(true)}
       />
     </span>
   );
 }
 
 function Delta({ n, size = 10 }: { n: string; size?: number }) {
+  if (!n) return null;
+  const isNeg = n.startsWith("-");
+  const num = parseFloat(n.replace(/[+%,]/g, "")) || 0;
+  let displayStr = n;
+  if (!isNeg && num > 99999) displayStr = "+99,999%";
+  else if (isNeg && num > 99.99) displayStr = "-99.99%";
+  const cls = isNeg || num < 0 ? "down" : num > 0 ? "up" : "neutral";
   return (
-    <span className={n.startsWith("-") ? "down" : "up"} style={{ fontSize: size }}>
-      {n}
+    <span className={cls} style={{ fontSize: size, whiteSpace: "nowrap" }}>
+      {displayStr}
     </span>
   );
 }
@@ -133,6 +181,24 @@ function TokenSnapshot({ sym, flash }: { sym: string; flash?: (m: string) => voi
     if (flash) flash(msg);
   };
 
+  const fmtVol = (n: number) => {
+    if (!n || isNaN(n) || n < 0) return "$0.00";
+    let valUsd = n >= 1e5 ? n : n * 1e6;
+    if (valUsd > 1e12) valUsd = 9.99e11;
+    if (valUsd >= 1e9) return `$${(valUsd / 1e9).toFixed(1)}B`;
+    if (valUsd >= 1e6) return `$${(valUsd / 1e6).toFixed(1)}M`;
+    if (valUsd >= 1e3) return `$${(valUsd / 1e3).toFixed(1)}K`;
+    return `$${valUsd.toFixed(2)}`;
+  };
+
+  const fmtNum = (n: number) => {
+    if (!n || isNaN(n) || n < 0) return "0";
+    if (n > 9999999) return "9.9M+";
+    if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+    if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+    return n.toLocaleString();
+  };
+
   return (
     <div className="token-snapshot">
 
@@ -140,7 +206,7 @@ function TokenSnapshot({ sym, flash }: { sym: string; flash?: (m: string) => voi
       <div className="snap-banner">
         <div
           className="snap-banner-bg"
-          style={{ backgroundImage: `url(${d.imageUrl || COIN_IMGS[sym] || `/coins/${sym.toLowerCase()}.png`})` }}
+          style={{ backgroundImage: `url(${d.bannerUrl || d.imageUrl || COIN_IMGS[sym] || `/coins/${sym.toLowerCase()}.png`})` }}
         />
         <div className="snap-banner-vignette" />
         <img
@@ -148,6 +214,9 @@ function TokenSnapshot({ sym, flash }: { sym: string; flash?: (m: string) => voi
           alt={sym}
           referrerPolicy="no-referrer"
           className="snap-banner-avatar"
+          onError={(e) => {
+            (e.target as any).src = "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/generic.png";
+          }}
         />
         <div className="snap-banner-label">LAUNCH COINS</div>
       </div>
@@ -156,7 +225,7 @@ function TokenSnapshot({ sym, flash }: { sym: string; flash?: (m: string) => voi
       <div className="snap-header">
         <CoinImg sym={sym} n={22} url={d.imageUrl} />
         <div>
-          <div className="snap-pair">{sym} / USDT</div>
+          <div className="snap-pair">{sym} / {d.pair_currency || (d.isMajor ? "USDT" : "SOL")}</div>
           <div className="snap-chain">
             <span className={`chain-dot ${d.network === "eth" ? "eth" : "sol"}`} />
             {d.network === "eth" ? "Ethereum" : "Solana"}
@@ -196,9 +265,11 @@ function TokenSnapshot({ sym, flash }: { sym: string; flash?: (m: string) => voi
             <div className="snap-label snap-dotted">LIQUIDITY</div>
             <div className="snap-val-with-icon">
               <span>{d.liq}</span>
-              <span className="snap-lock-badge" title="Liquidity Locked">
-                <Lock size={10} />
-              </span>
+              {marketStore.isTokenLiquidityLocked(sym) && !d.is_rugged && (
+                <span className="snap-lock-badge" title="Liquidity Locked">
+                  <Lock size={10} />
+                </span>
+              )}
             </div>
           </div>
           <div className="snap-card snap-card-center">
@@ -237,7 +308,7 @@ function TokenSnapshot({ sym, flash }: { sym: string; flash?: (m: string) => voi
           <div className="snap-flow-row">
             <div className="snap-flow-left">
               <div className="snap-label">TXNS</div>
-              <div className="snap-val">{txns.toLocaleString()}</div>
+              <div className="snap-val">{fmtNum(txns)}</div>
             </div>
             <div className="snap-flow-right">
               <div className="snap-flow-header">
@@ -245,8 +316,8 @@ function TokenSnapshot({ sym, flash }: { sym: string; flash?: (m: string) => voi
                 <span className="snap-label">SELLS</span>
               </div>
               <div className="snap-flow-nums">
-                <span className="snap-val">{buys.toLocaleString()}</span>
-                <span className="snap-val">{sells.toLocaleString()}</span>
+                <span className="snap-val">{fmtNum(buys)}</span>
+                <span className="snap-val">{fmtNum(sells)}</span>
               </div>
               <div className="snap-pill-bar">
                 <div className="snap-pill-buy" style={{ flex: Math.max(1, buys) }} />
@@ -259,7 +330,7 @@ function TokenSnapshot({ sym, flash }: { sym: string; flash?: (m: string) => voi
           <div className="snap-flow-row">
             <div className="snap-flow-left">
               <div className="snap-label">VOLUME</div>
-              <div className="snap-val">${vol.toFixed(1)}M</div>
+              <div className="snap-val">{fmtVol(vol)}</div>
             </div>
             <div className="snap-flow-right">
               <div className="snap-flow-header">
@@ -267,8 +338,8 @@ function TokenSnapshot({ sym, flash }: { sym: string; flash?: (m: string) => voi
                 <span className="snap-label">SELL VOL</span>
               </div>
               <div className="snap-flow-nums">
-                <span className="snap-val">${buyVol}M</span>
-                <span className="snap-val">${sellVol}M</span>
+                <span className="snap-val">{fmtVol(buyVol)}</span>
+                <span className="snap-val">{fmtVol(sellVol)}</span>
               </div>
               <div className="snap-pill-bar">
                 <div className="snap-pill-buy" style={{ flex: Math.max(1, buyVol * 10) }} />
@@ -281,7 +352,7 @@ function TokenSnapshot({ sym, flash }: { sym: string; flash?: (m: string) => voi
           <div className="snap-flow-row snap-flow-last">
             <div className="snap-flow-left">
               <div className="snap-label snap-dotted">TRADERS</div>
-              <div className="snap-val">{traders.toLocaleString()}</div>
+              <div className="snap-val">{fmtNum(traders)}</div>
             </div>
             <div className="snap-flow-right">
               <div className="snap-flow-header">
@@ -289,8 +360,8 @@ function TokenSnapshot({ sym, flash }: { sym: string; flash?: (m: string) => voi
                 <span className="snap-label">SELLERS</span>
               </div>
               <div className="snap-flow-nums">
-                <span className="snap-val">{buyers.toLocaleString()}</span>
-                <span className="snap-val">{sellers.toLocaleString()}</span>
+                <span className="snap-val">{fmtNum(buyers)}</span>
+                <span className="snap-val">{fmtNum(sellers)}</span>
               </div>
               <div className="snap-pill-bar">
                 <div className="snap-pill-buy" style={{ flex: Math.max(1, buyers) }} />
@@ -373,9 +444,9 @@ function LiveOrderBook({ sym }: { sym: string }) {
       </div>
       <div className="ob-mid">
         <div className="ob-mid-price">
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: token.pos ? "var(--green)" : "var(--red)", display: "inline-block" }} />
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: (!token.is_rugged && token.pos) ? "var(--green)" : "var(--red)", display: "inline-block" }} />
           <span>{token.price}</span>
-          <Delta n={token.change} size={9} />
+          <Delta n={(token.is_rugged || token.numericPrice <= 0.00000001) ? "-99.99%" : token.change} size={9} />
         </div>
         <div className="ob-spread">
           Spread: {ob.spread}
@@ -428,14 +499,14 @@ function DexRecentTrades({ sym, flash }: { sym: string; flash: (m: string) => vo
       <table className="dex-table">
         <thead>
           <tr className="dex-th-row">
-            <th className="dex-th"><span className="dex-th-content">DATE <span className="dex-filter-icon">▼</span></span></th>
-            <th className="dex-th"><span className="dex-th-content">TYPE <span className="dex-filter-icon">▼</span></span></th>
-            <th className="dex-th"><span className="dex-th-content">USD <span className="dex-filter-icon">▼</span></span></th>
-            <th className="dex-th"><span className="dex-th-content">{sym} <span className="dex-filter-icon">▼</span></span></th>
-            <th className="dex-th"><span className="dex-th-content">SOL <span className="dex-filter-icon">▼</span></span></th>
-            <th className="dex-th"><span className="dex-th-content">PRICE <span className="dex-filter-icon">💲</span></span></th>
-            <th className="dex-th"><span className="dex-th-content">TRADER <span className="dex-filter-icon">▼</span></span></th>
-            <th className="dex-th" style={{ textAlign: "center" }}>TXN</th>
+            <th className="dex-th"><span className="dex-th-content">DATE</span></th>
+            <th className="dex-th"><span className="dex-th-content">TYPE</span></th>
+            <th className="dex-th"><span className="dex-th-content">USD</span></th>
+            <th className="dex-th"><span className="dex-th-content">{sym}</span></th>
+            <th className="dex-th"><span className="dex-th-content">SOL</span></th>
+            <th className="dex-th"><span className="dex-th-content">PRICE</span></th>
+            <th className="dex-th"><span className="dex-th-content">TRADER</span></th>
+            <th className="dex-th" style={{ textAlign: "center", width: 34 }}>TXN</th>
           </tr>
         </thead>
         <tbody>
@@ -462,16 +533,15 @@ function DexRecentTrades({ sym, flash }: { sym: string; flash: (m: string) => vo
                 <td className={`dex-td ${numClass}`}>
                   {t.solAmt.toFixed(4)}
                 </td>
-                <td className={`dex-td ${numClass}`}>
-                  {t.price < 0.001 ? `$${t.price.toFixed(8)}` : t.price < 1 ? `$${t.price.toFixed(4)}` : `$${t.price.toFixed(2)}`}
+                <td className={`dex-td ${numClass}`} style={{ minWidth: 72, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                  {t.price < 0.000001 ? `$${t.price.toFixed(8)}` : t.price < 0.001 ? `$${t.price.toFixed(6)}` : t.price < 1 ? `$${t.price.toFixed(4)}` : `$${t.price.toFixed(2)}`}
                 </td>
                 <td className="dex-td">
-                  <div className="dex-trader-wrap">
+                  <div className="dex-trader-wrap" style={{ maxWidth: 85, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     <span>{t.traderEmoji}</span>
                     <span className={`dex-trader-badge${t.isUser ? " is-user" : ""}`}>
-                      {t.isUser ? "You (JD...7b2)" : t.trader}
+                      {t.isUser ? "You" : t.trader}
                     </span>
-                    <span className="dex-filter-icon">▼</span>
                   </div>
                 </td>
                 <td className="dex-td" style={{ textAlign: "center" }}>
@@ -488,41 +558,476 @@ function DexRecentTrades({ sym, flash }: { sym: string; flash: (m: string) => vo
   );
 }
 
-/* ── User Executed Orders Component ────────────────────────────────── */
-function UserOrdersList({ sym, flash }: { sym?: string; flash?: (m: string) => void }) {
+/* ── Bybit-Style Set Take Profit & Stop Loss Modal ─────────────────── */
+function SetTpSlModal({
+  isOpen,
+  onClose,
+  sym,
+  pos,
+  curPrice,
+  flash,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  sym: string;
+  pos: {
+    bal: number;
+    currentVal: number;
+    avgBuyPrice: number;
+    activeTpSl?: any;
+  };
+  curPrice: number;
+  flash?: (m: string) => void;
+}) {
+  if (!isOpen) return null;
+  const existing = pos.activeTpSl;
+  const [tpPct, setTpPct] = useState<number>(existing?.tpPct || 25);
+  const [slPct, setSlPct] = useState<number>(existing?.slPct || 10);
+  const [enableTp, setEnableTp] = useState<boolean>(true);
+  const [enableSl, setEnableSl] = useState<boolean>(true);
+
+  const tpPrice = curPrice * (1 + tpPct / 100);
+  const slPrice = curPrice * (1 - slPct / 100);
+
+  const estProfit = pos.bal * (tpPrice - pos.avgBuyPrice);
+  const estLoss = pos.bal * (pos.avgBuyPrice - slPrice);
+
+  const handleConfirm = () => {
+    if (!enableTp && !enableSl) {
+      if (flash) flash("Enable at least Take Profit or Stop Loss");
+      return;
+    }
+    const res = marketStore.placeTpSlOrder({
+      sym,
+      amountTokens: pos.bal,
+      tpPrice: enableTp ? tpPrice : undefined,
+      slPrice: enableSl ? slPrice : undefined,
+      tpPct: enableTp ? tpPct : undefined,
+      slPct: enableSl ? slPct : undefined,
+    });
+    if (flash) flash(res.message);
+    onClose();
+  };
+
+  const handleRemove = () => {
+    if (existing?.id) {
+      const res = marketStore.cancelPendingOrder(existing.id);
+      if (flash) flash(res.message);
+    }
+    onClose();
+  };
+
+  const fmtP = (p: number) => (p < 0.001 ? p.toFixed(8) : p < 1 ? p.toFixed(4) : p.toFixed(2));
+
+  return (
+    <div className="tpsl-modal-backdrop" onClick={onClose}>
+      <div className="tpsl-modal-card" onClick={e => e.stopPropagation()}>
+        <div className="tpsl-modal-header">
+          <div className="tpsl-modal-title">
+            <ShieldCheck size={18} color="var(--violet)" />
+            <span>Set TP / SL — {sym}</span>
+            <span style={{ fontSize: 9.5, padding: "2px 6px", borderRadius: 4, background: "rgba(124, 58, 237, 0.2)", color: "#C4B5FD", fontWeight: 800 }}>LONG</span>
+          </div>
+          <button type="button" className="tpsl-modal-close" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="tpsl-pos-summary-bar">
+          <div className="tpsl-summary-item">
+            <span className="tpsl-summary-label">Position Size</span>
+            <span className="tpsl-summary-val">{pos.bal >= 1000 ? pos.bal.toLocaleString(undefined, { maximumFractionDigits: 1 }) : pos.bal.toFixed(curPrice < 0.001 ? 0 : 4)} {sym}</span>
+          </div>
+          <div className="tpsl-summary-item">
+            <span className="tpsl-summary-label">Avg Entry</span>
+            <span className="tpsl-summary-val">${fmtP(pos.avgBuyPrice)}</span>
+          </div>
+          <div className="tpsl-summary-item">
+            <span className="tpsl-summary-label">Market Price</span>
+            <span className="tpsl-summary-val" style={{ color: "#A78BFA" }}>${fmtP(curPrice)}</span>
+          </div>
+        </div>
+
+        <div className="tpsl-modal-body">
+          {/* Take Profit Section */}
+          <div className="tpsl-section">
+            <div className="tpsl-section-head">
+              <span className="tpsl-section-label" style={{ color: "var(--green)" }}>
+                <TrendingUp size={14} />
+                <span>Take Profit (TP)</span>
+              </span>
+              <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, cursor: "pointer", color: "var(--muted)" }}>
+                <input type="checkbox" checked={enableTp} onChange={e => setEnableTp(e.target.checked)} style={{ accentColor: "var(--green)" }} />
+                <span>Enable</span>
+              </label>
+            </div>
+            {enableTp && (
+              <>
+                <div className="tpsl-input-row">
+                  <div className="tpsl-input-wrap">
+                    <span className="tpsl-input-prefix">$</span>
+                    <input
+                      className="tpsl-input"
+                      type="text"
+                      readOnly
+                      value={fmtP(tpPrice)}
+                    />
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", whiteSpace: "nowrap" }}>
+                    +{tpPct}%
+                  </div>
+                </div>
+                <div className="tpsl-chips-row">
+                  {[10, 25, 50, 100, 200].map(pct => (
+                    <button
+                      key={pct}
+                      type="button"
+                      className={`tpsl-chip ${tpPct === pct ? "active-tp" : ""}`}
+                      onClick={() => setTpPct(pct)}
+                    >
+                      +{pct}%
+                    </button>
+                  ))}
+                </div>
+                <div className="tpsl-est-box">
+                  <span style={{ color: "var(--muted)" }}>Est. Profit:</span>
+                  <span style={{ color: "var(--green)", fontWeight: 800 }}>
+                    +${Math.max(0, estProfit).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT (+{tpPct}%)
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Stop Loss Section */}
+          <div className="tpsl-section">
+            <div className="tpsl-section-head">
+              <span className="tpsl-section-label" style={{ color: "var(--red)" }}>
+                <ShieldCheck size={14} />
+                <span>Stop Loss (SL)</span>
+              </span>
+              <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, cursor: "pointer", color: "var(--muted)" }}>
+                <input type="checkbox" checked={enableSl} onChange={e => setEnableSl(e.target.checked)} style={{ accentColor: "var(--red)" }} />
+                <span>Enable</span>
+              </label>
+            </div>
+            {enableSl && (
+              <>
+                <div className="tpsl-input-row">
+                  <div className="tpsl-input-wrap">
+                    <span className="tpsl-input-prefix">$</span>
+                    <input
+                      className="tpsl-input"
+                      type="text"
+                      readOnly
+                      value={fmtP(slPrice)}
+                    />
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--red)", whiteSpace: "nowrap" }}>
+                    -{slPct}%
+                  </div>
+                </div>
+                <div className="tpsl-chips-row">
+                  {[5, 10, 15, 25, 50].map(pct => (
+                    <button
+                      key={pct}
+                      type="button"
+                      className={`tpsl-chip ${slPct === pct ? "active-sl" : ""}`}
+                      onClick={() => setSlPct(pct)}
+                    >
+                      -{pct}%
+                    </button>
+                  ))}
+                </div>
+                <div className="tpsl-est-box">
+                  <span style={{ color: "var(--muted)" }}>Est. Loss:</span>
+                  <span style={{ color: "var(--red)", fontWeight: 800 }}>
+                    -${Math.abs(estLoss).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT (-{slPct}%)
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="tpsl-modal-foot">
+          {existing && (
+            <button type="button" className="tpsl-btn-remove" onClick={handleRemove}>
+              Remove TP/SL
+            </button>
+          )}
+          <button type="button" className="tpsl-btn-cancel" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="tpsl-btn-confirm" onClick={handleConfirm}>
+            Confirm TP/SL
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── User Executed Orders Component (Bybit Layout) ─────────────────── */
+function UserOrdersList({
+  sym,
+  flash,
+  onSelectCoin,
+  onOpenProfitCard,
+}: {
+  sym?: string;
+  flash?: (m: string) => void;
+  onSelectCoin?: (s: string) => void;
+  onOpenProfitCard?: (s: string) => void;
+}) {
   const [, setTick] = useState(0);
-  const [subTab, setSubTab] = useState<"open" | "history">("open");
+  const [subTab, setSubTab] = useState<"positions" | "open" | "history">("positions");
+  const [filterCurrentPair, setFilterCurrentPair] = useState<boolean>(false);
+  const [modalTarget, setModalTarget] = useState<{ sym: string; pos: any; curPrice: number } | null>(null);
 
   useEffect(() => {
     return marketStore.subscribe(() => setTick(t => t + 1));
   }, [sym]);
 
-  const orders = marketStore.getUserOrders(sym);
-  const pendingOrders = marketStore.getPendingOrders(sym);
+  // Build real positions list from wallet balances
+  const allBalances = marketStore.balances || {};
+  const positionSyms = (filterCurrentPair && sym)
+    ? [sym]
+    : Object.keys(allBalances).filter(s => {
+        const b = allBalances[s];
+        return b && b.bal > 0.000001 && s !== "USDT" && s !== "USDC";
+      });
+
+  const positions = positionSyms
+    .map(s => ({ sym: s, pos: marketStore.getUserPosition(s) }))
+    .filter(({ pos }) => pos.hasPosition && pos.bal > 0.000001);
+
+  // Filter open orders and history
+  const pendingOrders = marketStore.getPendingOrders((filterCurrentPair && sym) ? sym : undefined);
+  const orders = marketStore.getUserOrders((filterCurrentPair && sym) ? sym : undefined);
+
+  // Total unrealized PnL
+  const totalPnlUsd = positions.reduce((acc, curr) => acc + curr.pos.pnlUsd, 0);
+
+  const fmtP = (p: number) => (p < 0.001 ? p.toFixed(8) : p < 1 ? p.toFixed(4) : p.toFixed(2));
 
   return (
     <div className="dex-orders-container">
-      <div className="dex-orders-subtabs">
-        <button
-          className={`dex-orders-subtab ${subTab === "open" ? "active" : ""}`}
-          onClick={() => setSubTab("open")}
-        >
-          Open Orders {pendingOrders.length > 0 && <span className="tab-count-badge">{pendingOrders.length}</span>}
-        </button>
-        <button
-          className={`dex-orders-subtab ${subTab === "history" ? "active" : ""}`}
-          onClick={() => setSubTab("history")}
-        >
-          Order History {orders.length > 0 && <span className="tab-count-badge">{orders.length}</span>}
-        </button>
+      {modalTarget && (
+        <SetTpSlModal
+          isOpen={true}
+          onClose={() => setModalTarget(null)}
+          sym={modalTarget.sym}
+          pos={modalTarget.pos}
+          curPrice={modalTarget.curPrice}
+          flash={flash}
+        />
+      )}
+
+      <div className="dex-orders-subtabs" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 2 }}>
+          <button
+            className={`dex-orders-subtab ${subTab === "positions" ? "active" : ""}`}
+            onClick={() => setSubTab("positions")}
+          >
+            Positions {positions.length > 0 && <span className="tab-count-badge">{positions.length}</span>}
+          </button>
+          <button
+            className={`dex-orders-subtab ${subTab === "open" ? "active" : ""}`}
+            onClick={() => setSubTab("open")}
+          >
+            Open Orders {pendingOrders.length > 0 && <span className="tab-count-badge">{pendingOrders.length}</span>}
+          </button>
+          <button
+            className={`dex-orders-subtab ${subTab === "history" ? "active" : ""}`}
+            onClick={() => setSubTab("history")}
+          >
+            Order History {orders.length > 0 && <span className="tab-count-badge">{orders.length}</span>}
+          </button>
+        </div>
+
+        {/* Toolbar: filter toggle and total PnL */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, paddingRight: 8 }}>
+          {positions.length > 0 && subTab === "positions" && (
+            <div style={{ fontSize: 11, fontWeight: 700 }}>
+              <span style={{ color: "var(--muted)", marginRight: 4 }}>Total PnL:</span>
+              <span style={{ color: totalPnlUsd >= -0.005 ? "var(--green)" : "var(--red)" }}>
+                {totalPnlUsd >= -0.005 ? "+" : "-"}${Math.abs(totalPnlUsd).toFixed(2)}
+              </span>
+            </div>
+          )}
+          {sym && (
+            <label className="bybit-filter-check" title="Toggle between all account positions vs current coin">
+              <input
+                type="checkbox"
+                checked={filterCurrentPair}
+                onChange={e => setFilterCurrentPair(e.target.checked)}
+              />
+              <span>{sym} only</span>
+            </label>
+          )}
+        </div>
       </div>
 
-      {subTab === "open" ? (
+      {subTab === "positions" ? (
+        positions.length === 0 ? (
+          <div className="orders-empty-state">
+            <Coins size={24} color="var(--muted)" style={{ opacity: 0.5, marginBottom: 6 }} />
+            <b>No open positions {filterCurrentPair && sym ? `for ${sym}` : ""}</b>
+            <p>
+              {filterCurrentPair && sym
+                ? `You don't hold any ${sym}. Uncheck "${sym} only" above to see all your active trades.`
+                : "Buy any token to open a position. Real holdings, live PnL, and Bybit TP/SL triggers will appear here."}
+            </p>
+          </div>
+        ) : (
+          <div className="bybit-positions-wrap">
+            <table className="dex-table">
+              <thead>
+                <tr className="dex-th-row">
+                  <th className="dex-th">COIN</th>
+                  <th className="dex-th">SIZE</th>
+                  <th className="dex-th">AVG ENTRY</th>
+                  <th className="dex-th">MARKET PRICE</th>
+                  <th className="dex-th">VALUE</th>
+                  <th className="dex-th">UNREALISED PNL</th>
+                  <th className="dex-th">TP / SL</th>
+                  <th className="dex-th">ACTION</th>
+                </tr>
+              </thead>
+              <tbody>
+                {positions.map(({ sym: s, pos }) => {
+                  const token = marketStore.getToken(s);
+                  const curP = token?.numericPrice || 0;
+                  const pnlPositive = pos.pnlUsd >= -0.005;
+                  const tpSl = pos.activeTpSl;
+                  return (
+                    <tr key={s} className="dex-tr">
+                      <td className="dex-td">
+                        <div
+                          style={{ display: "flex", alignItems: "center", gap: 6, cursor: onSelectCoin ? "pointer" : "default" }}
+                          onClick={() => onSelectCoin?.(s)}
+                          title="Click to view market chart"
+                        >
+                          <CoinImg sym={s} n={20} />
+                          <div>
+                            <div style={{ fontWeight: 800, color: "var(--text)", fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+                              <span>{s}</span>
+                              <span style={{ fontSize: 8.5, padding: "1px 5px", borderRadius: 3, background: "rgba(124, 58, 237, 0.18)", color: "#C4B5FD", fontWeight: 800 }}>LONG</span>
+                            </div>
+                            <div style={{ fontSize: 9.5, color: "var(--muted)" }}>{token?.name || s}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="dex-td" style={{ fontWeight: 700, color: "var(--text)" }}>
+                        {pos.bal >= 1000
+                          ? pos.bal.toLocaleString(undefined, { maximumFractionDigits: 1 })
+                          : pos.bal.toFixed(curP < 0.001 ? 0 : 4)} {s}
+                      </td>
+                      <td className="dex-td" style={{ color: "var(--muted)", fontFamily: "monospace", fontSize: 11 }}>
+                        ${fmtP(pos.avgBuyPrice)}
+                      </td>
+                      <td className="dex-td" style={{ color: "var(--text)", fontFamily: "monospace", fontSize: 11, fontWeight: 700 }}>
+                        ${fmtP(curP)}
+                      </td>
+                      <td className="dex-td" style={{ fontWeight: 700, color: "var(--text)" }}>
+                        ${pos.currentVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="dex-td">
+                        <div style={{ display: "flex", flexDirection: "column" }}>
+                          <span style={{ fontWeight: 800, color: pnlPositive ? "var(--green)" : "var(--red)", fontSize: 11 }}>
+                            {pnlPositive ? "+" : "-"}${Math.abs(pos.pnlUsd).toFixed(2)}
+                          </span>
+                          <span style={{ fontSize: 9.5, color: pnlPositive ? "var(--green)" : "var(--red)", opacity: 0.85 }}>
+                            {pnlPositive ? "+" : ""}{pos.pnlPct.toFixed(2)}%
+                          </span>
+                        </div>
+                      </td>
+                      <td className="dex-td">
+                        {tpSl ? (
+                          <div
+                            className="bybit-tpsl-active-pill"
+                            onClick={() => setModalTarget({ sym: s, pos, curPrice: curP })}
+                            title="Click to adjust TP/SL settings"
+                          >
+                            <div className="bybit-tpsl-row">
+                              {tpSl.tpPrice && (
+                                <span style={{ color: "var(--green)" }}>
+                                  🎯 TP: ${fmtP(tpSl.tpPrice)} (+{tpSl.tpPct}%)
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                className="bybit-tpsl-cancel-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const res = marketStore.cancelPendingOrder(tpSl.id);
+                                  if (flash) flash(res.message);
+                                }}
+                                title="Disarm TP/SL"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            {tpSl.slPrice && (
+                              <div className="bybit-tpsl-row">
+                                <span style={{ color: "var(--red)" }}>
+                                  🛡️ SL: ${fmtP(tpSl.slPrice)} (-{tpSl.slPct}%)
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="bybit-set-tpsl-btn"
+                            onClick={() => setModalTarget({ sym: s, pos, curPrice: curP })}
+                            title="Set Take Profit and Stop Loss triggers like Bybit"
+                          >
+                            <ShieldCheck size={11} />
+                            <span>+ Set TP/SL</span>
+                          </button>
+                        )}
+                      </td>
+                      <td className="dex-td">
+                        <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                          <button
+                            type="button"
+                            className="bybit-pos-close-btn"
+                            onClick={() => {
+                              const res = marketStore.placeOrder({ sym: s, side: "Sell", amount: pos.bal });
+                              if (flash) flash(res.message);
+                            }}
+                            title="Close entire position at market price"
+                          >
+                            Close
+                          </button>
+                          {onOpenProfitCard && (
+                            <button
+                              type="button"
+                              className="bybit-pos-pnl-btn"
+                              onClick={() => onOpenProfitCard(s)}
+                              title="Share PnL card"
+                            >
+                              <Camera size={11} />
+                              <span>PnL</span>
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      ) : subTab === "open" ? (
         pendingOrders.length === 0 ? (
           <div className="orders-empty-state">
             <Coins size={24} color="var(--muted)" style={{ opacity: 0.5, marginBottom: 6 }} />
-            <b>No open orders for {sym || "portfolio"}</b>
-            <p>Place a Limit or TP/SL order in the order panel on the right to see it pending trigger here.</p>
+            <b>No open orders {filterCurrentPair && sym ? `for ${sym}` : ""}</b>
+            <p>Place a Limit or TP/SL order to see it pending trigger here.</p>
           </div>
         ) : (
           <div className="dex-trades-wrap" style={{ overflowY: "auto" }}>
@@ -564,17 +1069,17 @@ function UserOrdersList({ sym, flash }: { sym?: string; flash?: (m: string) => v
                       <td className="dex-td" style={{ fontFamily: "monospace", fontSize: 11 }}>
                         {isLimit ? (
                           <span style={{ color: "#A78BFA", fontWeight: 700 }}>
-                            Target: ${o.targetPrice && (o.targetPrice < 0.001 ? o.targetPrice.toFixed(8) : o.targetPrice < 1 ? o.targetPrice.toFixed(4) : o.targetPrice.toFixed(2))}
+                            Target: ${o.targetPrice && fmtP(o.targetPrice)}
                           </span>
                         ) : (
                           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                            {o.tpPrice && <span style={{ color: "var(--green)", fontWeight: 700 }}>TP: ${o.tpPrice < 0.001 ? o.tpPrice.toFixed(8) : o.tpPrice < 1 ? o.tpPrice.toFixed(4) : o.tpPrice.toFixed(2)} (+{o.tpPct}%)</span>}
-                            {o.slPrice && <span style={{ color: "var(--red)", fontWeight: 700 }}>SL: ${o.slPrice < 0.001 ? o.slPrice.toFixed(8) : o.slPrice < 1 ? o.slPrice.toFixed(4) : o.slPrice.toFixed(2)} (-{o.slPct}%)</span>}
+                            {o.tpPrice && <span style={{ color: "var(--green)", fontWeight: 700 }}>TP: ${fmtP(o.tpPrice)} (+{o.tpPct}%)</span>}
+                            {o.slPrice && <span style={{ color: "var(--red)", fontWeight: 700 }}>SL: ${fmtP(o.slPrice)} (-{o.slPct}%)</span>}
                           </div>
                         )}
                       </td>
                       <td className="dex-td" style={{ color: "var(--muted)", fontFamily: "monospace", fontSize: 11 }}>
-                        ${curP < 0.001 ? curP.toFixed(8) : curP < 1 ? curP.toFixed(4) : curP.toFixed(2)}
+                        ${fmtP(curP)}
                       </td>
                       <td className="dex-td">
                         <button
@@ -600,7 +1105,7 @@ function UserOrdersList({ sym, flash }: { sym?: string; flash?: (m: string) => v
         orders.length === 0 ? (
           <div className="orders-empty-state">
             <Coins size={24} color="var(--muted)" style={{ opacity: 0.5, marginBottom: 6 }} />
-            <b>No trade history yet for {sym || "portfolio"}</b>
+            <b>No trade history yet {filterCurrentPair && sym ? `for ${sym}` : ""}</b>
             <p>Executed Market, Limit, and TP/SL orders will appear here.</p>
           </div>
         ) : (
@@ -648,7 +1153,7 @@ function UserOrdersList({ sym, flash }: { sym?: string; flash?: (m: string) => v
                         } {o.sym}
                       </td>
                       <td className="dex-td" style={{ color: "var(--muted)", fontFamily: "monospace", fontSize: 11 }}>
-                        ${o.price < 0.001 ? o.price.toFixed(8) : o.price < 1 ? o.price.toFixed(4) : o.price.toFixed(2)}
+                        ${fmtP(o.price)}
                       </td>
                       <td className="dex-td" style={{ color: "var(--muted)", fontSize: 10 }}>
                         {o.dateStr}
@@ -666,7 +1171,7 @@ function UserOrdersList({ sym, flash }: { sym?: string; flash?: (m: string) => v
 }
 
 /* ── TRADE SCREEN ───────────────────────────────────────────────── */
-function Trade({ flash }: { flash: (x: string) => void }) {
+function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpenProfitCard?: (sym: string) => void }) {
   const [selectedSym, setSelectedSym] = useState(() => {
     if (typeof localStorage !== "undefined") {
       const saved = localStorage.getItem("axiom_selected_sym");
@@ -675,7 +1180,7 @@ function Trade({ flash }: { flash: (x: string) => void }) {
     return "BTC"; // BTC is the top coin!
   });
   const [side, setSide] = useState<"Buy" | "Sell">("Buy");
-  const [orderExpanded, setOrderExpanded] = useState(false); // Collapsible: collapsed by default!
+  const [orderExpanded, setOrderExpanded] = useState(true); // Keep order panel open and ready to trade
   const [orderType, setOrderType] = useState<"Market" | "Limit" | "TP/SL">("Market");
   const [limitPriceInput, setLimitPriceInput] = useState<string>("");
   const [tpPctInput, setTpPctInput] = useState<number>(25);
@@ -866,18 +1371,22 @@ function Trade({ flash }: { flash: (x: string) => void }) {
     setShowPairModal(false);
   };
 
-  // Real user balances (support both USDT and USDC)
+  // Real user balances (support both USDT and USDC, plus native rails like SOL, ETH, BNB)
   const balances = marketStore.getBalances();
+  const pairCurrency = (m.pair_currency || (m.isMajor ? "USDT" : "SOL")).toUpperCase();
+  const isCash = pairCurrency === "USDT" || pairCurrency === "USDC" || pairCurrency === "USD";
   const availableUsdt = balances["USDT"]?.bal || 0;
   const availableUsdc = balances["USDC"]?.bal || 0;
   const availableCash = availableUsdt + availableUsdc;
+  const availablePair = isCash ? availableCash : (balances[pairCurrency]?.bal || 0);
   const availableToken = balances[m.sym]?.bal || 0;
+  const basePriceUsd = marketStore.getBasePriceUsd(pairCurrency);
 
   const handleQuickPct = (v: string) => {
     setQuickPct(v);
     const pct = v === "MAX" ? 100 : parseInt(v);
     if (side === "Buy") {
-      const val = (availableCash * (pct / 100)).toFixed(2);
+      const val = (availablePair * (pct / 100)).toFixed(isCash ? 2 : 4);
       setAmountInput(val);
     } else {
       const val = (availableToken * (pct / 100)).toFixed(m.numericPrice < 0.001 ? 0 : 2);
@@ -910,7 +1419,6 @@ function Trade({ flash }: { flash: (x: string) => void }) {
       });
       flash(res.message);
       if (res.success) {
-        setOrderExpanded(false);
         setBelowChartTab("myOrders");
       }
       return;
@@ -933,7 +1441,6 @@ function Trade({ flash }: { flash: (x: string) => void }) {
       });
       flash(res.message);
       if (res.success) {
-        setOrderExpanded(false);
         setBelowChartTab("myOrders");
       }
       return;
@@ -947,18 +1454,25 @@ function Trade({ flash }: { flash: (x: string) => void }) {
     flash(res.message);
   };
 
-  // Live dynamic calculation for "You receive"
+  // Live dynamic calculation for "You receive" based on base pair currency
   const numAmt = parseFloat(amountInput) || 0;
   const limitTargetP = parseFloat(limitPriceInput) || m.numericPrice;
+  const buyTokensReceived = m.numericPrice > 0 ? (numAmt * basePriceUsd) / m.numericPrice : 0;
+  const sellPairReceived = basePriceUsd > 0 ? (numAmt * m.numericPrice) / basePriceUsd : 0;
+
   const youReceiveStr = orderType === "Limit"
     ? side === "Buy"
-      ? limitTargetP > 0 ? (numAmt / limitTargetP).toLocaleString(undefined, { maximumFractionDigits: limitTargetP < 0.001 ? 0 : 3 }) : "0"
-      : `$${(numAmt * limitTargetP).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      ? limitTargetP > 0 ? ((numAmt * basePriceUsd) / limitTargetP).toLocaleString(undefined, { maximumFractionDigits: limitTargetP < 0.001 ? 0 : 3 }) : "0"
+      : isCash
+        ? `$${(numAmt * limitTargetP).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : `${((numAmt * limitTargetP) / basePriceUsd).toFixed(4)} ${pairCurrency}`
     : orderType === "TP/SL"
       ? `$${(numAmt * (m.numericPrice * (1 + tpPctInput / 100))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (at TP)`
       : side === "Buy"
-        ? m.numericPrice > 0 ? (numAmt / m.numericPrice).toLocaleString(undefined, { maximumFractionDigits: m.numericPrice < 0.001 ? 0 : 3 }) : "0"
-        : `$${(numAmt * m.numericPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        ? buyTokensReceived.toLocaleString(undefined, { maximumFractionDigits: m.numericPrice < 0.001 ? 0 : 3 })
+        : isCash
+          ? `$${(numAmt * m.numericPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          : `${sellPairReceived.toFixed(4)} ${pairCurrency}`;
 
   // Candle data for OHLCV readout
   const candles = marketStore.getCandles(m.sym, timeframe);
@@ -1124,7 +1638,7 @@ function Trade({ flash }: { flash: (x: string) => void }) {
                   </b>
                   <small>{x.name}</small>
                 </span>
-                <i><b>{x.price}</b><Delta n={x.change} size={9} /></i>
+                <i><b>{x.price}</b><Delta n={(x.is_rugged || x.numericPrice <= 0.00000001) ? "-99.99%" : x.change} size={9} /></i>
               </div>
             ))
           )}
@@ -1144,7 +1658,7 @@ function Trade({ flash }: { flash: (x: string) => void }) {
               <CoinImg sym={m.sym} n={32} url={m.imageUrl} />
               <div className="dex-hero-name-wrap">
                 <div className="dex-hero-pair-title">
-                  <b>{m.sym} / USDT</b>
+                  <b>{m.sym} / {m.pair_currency || (m.isMajor ? "USDT" : "SOL")}</b>
                   <span className="dex-chain-pill">{m.network === "eth" ? "ETH" : "SOL"}</span>
                   {m.is_rugged && <span className="dex-rugged-badge">DUMPED</span>}
                   <ChevronDown size={13} className="dex-switch-chevron" />
@@ -1224,7 +1738,14 @@ function Trade({ flash }: { flash: (x: string) => void }) {
           <div className="dex-metrics-scroll-track">
             <div className="dex-metric-card">
               <span className="dex-metric-label">LIQUIDITY</span>
-              <span className="dex-metric-val">{m.liq || "$28.4M"}</span>
+              <span className="dex-metric-val" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                <span>{m.liq || "$28.4M"}</span>
+                {marketStore.isTokenLiquidityLocked(m.sym) && !m.is_rugged && (
+                  <span className="snap-lock-badge" title="Liquidity Locked" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                    <Lock size={10} />
+                  </span>
+                )}
+              </span>
             </div>
             <div className="dex-metric-card">
               <span className="dex-metric-label">FDV</span>
@@ -1251,13 +1772,13 @@ function Trade({ flash }: { flash: (x: string) => void }) {
             <CoinImg sym={m.sym} n={30} url={m.imageUrl} />
             <i>
               <b style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                {m.sym} / USDT
+                {m.sym} / {m.pair_currency || (m.isMajor ? "USDT" : "SOL")}
                 {marketStore.isTokenVerified(m.sym) && (
                   <span className="dex-verified-tag-sm">✓ Verified</span>
                 )}
                 {m.is_rugged && (
                   <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 4, background: "rgba(239,68,68,0.25)", color: "#EF4444", fontWeight: 800, border: "1px solid rgba(239,68,68,0.5)" }}>
-                    ⚠️ LOW LIQUIDITY
+                    ⚠️ RUGPULLED / DUMPED
                   </span>
                 )}
               </b>
@@ -1306,7 +1827,7 @@ function Trade({ flash }: { flash: (x: string) => void }) {
           </span>
           <div className="pair-stat">
             <span>Last price<b>{currMode === "USD" ? m.price : m.solPrice}</b></span>
-            <span>24h change<Delta n={m.change} size={10} /></span>
+            <span>24h change<Delta n={(m.is_rugged || m.numericPrice <= 0.00000001) ? "-99.99%" : m.change} size={10} /></span>
             <span>24h vol<b>${m.vol.toFixed(1)}M</b></span>
             <span>Market cap<b>{m.cap}</b></span>
           </div>
@@ -1381,6 +1902,7 @@ function Trade({ flash }: { flash: (x: string) => void }) {
               >
                 Tall
               </button>
+
             </div>
           </div>
         </div>
@@ -1404,11 +1926,10 @@ function Trade({ flash }: { flash: (x: string) => void }) {
         {/* Bottom border arrow controls to reduce & increase chart board */}
         <div
           className="chart-bottom-resizer"
-          onMouseDown={handleStartResize}
-          onTouchStart={handleStartTouchResize}
-          title="Drag up to reduce board height, drag down to increase"
+          style={{ touchAction: "pan-y" }}
+          title="Board height controls"
         >
-          <div className="chart-bottom-arrows-wrap" onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
+          <div className="chart-bottom-arrows-wrap" style={{ touchAction: "pan-y" }}>
             <button
               type="button"
               className="chart-arrow-toggle-btn"
@@ -1454,7 +1975,14 @@ function Trade({ flash }: { flash: (x: string) => void }) {
               <span>Increase</span>
             </button>
           </div>
-          <span className="resize-handle-bar" />
+          <span
+            className="resize-handle-bar"
+            onMouseDown={(e) => {
+              if (e.button === 0) handleStartResize(e);
+            }}
+            title="Drag to resize height"
+            style={{ cursor: "ns-resize" }}
+          />
         </div>
 
         {/* Order book + DexScreener recent trades / My Orders */}
@@ -1483,20 +2011,30 @@ function Trade({ flash }: { flash: (x: string) => void }) {
                   className={`sec-tab-btn ${belowChartTab === "myOrders" ? "active" : ""}`}
                   onClick={() => setBelowChartTab("myOrders")}
                 >
-                  My Orders {(marketStore.getUserOrders(m.sym).length + marketStore.getPendingOrders(m.sym).length) > 0 && (
-                    <span className="tab-count-badge">{marketStore.getUserOrders(m.sym).length + marketStore.getPendingOrders(m.sym).length}</span>
-                  )}
+                  Positions & Orders {(() => {
+                    const posCount = Object.keys(marketStore.balances || {}).filter(s => {
+                      const b = marketStore.balances[s];
+                      return b && b.bal > 0.000001 && s !== "USDT" && s !== "USDC";
+                    }).length;
+                    const tot = posCount + marketStore.getPendingOrders().length;
+                    return tot > 0 ? <span className="tab-count-badge">{tot}</span> : null;
+                  })()}
                 </button>
               </div>
               <small className="live-indicator">
                 <span className="live-indicator-dot" />
-                {belowChartTab === "trades" ? "Stream" : "History"}
+                {belowChartTab === "trades" ? "Stream" : "Live Positions & Orders"}
               </small>
             </div>
             {belowChartTab === "trades" ? (
               <DexRecentTrades sym={m.sym} flash={flash} />
             ) : (
-              <UserOrdersList sym={m.sym} flash={flash} />
+              <UserOrdersList
+                sym={m.sym}
+                flash={flash}
+                onSelectCoin={selectCoin}
+                onOpenProfitCard={onOpenProfitCard}
+              />
             )}
           </section>
         </div>
@@ -1613,10 +2151,10 @@ function Trade({ flash }: { flash: (x: string) => void }) {
                     </div>
 
                     <label>
-                      {side === "Buy" ? "Amount (USD)" : `Amount (${m.sym})`}
+                      {side === "Buy" ? `Amount (${pairCurrency})` : `Amount (${m.sym})`}
                       <small>
                         {side === "Buy"
-                          ? `Available: $${availableCash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          ? (isCash ? `Available: $${availableCash.toFixed(2)} (USDT/USDC)` : `Available: ${availablePair.toFixed(4)} ${pairCurrency}`)
                           : `Available: ${availableToken.toLocaleString(undefined, { maximumFractionDigits: m.numericPrice < 0.001 ? 0 : 2 })} ${m.sym}`}
                       </small>
                     </label>
@@ -1629,7 +2167,7 @@ function Trade({ flash }: { flash: (x: string) => void }) {
                         value={amountInput}
                         onChange={e => { setAmountInput(e.target.value); setQuickPct(null); }}
                       />
-                      <span>{side === "Buy" ? "USD" : m.sym}</span>
+                      <span>{side === "Buy" ? pairCurrency : m.sym}</span>
                     </div>
                     <div className="quick-size">
                       {["25%", "50%", "75%", "MAX"].map(v => (
@@ -1640,7 +2178,7 @@ function Trade({ flash }: { flash: (x: string) => void }) {
                     <label>Estimated Receive</label>
                     <div className="receive-input">
                       <b>{youReceiveStr}</b>
-                      <span><CoinImg sym={side === "Buy" ? m.sym : "USDT"} n={16} />{side === "Buy" ? m.sym : "USDT"}</span>
+                      <span><CoinImg sym={side === "Buy" ? m.sym : pairCurrency} n={16} />{side === "Buy" ? m.sym : pairCurrency}</span>
                     </div>
 
                     <button
@@ -1660,18 +2198,40 @@ function Trade({ flash }: { flash: (x: string) => void }) {
               <div className="dex-mobile-tab-pane">
                 {(() => {
                   const pos = marketStore.getUserPosition(m.sym);
-                  const isPumping = pos.pnlPct > 0.4;
                   const isDipping = pos.pnlPct < -0.4;
                   return (
-                    <div className={`user-position-card ${isPumping ? "pumping-card" : ""}`} style={{ margin: 0 }}>
+                    <div className="user-position-card" style={{ margin: 0 }}>
                       <div className="user-pos-header">
                         <div className="user-pos-title-wrap">
                           <Coins size={14} color="var(--violet)" />
                           <b>Your {m.sym} Position</b>
                         </div>
-                        <span className={`user-pos-badge ${pos.hasPosition ? (isPumping ? "pumping" : isDipping ? "dipping" : "active") : "empty"}`}>
-                          {pos.hasPosition ? (isPumping ? `🔥 PUMPING (+${pos.pnlPct.toFixed(1)}%)` : isDipping ? `🔻 DIPPING (${pos.pnlPct.toFixed(1)}%)` : "HOLDING") : "NO POSITION"}
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <button
+                            type="button"
+                            onClick={() => onOpenProfitCard ? onOpenProfitCard(m.sym) : null}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              padding: "4px 8px",
+                              borderRadius: 6,
+                              background: "rgba(124, 58, 237, 0.12)",
+                              border: "1px solid rgba(124, 58, 237, 0.32)",
+                              color: "#A78BFA",
+                              fontSize: 11,
+                              fontWeight: 800,
+                              cursor: "pointer",
+                            }}
+                            title="Generate and download verified PnL profit screenshot"
+                          >
+                            <Camera size={12} />
+                            <span>📸 PnL Card</span>
+                          </button>
+                          <span className={`user-pos-badge ${pos.hasPosition ? (isDipping ? "dipping" : "active") : "empty"}`}>
+                            {pos.hasPosition ? (isDipping ? `🔻 DIPPING (${pos.pnlPct.toFixed(1)}%)` : "HOLDING") : "NO POSITION"}
+                          </span>
+                        </div>
                       </div>
                       {pos.hasPosition && pos.bal > 0 ? (
                         <>
@@ -1681,24 +2241,48 @@ function Trade({ flash }: { flash: (x: string) => void }) {
                               <span className="user-pos-v"><b>{pos.bal.toFixed(4)} {m.sym}</b></span>
                             </div>
                             <div className="user-pos-row">
-                              <span className="user-pos-k">Money Used</span>
+                              <span className="user-pos-k">Avg Entry</span>
                               <span className="user-pos-v highlight-spent">
-                                ${pos.invested.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                ${pos.avgBuyPrice < 0.001 ? pos.avgBuyPrice.toFixed(8) : pos.avgBuyPrice < 1 ? pos.avgBuyPrice.toFixed(4) : pos.avgBuyPrice.toFixed(2)}
                               </span>
                             </div>
                             <div className="user-pos-row">
                               <span className="user-pos-k">Position Value</span>
-                              <span className="user-pos-v highlight-val">${pos.currentVal.toFixed(2)}</span>
+                              <span className="user-pos-v">${pos.currentVal.toFixed(2)}</span>
                             </div>
                             <div className="user-pos-row">
                               <span className="user-pos-k">Unrealized PnL</span>
-                              <span className={`user-pos-v ${pos.pnlUsd >= 0 ? "text-green" : "text-red"}`}>
-                                <b>{pos.pnlUsd >= 0 ? `+$${pos.pnlUsd.toFixed(2)}` : `-$${Math.abs(pos.pnlUsd).toFixed(2)}`}</b> ({pos.pnlPct.toFixed(2)}%)
+                              <span className={`user-pos-v ${pos.pnlUsd >= -0.005 ? "up" : "down"}`}>
+                                <b>{pos.pnlUsd >= -0.005 ? `+$${Math.max(0, pos.pnlUsd).toFixed(2)}` : `-$${Math.abs(pos.pnlUsd).toFixed(2)}`}</b> ({pos.pnlPct >= -0.005 ? "+" : ""}{pos.pnlPct.toFixed(2)}%)
                               </span>
                             </div>
+
+                            {/* TP/SL armed badge or Set button */}
+                            {pos.activeTpSl ? (
+                              <div
+                                className="pos-tpsl-armed-badge"
+                                onClick={() => setBelowChartTab("myOrders")}
+                                style={{ cursor: "pointer" }}
+                                title="Click to view and adjust in Positions table"
+                              >
+                                <ShieldCheck size={11} />
+                                <span>TP/SL Armed — see <b>Positions</b> tab</span>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                className="bybit-set-tpsl-btn"
+                                style={{ width: "100%", justifyContent: "center", padding: "6px 0", marginTop: 4 }}
+                                onClick={() => setBelowChartTab("myOrders")}
+                                title="Set Take Profit & Stop Loss in Positions table like Bybit"
+                              >
+                                <ShieldCheck size={11} />
+                                <span>+ Set TP/SL (Positions tab)</span>
+                              </button>
+                            )}
                           </div>
 
-                          {/* Quick Partial & Full Exit Buttons */}
+                          {/* Quick Action Buttons */}
                           <div className="user-pos-quick-actions" style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                             <button
                               type="button"
@@ -1715,17 +2299,27 @@ function Trade({ flash }: { flash: (x: string) => void }) {
                             </button>
                             <button
                               type="button"
-                              className={`user-pos-quick-btn ${isPumping ? "profit-btn" : ""}`}
+                              className="user-pos-quick-btn user-pos-close-btn"
                               style={{ padding: "8px 0", fontSize: 12, fontWeight: 700, borderRadius: 8 }}
                               onClick={() => {
                                 const res = marketStore.placeOrder({ sym: m.sym, side: "Sell", amount: pos.bal });
                                 flash(res.message);
                               }}
-                              title="Sell 100% of your holdings to lock in profit"
+                              title="Close full position at market price"
                             >
-                              {isPumping ? "🔥 Take Profit (100%)" : "Sell 100%"}
+                              Close Position
                             </button>
                           </div>
+
+                          {/* Share PnL Card */}
+                          <button
+                            type="button"
+                            onClick={() => onOpenProfitCard && onOpenProfitCard(m.sym)}
+                            className="pos-share-pnl-btn"
+                          >
+                            <Camera size={13} />
+                            <span>📸 Share PnL Card</span>
+                          </button>
                         </>
                       ) : (
                         <div style={{ textAlign: "center", padding: "20px 10px", color: "var(--muted)", fontSize: 12 }}>
@@ -1882,36 +2476,6 @@ function Trade({ flash }: { flash: (x: string) => void }) {
 
                 {pos.hasPosition ? (
                   <div className="user-pos-body">
-                    {isPumping && (
-                      <div className="user-pos-pump-banner">
-                        <span>🚀</span>
-                        <span><b>Pumping in profit!</b> Position value is <b>+${pos.pnlUsd.toFixed(2)}</b> above entry.</span>
-                      </div>
-                    )}
-
-                    {pos.activeTpSl && (
-                      <div className="user-pos-tpsl-status">
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span style={{ color: "var(--violet)", fontWeight: 800, fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
-                            <ShieldCheck size={12} /> TP/SL Protection Armed
-                          </span>
-                          <span style={{ fontSize: 10, color: "var(--muted)" }}>{pos.activeTpSl.amount >= 1000 ? pos.activeTpSl.amount.toLocaleString(undefined, { maximumFractionDigits: 0 }) : pos.activeTpSl.amount.toFixed(2)} {m.sym}</span>
-                        </div>
-                        <div style={{ display: "flex", gap: 10, marginTop: 4, fontSize: 11 }}>
-                          {pos.activeTpSl.tpPrice && (
-                            <span style={{ color: "var(--green)", fontWeight: 700 }}>
-                              🎯 TP: ${pos.activeTpSl.tpPrice < 0.001 ? pos.activeTpSl.tpPrice.toFixed(8) : pos.activeTpSl.tpPrice < 1 ? pos.activeTpSl.tpPrice.toFixed(4) : pos.activeTpSl.tpPrice.toFixed(2)} (+{pos.activeTpSl.tpPct}%)
-                            </span>
-                          )}
-                          {pos.activeTpSl.slPrice && (
-                            <span style={{ color: "var(--red)", fontWeight: 700 }}>
-                              🛡️ SL: ${pos.activeTpSl.slPrice < 0.001 ? pos.activeTpSl.slPrice.toFixed(8) : pos.activeTpSl.slPrice < 1 ? pos.activeTpSl.slPrice.toFixed(4) : pos.activeTpSl.slPrice.toFixed(2)} (-{pos.activeTpSl.slPct}%)
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
                     <div className="user-pos-row">
                       <span className="user-pos-k">Coin Owned</span>
                       <span className="user-pos-v">
@@ -1925,21 +2489,45 @@ function Trade({ flash }: { flash: (x: string) => void }) {
                       </span>
                     </div>
                     <div className="user-pos-row">
-                      <span className="user-pos-k">Money Used</span>
+                      <span className="user-pos-k">Avg Entry</span>
                       <span className="user-pos-v highlight-spent">
-                        ${pos.invested.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        <small>Avg: ${pos.avgBuyPrice < 0.001 ? pos.avgBuyPrice.toFixed(8) : pos.avgBuyPrice < 1 ? pos.avgBuyPrice.toFixed(4) : pos.avgBuyPrice.toFixed(2)}</small>
+                        ${pos.avgBuyPrice < 0.001 ? pos.avgBuyPrice.toFixed(8) : pos.avgBuyPrice < 1 ? pos.avgBuyPrice.toFixed(4) : pos.avgBuyPrice.toFixed(2)}
+                        <small>Invested: ${pos.invested.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</small>
                       </span>
                     </div>
                     <div className="user-pos-row pos-pnl-row">
                       <span className="user-pos-k">Unrealized P&L</span>
-                      <span className={`user-pos-v ${pos.pnlUsd >= 0 ? "up" : "down"}`}>
-                        <b>{pos.pnlUsd >= 0 ? "+" : ""}${pos.pnlUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>
-                        <small>({pos.pnlPct >= 0 ? "+" : ""}{pos.pnlPct.toFixed(2)}%)</small>
+                      <span className={`user-pos-v ${pos.pnlUsd >= -0.005 ? "up" : "down"}`}>
+                        <b>{pos.pnlUsd >= -0.005 ? "+" : ""}${Math.max(0, pos.pnlUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>
+                        <small>({pos.pnlPct >= -0.005 ? "+" : ""}{pos.pnlPct.toFixed(2)}%)</small>
                       </span>
                     </div>
 
-                    {/* Quick Profit / Partial Exit buttons */}
+                    {/* TP/SL armed indicator or Set button linked to Positions tab */}
+                    {pos.activeTpSl ? (
+                      <div
+                        className="pos-tpsl-armed-badge"
+                        onClick={() => setBelowChartTab("myOrders")}
+                        style={{ cursor: "pointer" }}
+                        title="Click to view and adjust in Positions table"
+                      >
+                        <ShieldCheck size={11} />
+                        <span>TP/SL Armed — see <b>Positions</b> tab</span>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="bybit-set-tpsl-btn"
+                        style={{ width: "100%", justifyContent: "center", padding: "6px 0", marginTop: 4 }}
+                        onClick={() => setBelowChartTab("myOrders")}
+                        title="Set Take Profit & Stop Loss in Positions table like Bybit"
+                      >
+                        <ShieldCheck size={11} />
+                        <span>+ Set TP/SL in Positions</span>
+                      </button>
+                    )}
+
+                    {/* Quick Sell buttons */}
                     <div className="user-pos-quick-actions">
                       <button
                         type="button"
@@ -1955,32 +2543,30 @@ function Trade({ flash }: { flash: (x: string) => void }) {
                       </button>
                       <button
                         type="button"
-                        className={`user-pos-quick-btn ${isPumping ? "profit-btn" : ""}`}
+                        className="user-pos-quick-btn user-pos-close-btn"
                         onClick={() => {
                           const res = marketStore.placeOrder({ sym: m.sym, side: "Sell", amount: pos.bal });
                           flash(res.message);
                         }}
-                        title="Sell 100% of your holdings to lock in profit"
+                        title="Close full position at market price"
                       >
-                        {isPumping ? "🔥 Take Profit (100%)" : "Sell 100%"}
+                        Close Position
                       </button>
                     </div>
 
-                    <div className="user-pos-pump-guide">
-                      <div style={{ fontWeight: 800, fontSize: 11, color: "var(--green)", display: "flex", alignItems: "center", gap: 5, marginBottom: 3 }}>
-                        <span>🔥</span> How to know when {m.sym} is pumping:
-                      </div>
-                      <div style={{ fontSize: 10, color: "#9CA3AF", lineHeight: 1.35 }}>
-                        • <b>Badge & P&L</b>: Badge turns to "🔥 PUMPING" and P&L glows neon green.<br />
-                        • <b>Chart</b>: Green candles shoot up in real-time.<br />
-                        • <b>Trades</b>: Green Buy transactions stream in below.<br />
-                        • <b>Price Header</b>: Ticker flashes green percentage gains.
-                      </div>
-                    </div>
+                    {/* Share PnL Card */}
+                    <button
+                      type="button"
+                      onClick={() => onOpenProfitCard && onOpenProfitCard(m.sym)}
+                      className="pos-share-pnl-btn"
+                    >
+                      <Camera size={13} />
+                      <span>📸 Share PnL Card</span>
+                    </button>
                   </div>
                 ) : (
                   <div className="user-pos-empty">
-                    You haven't bought any {m.sym} yet. Use the form below to buy {m.sym} with your $20 cash.
+                    You haven't bought any {m.sym} yet. Use the form below to open a position.
                   </div>
                 )}
               </div>
@@ -1991,38 +2577,30 @@ function Trade({ flash }: { flash: (x: string) => void }) {
           <div className="order-panel-container">
             <div className="side-tabs">
               <button
-                className={`buy ${orderExpanded && side === "Buy" ? "active" : ""}`}
+                type="button"
+                className={`buy ${side === "Buy" ? "active" : ""}`}
                 onClick={() => {
-                  if (orderExpanded && side === "Buy") {
-                    setOrderExpanded(false);
-                  } else {
-                    setSide("Buy");
-                    setOrderExpanded(true);
-                  }
+                  setSide("Buy");
+                  setOrderExpanded(true);
                 }}
-                title={orderExpanded && side === "Buy" ? "Collapse order form" : `Roll down to Buy ${m.sym}`}
+                title={`Buy ${m.sym}`}
               >
                 <span>Buy {m.sym}</span>
-                <ChevronDown size={13} className={`order-chevron ${orderExpanded && side === "Buy" ? "open" : ""}`} />
               </button>
               <button
-                className={`sell ${orderExpanded && side === "Sell" ? "active" : ""}`}
+                type="button"
+                className={`sell ${side === "Sell" ? "active" : ""}`}
                 onClick={() => {
-                  if (orderExpanded && side === "Sell") {
-                    setOrderExpanded(false);
-                  } else {
-                    setSide("Sell");
-                    setOrderExpanded(true);
-                  }
+                  setSide("Sell");
+                  setOrderExpanded(true);
                 }}
-                title={orderExpanded && side === "Sell" ? "Collapse order form" : `Roll down to Sell ${m.sym}`}
+                title={`Sell ${m.sym}`}
               >
                 <span>Sell {m.sym}</span>
-                <ChevronDown size={13} className={`order-chevron ${orderExpanded && side === "Sell" ? "open" : ""}`} />
               </button>
             </div>
 
-            <div className={`order-form-collapsible ${orderExpanded ? "expanded" : "collapsed"}`}>
+            <div className="order-form-collapsible expanded">
               <div className="order-form-inner">
                 <div className="order-form-top-row">
                   <div className="order-type">
@@ -2082,10 +2660,10 @@ function Trade({ flash }: { flash: (x: string) => void }) {
                     </div>
 
                     <label>
-                      {side === "Buy" ? "Spend Cash" : `Sell ${m.sym}`}
+                      {side === "Buy" ? `Spend ${pairCurrency}` : `Sell ${m.sym}`}
                       <small>
                         Available: {side === "Buy"
-                          ? `$${availableCash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (USDT/USDC)`
+                          ? (isCash ? `$${availableCash.toFixed(2)} (USDT/USDC)` : `${availablePair.toFixed(4)} ${pairCurrency}`)
                           : `${availableToken.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${m.sym}`
                         }
                       </small>
@@ -2096,7 +2674,7 @@ function Trade({ flash }: { flash: (x: string) => void }) {
                         onChange={e => setAmountInput(e.target.value)}
                         type="number"
                       />
-                      <span>{side === "Buy" ? "USD" : m.sym}</span>
+                      <span>{side === "Buy" ? pairCurrency : m.sym}</span>
                     </div>
                     <div className="quick-size">
                       {["25%", "50%", "75%", "MAX"].map(v => (
@@ -2107,7 +2685,7 @@ function Trade({ flash }: { flash: (x: string) => void }) {
                     <label>Estimated Receive (at Target Price)</label>
                     <div className="receive-input">
                       <b>{youReceiveStr}</b>
-                      <span><CoinImg sym={side === "Buy" ? m.sym : "USDT"} n={16} />{side === "Buy" ? m.sym : "USDT"}</span>
+                      <span><CoinImg sym={side === "Buy" ? m.sym : pairCurrency} n={16} />{side === "Buy" ? m.sym : pairCurrency}</span>
                     </div>
 
                     <div className="order-summary">
@@ -2232,10 +2810,10 @@ function Trade({ flash }: { flash: (x: string) => void }) {
                 ) : (
                   <>
                     <label>
-                      Pay with{" "}
+                      {side === "Buy" ? `Pay with ${pairCurrency}` : `Sell ${m.sym}`}
                       <small>
                         Available: {side === "Buy"
-                          ? `$${availableCash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (USDT/USDC)`
+                          ? (isCash ? `$${availableCash.toFixed(2)} (USDT/USDC)` : `${availablePair.toFixed(4)} ${pairCurrency}`)
                           : `${availableToken.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${m.sym}`
                         }
                       </small>
@@ -2247,7 +2825,7 @@ function Trade({ flash }: { flash: (x: string) => void }) {
                         onChange={e => setAmountInput(e.target.value)}
                         type="number"
                       />
-                      <span>{side === "Buy" ? "USD" : m.sym}</span>
+                      <span>{side === "Buy" ? pairCurrency : m.sym}</span>
                     </div>
                     <div className="quick-size">
                       {["25%", "50%", "75%", "MAX"].map(v => (
@@ -2257,7 +2835,7 @@ function Trade({ flash }: { flash: (x: string) => void }) {
                     <label>You receive</label>
                     <div className="receive-input">
                       <b>{youReceiveStr}</b>
-                      <span><CoinImg sym={side === "Buy" ? m.sym : "USDC"} n={16} />{side === "Buy" ? m.sym : "USDC"}</span>
+                      <span><CoinImg sym={side === "Buy" ? m.sym : pairCurrency} n={16} />{side === "Buy" ? m.sym : pairCurrency}</span>
                     </div>
                     <div className="order-summary">
                       <span>Market price<b>{m.price}</b></span>
@@ -2289,8 +2867,7 @@ function Trade({ flash }: { flash: (x: string) => void }) {
   );
 }
 
-/* ── WALLET SCREEN ──────────────────────────────────────────────── */
-function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser }: { modal: (m: Modal) => void; flash?: (x: string) => void; onSelectCoin?: (sym: string) => void; onNavigate?: (v: View) => void; authUser?: AuthUser }) {
+function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenProfitCard }: { modal: (m: Modal) => void; flash?: (x: string) => void; onSelectCoin?: (sym: string) => void; onNavigate?: (v: View) => void; authUser?: AuthUser; onOpenProfitCard?: (sym: string) => void }) {
   const [searchQ, setSearchQ] = useState("");
   const [copied, setCopied] = useState(false);
   const [tick, setTick] = useState(0);
@@ -2300,12 +2877,14 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser }: { moda
   }, []);
 
   const userAddress = authUser?.wallet_address || "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
-  const shortAddress = userAddress.length > 10 ? `${userAddress.slice(0, 4)}...${userAddress.slice(-3)}` : userAddress;
+  const userUid = authUser?.user_id
+    ? `AXM-${authUser.user_id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase()}`
+    : (userAddress ? `AXM-${userAddress.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase()}` : "AXM-8F2A9C");
 
   const handleCopy = () => {
-    copyToClipboard(userAddress);
+    copyToClipboard(userUid);
     setCopied(true);
-    if (flash) flash("Solana wallet address copied!");
+    if (flash) flash(`Axiom UID copied: ${userUid}`);
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -2457,12 +3036,12 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser }: { moda
 
   return (
     <div className="wallet-screen">
-      {/* Address & Universal Search strip */}
+      {/* UID & Universal Search strip */}
       <div className="wallet-topbar">
-        <button className="addr-chip" onClick={handleCopy}>
+        <button className="addr-chip" onClick={handleCopy} title="Click to copy your Axiom UID">
           <span className="addr-dot" />
-          <span style={{ fontFamily: "monospace", fontSize: 10 }}>
-            {copied ? <span style={{ color: "var(--green)" }}>Copied!</span> : shortAddress}
+          <span style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 700 }}>
+            {copied ? <span style={{ color: "var(--green)" }}>Copied!</span> : `UID: ${userUid}`}
           </span>
           <Copy size={11} />
         </button>
@@ -2520,14 +3099,14 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser }: { moda
           </span>
         </div>
 
-        {/* 5 Core Action buttons evenly distributed and balanced */}
+        {/* 5 Core Action buttons */}
         <div className="wallet-actions">
           {[
             { label: "Deposit", icon: <ArrowDownToLine size={20} />, primary: true, action: () => modal("deposit") },
             { label: "Buy", icon: <CreditCard size={20} />, primary: false, action: () => modal("buy") },
             { label: "Send", icon: <Send size={20} />, primary: false, action: () => modal("send") },
             { label: "Swap", icon: <ArrowDownUp size={20} />, primary: false, action: () => onNavigate ? onNavigate("swap") : modal("confirm") },
-            { label: "Withdraw", icon: <ArrowUpToLine size={20} />, primary: false, action: () => modal("send") },
+            { label: "Withdraw", icon: <ArrowUpToLine size={20} />, primary: false, action: () => modal("withdraw") },
           ].map(btn => (
             <button key={btn.label} className="wallet-action-btn" onClick={btn.action}>
               <div className={`wallet-action-icon ${btn.primary ? "primary" : "secondary"}`}>{btn.icon}</div>
@@ -2595,21 +3174,9 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser }: { moda
             Buys ({boughtCoins.length})
           </button>
         </div>
-
-        {assetTab === "buys" && boughtCoins.length > 0 && (
-          <div className="wallet-buys-summary-strip">
-            <span>Invested: <b>${totalMoneyInvestedInBought.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></span>
-            <span style={{ color: "var(--muted)" }}>·</span>
-            <span>Value: <b>${totalValueOfBought.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></span>
-            <span style={{ color: "var(--muted)" }}>·</span>
-            <span className={`wallet-buys-pnl-tag ${totalBoughtPnl >= 0 ? "up" : "down"}`}>
-              {totalBoughtPnl >= 0 ? "+" : ""}${totalBoughtPnl.toFixed(2)} ({totalBoughtPnlPct >= 0 ? "+" : ""}{totalBoughtPnlPct.toFixed(2)}%)
-            </span>
-          </div>
-        )}
       </div>
 
-      {/* Permanent Clean Assets Roll (Matching user screenshot: Icon, Name/Symbol, Sparkline, Price/Percent) */}
+      {/* Permanent Clean Assets Roll (Matching user screenshot: Clean 2-column layout) */}
       <div className="asset-list">
         {displayedList.length === 0 ? (
           <div className="wallet-empty">
@@ -2640,12 +3207,8 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser }: { moda
                 </div>
                 <div className="asset-titles">
                   <div className="asset-sym">{b.sym}</div>
-                  <div className="asset-fullname">{b.name}</div>
+                  <div className="asset-fullname" title={b.name}>{b.name}</div>
                 </div>
-              </div>
-
-              <div className="asset-sparkline">
-                <Sparkline pts={b.sparkline} isUp={b.pos} width={52} height={20} />
               </div>
 
               <div className="asset-right">
@@ -2654,14 +3217,53 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser }: { moda
                     ? `$${b.userUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                     : b.price}
                 </div>
-                <div className={`asset-change ${b.pos ? "up" : "down"}`}>
-                  {b.balNum > 0.000001 && !b.isStable ? (
-                    <span>
-                      {b.balNum >= 1000 ? b.balNum.toLocaleString(undefined, { maximumFractionDigits: 1 }) : b.balNum.toFixed(b.numericPrice < 0.001 ? 0 : 2)} {b.sym} · {b.chg}
+                <div className="asset-sub-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                  {b.balNum > 0.000001 && (
+                    <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>
+                      {b.balNum >= 1000 ? b.balNum.toLocaleString(undefined, { maximumFractionDigits: 1 }) : b.balNum.toFixed(b.numericPrice < 0.001 ? 0 : 4)} {b.sym}
                     </span>
-                  ) : (
-                    <span>{b.chg}</span>
                   )}
+                  {(() => {
+                    const hasHolding = b.balNum > 0.000001 && !b.isStable && b.invested > 0;
+                    if (assetTab === "buys" || hasHolding) {
+                      const isProfit = b.pnlUsd >= -0.005;
+                      const pnlText = `${isProfit ? "+" : "-"}${Math.abs(b.pnlPct).toFixed(2)}%`;
+                      return (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <span className={`asset-change ${isProfit ? "up" : "down"}`} title="Position return (PnL %)">
+                            {pnlText}
+                          </span>
+                          <span
+                            role="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onOpenProfitCard) onOpenProfitCard(b.sym);
+                              else modal("profit");
+                            }}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              padding: '2px 5px',
+                              borderRadius: 5,
+                              background: 'rgba(16, 185, 129, 0.12)',
+                              border: '1px solid rgba(16, 185, 129, 0.3)',
+                              color: '#10B981',
+                              cursor: 'pointer',
+                            }}
+                            title={`Screenshot & download ${b.sym} profit card`}
+                          >
+                            <Camera size={11} />
+                          </span>
+                        </div>
+                      );
+                    }
+                    return (
+                      <span className={`asset-change ${b.pos ? "up" : "down"}`}>
+                        {b.chg}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
             </button>
@@ -2846,9 +3448,9 @@ function TokenSelectModal({
 
 /* ── SWAP SCREEN ────────────────────────────────────────────────── */
 function SwapView({ modal, flash }: { modal: (m: Modal) => void; flash?: (msg: string) => void }) {
-  const [paySym, setPaySym] = useState<string>("USDC");
+  const [paySym, setPaySym] = useState<string>("USDT");
   const [receiveSym, setReceiveSym] = useState<string>("SOL");
-  const [payAmt, setPayAmt] = useState<string>("10");
+  const [payAmt, setPayAmt] = useState<string>("");
   const [selectingSide, setSelectingSide] = useState<"pay" | "receive" | null>(null);
   const [showConfirm, setShowConfirm] = useState<boolean>(false);
   const [slippage, setSlippage] = useState<string>("0.5%");
@@ -2952,16 +3554,18 @@ function SwapView({ modal, flash }: { modal: (m: Modal) => void; flash?: (msg: s
     <div className="swap-screen">
       <div className="swap-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>
-          <p>SWAP</p>
+          <div className="swap-header-badge">
+            <Zap size={11} /> Solana DEX Aggregator
+          </div>
           <h1>Instant swap</h1>
-          <small>Sharp live pricing across Solana liquidity pools.</small>
+          <small>Direct routing with lowest slippage and 0% protocol markup.</small>
         </div>
         <button
           type="button"
           onClick={() => setShowSettings(!showSettings)}
           className="header-icon-btn"
           title="Swap settings"
-          style={{ width: 34, height: 34, borderRadius: 10, marginBottom: 6 }}
+          style={{ width: 38, height: 38, borderRadius: 12, marginBottom: 4 }}
         >
           <Sliders size={16} color={showSettings ? "#A78BFA" : "var(--muted)"} />
         </button>
@@ -2969,18 +3573,19 @@ function SwapView({ modal, flash }: { modal: (m: Modal) => void; flash?: (msg: s
 
       {showSettings && (
         <div style={{
-          background: "var(--surface2)",
-          border: "1px solid var(--border)",
-          borderRadius: 14,
-          padding: 14,
-          marginBottom: 14,
+          background: "rgba(22, 19, 38, 0.8)",
+          border: "1px solid rgba(139, 92, 246, 0.25)",
+          borderRadius: 18,
+          padding: 16,
+          marginBottom: 16,
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "center"
+          alignItems: "center",
+          backdropFilter: "blur(12px)",
         }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)" }}>Slippage Tolerance</div>
-            <div style={{ fontSize: 10, color: "var(--muted)" }}>Transaction auto-reverts if price moves unfavorably</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>Slippage Tolerance</div>
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>Transaction auto-reverts if price moves unfavorably</div>
           </div>
           <div style={{ display: "flex", gap: 6 }}>
             {["0.1%", "0.5%", "1.0%"].map(s => (
@@ -2992,6 +3597,8 @@ function SwapView({ modal, flash }: { modal: (m: Modal) => void; flash?: (msg: s
                   background: slippage === s ? "#7C3AED" : undefined,
                   color: slippage === s ? "#fff" : undefined,
                   borderColor: slippage === s ? "#7C3AED" : undefined,
+                  borderRadius: 9999,
+                  padding: "4px 10px",
                 }}
                 onClick={() => setSlippage(s)}
               >
@@ -3014,7 +3621,7 @@ function SwapView({ modal, flash }: { modal: (m: Modal) => void; flash?: (msg: s
           <div className="swap-token-row">
             <input
               type="number"
-              placeholder="0.00"
+              placeholder="0"
               value={payAmt}
               onChange={(e) => setPayAmt(e.target.value)}
               id="swap-from-input"
@@ -3025,31 +3632,22 @@ function SwapView({ modal, flash }: { modal: (m: Modal) => void; flash?: (msg: s
               onClick={() => setSelectingSide("pay")}
               title="Click to select source currency"
             >
-              <CoinImg sym={paySym} n={22} url={payToken?.imageUrl} />
-              <span style={{ fontWeight: 800 }}>{paySym}</span>
+              <CoinImg sym={paySym} n={24} url={payToken?.imageUrl} />
+              <span>{paySym}</span>
               <ChevronDown size={14} />
             </button>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
             <div className="swap-usd-val">
               ≈ ${payUsdVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
             </div>
             {/* Quick balance percentage chips */}
-            <div style={{ display: "flex", gap: 4 }}>
+            <div style={{ display: "flex", gap: 5 }}>
               {[0.25, 0.5, 0.75, 1.0].map((pct, idx) => (
                 <button
                   key={idx}
                   type="button"
-                  style={{
-                    background: "rgba(255, 255, 255, 0.05)",
-                    border: "1px solid rgba(255, 255, 255, 0.08)",
-                    borderRadius: 4,
-                    color: "var(--muted)",
-                    fontSize: 9,
-                    fontWeight: 700,
-                    padding: "2px 5px",
-                    cursor: "pointer"
-                  }}
+                  className="swap-quick-chip"
                   onClick={() => handleQuickPct(pct)}
                 >
                   {pct === 1.0 ? "MAX" : `${pct * 100}%`}
@@ -3059,15 +3657,17 @@ function SwapView({ modal, flash }: { modal: (m: Modal) => void; flash?: (msg: s
           </div>
         </div>
 
-        {/* Switch Tokens Invert Button */}
-        <button
-          type="button"
-          className="swap-switch"
-          onClick={flipTokens}
-          title="Invert tokens"
-        >
-          <ArrowDownUp size={15} />
-        </button>
+        {/* Switch Tokens Invert Button (Circular Floating Switch) */}
+        <div className="swap-switch-wrap">
+          <button
+            type="button"
+            className="swap-switch"
+            onClick={flipTokens}
+            title="Invert tokens"
+          >
+            <ArrowDownUp size={17} />
+          </button>
+        </div>
 
         {/* You Receive Box */}
         <div className="swap-token-box">
@@ -3090,8 +3690,8 @@ function SwapView({ modal, flash }: { modal: (m: Modal) => void; flash?: (msg: s
               onClick={() => setSelectingSide("receive")}
               title="Click to select target currency"
             >
-              <CoinImg sym={receiveSym} n={22} url={receiveToken?.imageUrl} />
-              <span style={{ fontWeight: 800 }}>{receiveSym}</span>
+              <CoinImg sym={receiveSym} n={24} url={receiveToken?.imageUrl} />
+              <span>{receiveSym}</span>
               <ChevronDown size={14} />
             </button>
           </div>
@@ -3102,25 +3702,30 @@ function SwapView({ modal, flash }: { modal: (m: Modal) => void; flash?: (msg: s
 
         {/* Swap Metrics & Rates */}
         <div className="swap-data">
+          <div className="swap-route-visualizer">
+            <span>{paySym}</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 5, color: "#10B981", fontWeight: 700 }}>
+              <i style={{ width: 6, height: 6, borderRadius: "50%", background: "#10B981", display: "inline-block" }} />
+              Jupiter V6 Direct SPL
+            </span>
+            <span>{receiveSym}</span>
+          </div>
+          <div style={{ height: 1, background: "rgba(255, 255, 255, 0.05)", margin: "3px 0" }} />
           <span>
-            Rate
-            <b>
-              1 {paySym} = {exchangeRate >= 1000 ? exchangeRate.toLocaleString(undefined, { maximumFractionDigits: 2 }) : exchangeRate < 0.0001 ? exchangeRate.toFixed(8) : exchangeRate.toFixed(4)} {receiveSym}
-            </b>
+            <span>Exchange rate</span>
+            <b>1 {paySym} ≈ {exchangeRate >= 1000 ? exchangeRate.toLocaleString(undefined, { maximumFractionDigits: 2 }) : exchangeRate < 0.0001 ? exchangeRate.toFixed(8) : exchangeRate.toFixed(4)} {receiveSym}</b>
           </span>
           <span>
-            Inverse
-            <b>
-              1 {receiveSym} = {invRate >= 1000 ? invRate.toLocaleString(undefined, { maximumFractionDigits: 2 }) : invRate < 0.0001 ? invRate.toFixed(8) : invRate.toFixed(4)} {paySym}
-            </b>
+            <span>Inverse rate</span>
+            <b>1 {receiveSym} ≈ {invRate >= 1000 ? invRate.toLocaleString(undefined, { maximumFractionDigits: 2 }) : invRate < 0.0001 ? invRate.toFixed(8) : invRate.toFixed(4)} {paySym}</b>
           </span>
           <span>
-            Network fee
-            <b style={{ color: "#10B981" }}>0.000005 SOL (~$0.0009)</b>
+            <span>Network gas fee</span>
+            <span className="swap-data-pill">0.000005 SOL (~$0.0009)</span>
           </span>
           <span>
-            Routing
-            <b><i />Jupiter V6 Direct Pool</b>
+            <span>Slippage tolerance</span>
+            <b style={{ color: "#A78BFA" }}>{slippage} (Auto)</b>
           </span>
         </div>
 
@@ -3129,7 +3734,7 @@ function SwapView({ modal, flash }: { modal: (m: Modal) => void; flash?: (msg: s
           <button
             type="button"
             className="btn-primary"
-            style={{ opacity: 0.6, cursor: "not-allowed", background: "#EF4444" }}
+            style={{ opacity: 0.65, cursor: "not-allowed", background: "linear-gradient(135deg, #EF4444 0%, #DC2626 100%)" }}
             disabled
           >
             Insufficient {paySym} balance ({payBal.toFixed(4)} available)
@@ -3138,7 +3743,7 @@ function SwapView({ modal, flash }: { modal: (m: Modal) => void; flash?: (msg: s
           <button
             type="button"
             className="btn-primary"
-            style={{ opacity: 0.6, cursor: "not-allowed" }}
+            style={{ opacity: 0.65, cursor: "not-allowed" }}
             disabled
           >
             Enter an amount
@@ -3149,14 +3754,15 @@ function SwapView({ modal, flash }: { modal: (m: Modal) => void; flash?: (msg: s
             className="btn-primary"
             onClick={() => setShowConfirm(true)}
           >
-            <Zap size={15} /> Review swap
+            <Zap size={16} /> Review instant swap
           </button>
         )}
       </div>
 
-      <p className="swap-foot">
-        <ShieldCheck size={15} />Atomic swap executed with instant Solana SPL settlement.
-      </p>
+      <div className="swap-foot">
+        <ShieldCheck size={16} />
+        <span>Atomic swap executed with instant Solana SPL settlement & zero custody.</span>
+      </div>
 
       {/* Token Selector Modal */}
       <TokenSelectModal
@@ -3245,7 +3851,19 @@ function SwapView({ modal, flash }: { modal: (m: Modal) => void; flash?: (msg: s
 }
 
 /* ── MODAL BOX ──────────────────────────────────────────────────── */
-function ModalBox({ type, close, flash, authUser }: { type: Modal; close: () => void; flash: (x: string) => void; authUser?: AuthUser }) {
+function ModalBox({
+  type,
+  close,
+  flash,
+  authUser,
+  onNavigate,
+}: {
+  type: Modal;
+  close: () => void;
+  flash: (x: string) => void;
+  authUser?: AuthUser;
+  onNavigate?: (v: View) => void;
+}) {
   const done = (x: string) => { close(); flash(x); };
 
   if (type === "deposit") {
@@ -3253,17 +3871,54 @@ function ModalBox({ type, close, flash, authUser }: { type: Modal; close: () => 
   }
 
   if (type === "buy") {
-    return <BuyPage onClose={close} onDone={done} flash={flash} authUser={authUser} />;
+    return (
+      <BuyPage
+        onClose={close}
+        onDone={done}
+        flash={flash}
+        authUser={authUser}
+        onNavigateToProfile={() => {
+          close();
+          onNavigate?.("profile");
+        }}
+      />
+    );
   }
 
-  if (type === "send" || type === "withdraw") {
+  if (type === "send") {
+    return (
+      <SendPage
+        onClose={close}
+        onDone={done}
+        flash={flash}
+        authUser={authUser}
+      />
+    );
+  }
+
+  if (type === "withdraw") {
     return (
       <WithdrawPage
         onClose={close}
         onDone={done}
         flash={flash}
         authUser={authUser}
-        initialMode={type === "send" ? "crypto" : "bank"}
+        initialMode="crypto"
+        onNavigateToProfile={() => {
+          close();
+          onNavigate?.("profile");
+        }}
+      />
+    );
+  }
+
+  if (type === "profit") {
+    return (
+      <ProfitShareModal
+        isOpen={true}
+        onClose={close}
+        authUser={authUser}
+        flash={flash}
       />
     );
   }
@@ -3341,12 +3996,19 @@ function ProfileView({
   const [pwLoading, setPwLoading] = useState(false);
   const [pwFeedback, setPwFeedback] = useState<{ msg: string; isError: boolean } | null>(null);
 
-  // Country & Currency preferences
+  // Country & Currency preferences (Defaults to US, requires password to change)
   const [userCountryCode, setUserCountryCode] = useState<string>(() => {
-    return localStorage.getItem("axiom_user_country") || "NG";
+    return localStorage.getItem("axiom_user_country") || "US";
   });
   const [showCountryModal, setShowCountryModal] = useState<boolean>(false);
   const [rateTick, setRateTick] = useState<number>(0);
+
+  // Password verification modal for country change
+  const [showPwModal, setShowPwModal] = useState<boolean>(false);
+  const [pwVerifyInput, setPwVerifyInput] = useState<string>("");
+  const [pwVerifyLoading, setPwVerifyLoading] = useState<boolean>(false);
+  const [pwVerifyError, setPwVerifyError] = useState<string | null>(null);
+  const [showPwVerifyText, setShowPwVerifyText] = useState<boolean>(false);
 
   const selectedCountry = useMemo(() => {
     return getCountryByCode(userCountryCode);
@@ -3354,15 +4016,62 @@ function ProfileView({
 
   useEffect(() => {
     syncDollarRateFromBackend();
-    const handleRateChange = () => setRateTick((t) => t + 1);
+    const handleRateChange = () => {
+      const savedCode = localStorage.getItem("axiom_user_country") || "US";
+      setUserCountryCode(savedCode);
+      setRateTick((t) => t + 1);
+    };
     window.addEventListener("axiom_dollar_rate_updated", handleRateChange);
     return () => window.removeEventListener("axiom_dollar_rate_updated", handleRateChange);
   }, []);
+
+  const handleOpenCountryChange = () => {
+    setPwVerifyInput("");
+    setPwVerifyError(null);
+    setShowPwModal(true);
+  };
+
+  const handleVerifyPasswordForCountry = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pwVerifyInput) {
+      setPwVerifyError("Please enter your account password to authorize changing your country.");
+      return;
+    }
+    setPwVerifyLoading(true);
+    setPwVerifyError(null);
+    try {
+      if (authUser?.email) {
+        const res = await login({
+          email: authUser.email,
+          password: pwVerifyInput,
+          remember_me: false,
+        });
+        if (res.success) {
+          setShowPwModal(false);
+          setPwVerifyInput("");
+          setShowCountryModal(true);
+          flash("Password verified! Choose your new country and currency.");
+        } else {
+          setPwVerifyError(res.error || "Incorrect password. Verification failed.");
+        }
+      } else {
+        setShowPwModal(false);
+        setPwVerifyInput("");
+        setShowCountryModal(true);
+        flash("Password confirmed! Choose your new country.");
+      }
+    } catch (err: any) {
+      setPwVerifyError(err.message || "Failed to verify password. Please try again.");
+    } finally {
+      setPwVerifyLoading(false);
+    }
+  };
 
   const handleSelectCountry = (c: CountryInfo) => {
     setUserCountryCode(c.code);
     localStorage.setItem("axiom_user_country", c.code);
     setShowCountryModal(false);
+    window.dispatchEvent(new Event("axiom_dollar_rate_updated"));
     flash(`Trading country updated to ${c.name} (${c.currency})`);
   };
 
@@ -3383,6 +4092,85 @@ function ProfileView({
   const cleanFullName = authUser.full_name || authUser.email?.split("@")[0] || "Account 1";
   const userInitials = cleanFullName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "A1";
   const displayName = cleanFullName;
+
+  // User Profile Identity state (Avatar & Username)
+  const initialUsername = authUser.username || (typeof localStorage !== "undefined" ? localStorage.getItem("axiom_user_username") : "") || authUser.full_name || authUser.email?.split("@")[0] || "Trader";
+  const initialAvatar = authUser.avatar_url || (typeof localStorage !== "undefined" ? localStorage.getItem("axiom_user_avatar") : "") || generatePhantomAvatar(initialUsername);
+
+  const [profileUsername, setProfileUsername] = useState(initialUsername);
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState(initialAvatar);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSavedMsg, setProfileSavedMsg] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAvatarFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 3 * 1024 * 1024) {
+      setProfileError("Image must be smaller than 3MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setProfileAvatarUrl(dataUrl);
+      setProfileError(null);
+      setProfileSavedMsg(null);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRandomizeAvatar = () => {
+    const randomSeed = Math.random().toString(36).substring(2, 9);
+    const newAvatar = generatePhantomAvatar(randomSeed);
+    setProfileAvatarUrl(newAvatar);
+    setProfileError(null);
+    setProfileSavedMsg(null);
+  };
+
+  const handleSelectPreset = (preset: AvatarPreset) => {
+    const newAvatar = generatePhantomAvatar(preset.id + profileUsername);
+    setProfileAvatarUrl(newAvatar);
+    setProfileError(null);
+    setProfileSavedMsg(null);
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profileUsername.trim()) {
+      setProfileError("Username cannot be empty.");
+      return;
+    }
+    setProfileSaving(true);
+    setProfileError(null);
+    setProfileSavedMsg(null);
+    try {
+      const res = await updateUserProfile({
+        username: profileUsername.trim(),
+        avatar_url: profileAvatarUrl,
+        wallet_address: authUser.wallet_address,
+      });
+      if (res.success) {
+        if (typeof localStorage !== "undefined") {
+          localStorage.setItem("axiom_user_username", profileUsername.trim());
+          localStorage.setItem("axiom_user_avatar", profileAvatarUrl);
+        }
+        authUser.username = profileUsername.trim();
+        authUser.full_name = profileUsername.trim();
+        authUser.avatar_url = profileAvatarUrl;
+        setProfileSavedMsg("Profile and avatar successfully updated!");
+        flash("Profile identity saved!");
+        window.dispatchEvent(new Event("axiom_profile_updated"));
+      } else {
+        setProfileError(res.error || "Failed to update profile.");
+      }
+    } catch (err: any) {
+      setProfileError(err.message || "Failed to update profile.");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
 
   const solAddress = authUser.wallet_address || "";
 
@@ -3450,12 +4238,40 @@ function ProfileView({
       <div className="profile-hero">
         <div className="profile-hero-glow" />
         <div className="profile-hero-top">
-          <div className="profile-avatar-large">
-            {userInitials}
+          <div
+            className="profile-avatar-large"
+            style={{ position: "relative", overflow: "hidden", cursor: "pointer" }}
+            onClick={() => fileInputRef.current?.click()}
+            title="Click to change your avatar image"
+          >
+            {profileAvatarUrl ? (
+              <img
+                src={profileAvatarUrl}
+                alt="Profile Avatar"
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                onError={(e) => { (e.target as any).src = generatePhantomAvatar(profileUsername); }}
+              />
+            ) : (
+              userInitials
+            )}
+            <div style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              background: "rgba(0,0,0,0.65)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "4px 0",
+              color: "#fff"
+            }}>
+              <Camera size={13} />
+            </div>
           </div>
           <div className="profile-hero-info">
             <div className="profile-name-row">
-              <span className="profile-name">{displayName}</span>
+              <span className="profile-name">{profileUsername || displayName}</span>
               {authUser.is_email_verified ? (
                 <span className="profile-badge profile-badge-verified">
                   <Check size={12} /> Verified Trader
@@ -3470,7 +4286,7 @@ function ProfileView({
               </span>
               <button
                 type="button"
-                onClick={() => setShowCountryModal(true)}
+                onClick={handleOpenCountryChange}
                 className="profile-badge"
                 style={{
                   background: "rgba(124, 58, 237, 0.16)",
@@ -3600,6 +4416,202 @@ function ProfileView({
 
       {/* ── Grid: Security & Settings | Session Info ── */}
       <div className="profile-sections-grid">
+        {/* ── Trader Identity & Custom Avatar Card ── */}
+        <div className="profile-card profile-identity-card" style={{ gridColumn: "1 / -1" }}>
+          <div className="profile-card-title">
+            <Users size={18} />
+            <span>Trader Identity & Avatar</span>
+            <span style={{ fontSize: 10, background: "rgba(124, 58, 237, 0.18)", color: "#C4B5FD", padding: "2px 8px", borderRadius: 10, fontWeight: 700, marginLeft: "auto" }}>
+              PUBLIC LEADERBOARD IDENTITY
+            </span>
+          </div>
+          <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 14px 0" }}>
+            Customize your public trader username and avatar. Your avatar and username are shown on the global Leaderboard and DEX terminals.
+          </p>
+
+          {profileError && (
+            <div style={{ background: "rgba(239, 68, 68, 0.12)", border: "1px solid rgba(239, 68, 68, 0.3)", borderRadius: 8, padding: "8px 12px", color: "#FCA5A5", fontSize: 12, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+              <AlertTriangle size={14} />
+              <span>{profileError}</span>
+            </div>
+          )}
+
+          {profileSavedMsg && (
+            <div style={{ background: "rgba(16, 185, 129, 0.12)", border: "1px solid rgba(16, 185, 129, 0.3)", borderRadius: 8, padding: "8px 12px", color: "#6EE7B7", fontSize: 12, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+              <CheckCircle size={14} />
+              <span>{profileSavedMsg}</span>
+            </div>
+          )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 20, alignItems: "center" }}>
+            {/* Avatar Preview with Camera overlay & Upload */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+              <div
+                style={{
+                  width: 84,
+                  height: 84,
+                  borderRadius: "50%",
+                  position: "relative",
+                  overflow: "hidden",
+                  border: "2.5px solid #7C3AED",
+                  boxShadow: "0 0 16px rgba(124, 58, 237, 0.4)",
+                  cursor: "pointer",
+                  background: "#1E1B2E"
+                }}
+                onClick={() => fileInputRef.current?.click()}
+                title="Click to upload photo from your device"
+              >
+                <img
+                  src={profileAvatarUrl}
+                  alt="Avatar"
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  onError={(e) => { (e.target as any).src = generatePhantomAvatar(profileUsername); }}
+                />
+                <div style={{
+                  position: "absolute",
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  background: "rgba(0,0,0,0.65)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "4px 0",
+                  color: "#fff"
+                }}>
+                  <Camera size={14} />
+                </div>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={handleAvatarFileUpload}
+              />
+              <button
+                type="button"
+                onClick={handleRandomizeAvatar}
+                style={{
+                  background: "rgba(124, 58, 237, 0.15)",
+                  border: "1px solid rgba(167, 139, 250, 0.3)",
+                  color: "#C4B5FD",
+                  borderRadius: 6,
+                  padding: "4px 10px",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5
+                }}
+              >
+                <RefreshCw size={11} /> 🎲 Randomize
+              </button>
+            </div>
+
+            {/* Username and Presets Column */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", display: "block", marginBottom: 6 }}>
+                  Trader Username
+                </label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    type="text"
+                    value={profileUsername}
+                    onChange={(e) => setProfileUsername(e.target.value)}
+                    maxLength={30}
+                    placeholder="Enter trader username"
+                    style={{
+                      flex: 1,
+                      background: "rgba(255, 255, 255, 0.05)",
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                      borderRadius: 8,
+                      padding: "8px 12px",
+                      color: "var(--text)",
+                      fontSize: 13,
+                      fontFamily: "inherit"
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveProfile}
+                    disabled={profileSaving || !profileUsername.trim()}
+                    style={{
+                      background: "linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "8px 18px",
+                      color: "#fff",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: profileSaving ? "wait" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6
+                    }}
+                  >
+                    {profileSaving ? "Saving..." : "Save Profile"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Avatar Presets Row */}
+              <div>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5, display: "block", marginBottom: 6 }}>
+                  Choose Identity Preset
+                </span>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  {PHANTOM_AVATAR_PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => handleSelectPreset(preset)}
+                      style={{
+                        background: preset.gradient,
+                        border: "2px solid rgba(255,255,255,0.2)",
+                        borderRadius: "50%",
+                        width: 38,
+                        height: 38,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 16,
+                        cursor: "pointer",
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+                        transition: "transform 150ms",
+                      }}
+                      title={preset.name}
+                    >
+                      {preset.icon}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      background: "rgba(255,255,255,0.06)",
+                      border: "1.5px dashed rgba(255,255,255,0.25)",
+                      borderRadius: "50%",
+                      width: 38,
+                      height: 38,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "var(--muted)",
+                      cursor: "pointer"
+                    }}
+                    title="Upload photo from device"
+                  >
+                    <Camera size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Trading Region & Local Fiat Currency Card */}
         <div className="profile-card">
           <div className="profile-card-title">
@@ -3637,7 +4649,7 @@ function ProfileView({
 
             <button
               type="button"
-              onClick={() => setShowCountryModal(true)}
+              onClick={handleOpenCountryChange}
               style={{
                 background: "rgba(124, 58, 237, 0.2)",
                 border: "1px solid rgba(167, 139, 250, 0.4)",
@@ -3653,35 +4665,11 @@ function ProfileView({
                 gap: 6,
                 flexShrink: 0
               }}
+              title="Change trading region & currency (requires password verification)"
             >
-              <Globe size={14} /> Change
+              <Lock size={13} /> Change
             </button>
           </div>
-
-          {selectedCountry.paymentMethods && selectedCountry.paymentMethods.length > 0 && (
-            <div style={{ marginTop: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>
-                Supported Local Payment Rails:
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {selectedCountry.paymentMethods.map((pm, idx) => (
-                  <span
-                    key={idx}
-                    style={{
-                      fontSize: 10.5,
-                      padding: "4px 8px",
-                      borderRadius: 6,
-                      background: "rgba(16, 185, 129, 0.08)",
-                      border: "1px solid rgba(16, 185, 129, 0.2)",
-                      color: "#34D399"
-                    }}
-                  >
-                    ✓ {pm}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Password Update Card */}
@@ -3749,117 +4737,38 @@ function ProfileView({
           </form>
         </div>
 
-        {/* Security & Sessions Card */}
+        {/* Account Session Card */}
         <div className="profile-card">
           <div className="profile-card-title">
-            <ShieldCheck size={18} />
-            <span>Security & Session</span>
+            <LogOut size={18} color="#F87171" />
+            <span>Account Session</span>
           </div>
+          <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 14px 0" }}>
+            End your active trading session and securely sign out of your wallet on this device.
+          </p>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div className="session-info-item">
-              <span>Two-Factor Protection</span>
-              <b style={{ color: "#10B981", display: "flex", alignItems: "center", gap: 4 }}>
-                <Check size={13} /> Email OTP Enabled
-              </b>
-            </div>
-
-            <div className="session-info-item">
-              <span>Current Device</span>
-              <b>Windows Desktop · Edge / Chrome</b>
-            </div>
-
-            <div className="session-info-item">
-              <span>IP Address</span>
-              <b>127.0.0.1 (Local Session)</b>
-            </div>
-
-            <div className="session-info-item">
-              <span>Session Status</span>
-              <b style={{ color: "#10B981" }}>Active Now</b>
-            </div>
-
-            <div className="session-info-item">
-              <span>Security Level</span>
-              <b style={{ color: "#60A5FA" }}>High (bcrypt + httpOnly JWT)</b>
-            </div>
-
-            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 2 }}>
-                Administrative Portals
-              </div>
-              <button
-                type="button"
-                onClick={() => { window.location.href = "/admin"; }}
-                style={{
-                  width: "100%",
-                  background: "rgba(124, 58, 237, 0.12)",
-                  border: "1px solid rgba(124, 58, 237, 0.35)",
-                  color: "#C4B5FD",
-                  borderRadius: 10,
-                  padding: "10px 12px",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                  transition: "all 150ms"
-                }}
-              >
-                <Shield size={14} color="#A78BFA" /> Open Super Admin Portal (/admin)
-              </button>
-
-              <button
-                type="button"
-                onClick={() => { window.location.href = "/junior-admin"; }}
-                style={{
-                  width: "100%",
-                  background: "rgba(34, 209, 248, 0.10)",
-                  border: "1px solid rgba(34, 209, 248, 0.30)",
-                  color: "#67E8F9",
-                  borderRadius: 10,
-                  padding: "10px 12px",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                  transition: "all 150ms"
-                }}
-              >
-                <Zap size={14} color="#22D1F8" /> Open Junior Admin Portal (/junior-admin)
-              </button>
-            </div>
-
-            <div style={{ marginTop: 14 }}>
-              <button
-                type="button"
-                onClick={onLogout}
-                style={{
-                  width: "100%",
-                  background: "rgba(239, 68, 68, 0.12)",
-                  border: "1px solid rgba(239, 68, 68, 0.25)",
-                  color: "#F87171",
-                  borderRadius: 10,
-                  padding: "10px",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                  transition: "all 150ms"
-                }}
-              >
-                <LogOut size={14} /> Sign Out of Axiom Wallet
-              </button>
-            </div>
-          </div>
+          <button
+            type="button"
+            onClick={onLogout}
+            style={{
+              width: "100%",
+              background: "rgba(239, 68, 68, 0.12)",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              color: "#F87171",
+              borderRadius: 10,
+              padding: "12px",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              transition: "all 150ms"
+            }}
+          >
+            <LogOut size={16} /> Sign Out of Axiom Wallet
+          </button>
         </div>
       </div>
 
@@ -3895,13 +4804,20 @@ function ProfileView({
                 {userOrders.slice(0, 10).map((o) => {
                   const isBuy = o.side === "Buy";
                   const isSwap = o.triggerNote?.includes("Instant Swap");
+                  const isP2P = o.orderType === "P2P Transfer" || o.triggerNote?.includes("UID") || o.triggerNote?.includes("P2P");
                   return (
                     <tr key={o.id} className="dex-tr">
                       <td className="dex-td">
-                        <span className={`dex-badge ${isSwap ? "dex-badge-buy" : isBuy ? "dex-badge-buy" : "dex-badge-sell"}`}
-                          style={isSwap ? { background: "rgba(124, 58, 237, 0.2)", color: "#C4B5FD", borderColor: "rgba(124, 58, 237, 0.4)" } : undefined}
+                        <span className={`dex-badge ${isP2P ? "" : isSwap ? "dex-badge-buy" : isBuy ? "dex-badge-buy" : "dex-badge-sell"}`}
+                          style={
+                            isP2P
+                              ? { background: "rgba(139, 92, 246, 0.2)", color: "#C4B5FD", borderColor: "rgba(139, 92, 246, 0.45)" }
+                              : isSwap
+                              ? { background: "rgba(6, 182, 212, 0.2)", color: "#67E8F9", borderColor: "rgba(6, 182, 212, 0.45)" }
+                              : undefined
+                          }
                         >
-                          {isSwap ? "SWAP" : o.side.toUpperCase()}
+                          {isP2P ? "P2P SEND" : isSwap ? "SWAP" : o.side.toUpperCase()}
                         </span>
                       </td>
                       <td className="dex-td">
@@ -3931,6 +4847,130 @@ function ProfileView({
         )}
       </div>
 
+      {/* Password Authorization Modal for Country Change */}
+      {showPwModal && (
+        <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowPwModal(false); }}>
+          <div className="modal" style={{ maxWidth: 420 }}>
+            <button className="close-btn" onClick={() => setShowPwModal(false)}>
+              <X size={14} />
+            </button>
+            <div style={{ textAlign: "center", marginBottom: 16 }}>
+              <div
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: "50%",
+                  background: "rgba(124, 58, 237, 0.18)",
+                  border: "1.5px solid rgba(167, 139, 250, 0.4)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto 12px",
+                  color: "#C4B5FD",
+                }}
+              >
+                <Lock size={26} />
+              </div>
+              <h2 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 6px" }}>
+                Verify Account Password
+              </h2>
+              <p style={{ fontSize: 12, color: "var(--muted)", margin: 0, lineHeight: 1.5 }}>
+                To change your registered trading country and local currency, please confirm your identity by entering your account password.
+              </p>
+            </div>
+
+            <form onSubmit={handleVerifyPasswordForCountry} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="profile-input-group">
+                <label style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>
+                  Account Password
+                </label>
+                <div style={{ position: "relative" }}>
+                  <input
+                    type={showPwVerifyText ? "text" : "password"}
+                    placeholder="Enter your account password"
+                    value={pwVerifyInput}
+                    onChange={(e) => setPwVerifyInput(e.target.value)}
+                    autoFocus
+                    style={{
+                      width: "100%",
+                      padding: "11px 40px 11px 12px",
+                      background: "rgba(0, 0, 0, 0.35)",
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                      borderRadius: 10,
+                      color: "#fff",
+                      fontSize: 13,
+                      outline: "none",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPwVerifyText(!showPwVerifyText)}
+                    style={{
+                      position: "absolute",
+                      right: 12,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "none",
+                      border: "none",
+                      color: "var(--muted)",
+                      cursor: "pointer",
+                      padding: 0,
+                      display: "flex",
+                      alignItems: "center",
+                    }}
+                  >
+                    {showPwVerifyText ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              {pwVerifyError && (
+                <div
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    background: "rgba(239, 68, 68, 0.14)",
+                    border: "1px solid rgba(239, 68, 68, 0.3)",
+                    color: "#F87171",
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  ⚠️ {pwVerifyError}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={pwVerifyLoading}
+                  style={{ flex: 1, padding: "11px" }}
+                >
+                  {pwVerifyLoading ? "Verifying..." : "Verify & Unlock"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPwModal(false)}
+                  style={{
+                    padding: "11px 16px",
+                    background: "rgba(255, 255, 255, 0.06)",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    borderRadius: 10,
+                    color: "var(--muted)",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {showCountryModal && (
         <CountrySelectModal
           isOpen={showCountryModal}
@@ -3955,7 +4995,8 @@ function AppShell({
 }) {
   const getInitialView = (): View => {
     if (typeof window !== "undefined") {
-      const hash = window.location.hash.toLowerCase().replace("#", "");
+      const rawHash = window.location.hash.toLowerCase().replace("#", "");
+      const hash = rawHash.split("?")[0];
       if (hash === "admin") return "admin";
       if (hash === "trade" || hash === "swap" || hash === "wallet" || hash === "profile" || hash === "leaderboard") return hash as View;
       const saved = localStorage.getItem("axiom_active_view") as View;
@@ -3967,6 +5008,7 @@ function AppShell({
 
   const [view, setView] = useState<View>(getInitialView);
   const [modal, setModal] = useState<Modal>("");
+  const [profitModalSym, setProfitModalSym] = useState<string | null>(null);
   const [toast, setToast] = useState("");
   const [menu, setMenu] = useState(false);
   const [resendingVerif, setResendingVerif] = useState(false);
@@ -3975,7 +5017,8 @@ function AppShell({
 
   useEffect(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash.toLowerCase().replace("#", "");
+      const rawHash = window.location.hash.toLowerCase().replace("#", "");
+      const hash = rawHash.split("?")[0];
       if (hash === "admin" || hash === "trade" || hash === "swap" || hash === "wallet" || hash === "profile" || hash === "leaderboard") {
         setView(hash as View);
         if (typeof localStorage !== "undefined") {
@@ -3987,6 +5030,46 @@ function AppShell({
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, [authUser.is_admin]);
 
+  // Intercept payment gateway return callback (from Swiftsats)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const parsePaymentCallback = () => {
+      const searchParams = new URLSearchParams(window.location.search);
+      const hash = window.location.hash;
+      const hashQuery = hash.includes("?") ? hash.substring(hash.indexOf("?") + 1) : "";
+      const hashParams = new URLSearchParams(hashQuery);
+
+      const payment = searchParams.get("payment") || hashParams.get("payment");
+      const orderId = searchParams.get("orderId") || hashParams.get("orderId") || searchParams.get("order_id") || hashParams.get("order_id");
+      const coin = (searchParams.get("coin") || hashParams.get("coin") || searchParams.get("crypto") || hashParams.get("crypto") || "USDT").toUpperCase();
+      const amountStr = searchParams.get("amount") || hashParams.get("amount");
+
+      if (payment === "success" && orderId) {
+        const creditedAmount = parseFloat(amountStr || "0");
+        if (creditedAmount > 0) {
+          marketStore.depositFunds(coin, creditedAmount);
+        }
+
+        const userAddr = authUser?.wallet_address || authUser?.email || localStorage.getItem("axiom_wallet_address") || "axiom_user";
+        api.creditSwiftsatsOrder({
+          address: userAddr,
+          order_id: orderId,
+          amount_usd: amountStr || "10.0",
+          currency: coin,
+        }).catch(() => {});
+
+        // Clean query parameters from URL without reloading
+        const cleanUrl = window.location.pathname + "#wallet";
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+    };
+
+    parsePaymentCallback();
+    window.addEventListener("hashchange", parsePaymentCallback);
+    return () => window.removeEventListener("hashchange", parsePaymentCallback);
+  }, [authUser]);
+
   const navigateTo = (v: View) => {
     setView(v);
     window.location.hash = v;
@@ -3995,9 +5078,16 @@ function AppShell({
     }
   };
 
-  const flash = (x: string) => {
-    setToast(x);
-    setTimeout(() => setToast(""), 2800);
+  const [islandToast, setIslandToast] = useState<{ id: number; message: string } | null>(null);
+  const islandTimerRef = useRef<any>(null);
+
+  const flash = (msg: string) => {
+    if (!msg) return;
+    if (islandTimerRef.current) clearTimeout(islandTimerRef.current);
+    setIslandToast({ id: Date.now(), message: msg });
+    islandTimerRef.current = setTimeout(() => {
+      setIslandToast(null);
+    }, 4000);
   };
 
   const handleResendVerification = async () => {
@@ -4017,9 +5107,17 @@ function AppShell({
     ["profile", "Profile", Users],
   ];
 
-  const cleanFullName = authUser.full_name || authUser.email?.split("@")[0] || "Account 1";
+  const [profileTick, setProfileTick] = useState(0);
+  useEffect(() => {
+    const handleProfileUpdate = () => setProfileTick((t) => t + 1);
+    window.addEventListener("axiom_profile_updated", handleProfileUpdate);
+    return () => window.removeEventListener("axiom_profile_updated", handleProfileUpdate);
+  }, []);
+
+  const cleanFullName = (typeof localStorage !== "undefined" ? localStorage.getItem("axiom_user_username") : null) || authUser.username || authUser.full_name || authUser.email?.split("@")[0] || "Account 1";
   const userInitials = cleanFullName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "A1";
   const displayName = cleanFullName;
+  const userAvatar = (typeof localStorage !== "undefined" ? localStorage.getItem("axiom_user_avatar") : null) || authUser.avatar_url;
 
   return (
     <div className="axiom-app">
@@ -4049,9 +5147,48 @@ function AppShell({
         </div>
       )}
 
+      {/* ── iOS 26 Dynamic Island Top Floating Toast ── */}
+      {islandToast && (
+        <div
+          className="ios26-dynamic-island"
+          onClick={() => setIslandToast(null)}
+          title="Click to dismiss notification"
+        >
+          <div className="ios26-island-content">
+            <div className="ios26-icon-wrap">
+              <AxiomLogo size={18} withGlow={false} />
+            </div>
+            <div className="ios26-text-wrap">
+              <span className="ios26-title">
+                {islandToast.message.toLowerCase().includes("swap")
+                  ? "Instant Swap Filled"
+                  : islandToast.message.toLowerCase().includes("take profit") || islandToast.message.toLowerCase().includes("tp/sl")
+                  ? "Take-Profit Target Set"
+                  : islandToast.message.toLowerCase().includes("sent") || islandToast.message.toLowerCase().includes("transfer")
+                  ? "Axiom Ledger Transfer"
+                  : islandToast.message.toLowerCase().includes("bought") || islandToast.message.toLowerCase().includes("buy")
+                  ? "Order Executed (Buy)"
+                  : islandToast.message.toLowerCase().includes("sold") || islandToast.message.toLowerCase().includes("sell")
+                  ? "Order Executed (Sell)"
+                  : islandToast.message.toLowerCase().includes("withdr")
+                  ? "Withdrawal Dispatched"
+                  : islandToast.message.toLowerCase().includes("deposit")
+                  ? "Deposit Confirmed"
+                  : "Axiom Notification"}
+              </span>
+              <span className="ios26-msg">{islandToast.message.replace(/^[✅❌🚀💸⚡\s]+/, "")}</span>
+            </div>
+            <div className="ios26-pulse-indicator">
+              <span className="ios26-pulse-dot" />
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="app-header">
-        <button className="app-brand" onClick={() => navigateTo("wallet")}>
-          <div className="app-brand-icon">A</div>AXIOM
+        <button className="app-brand" onClick={() => navigateTo("wallet")} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <AxiomLogo size={26} />
+          <span>AXIOM</span>
         </button>
         <nav className="app-nav">
           {links.map(([id, label, Icon]) => (
@@ -4076,8 +5213,6 @@ function AppShell({
             {isLight ? <Moon size={16} /> : <Sun size={16} />}
           </button>
 
-          <button className="header-icon-btn" aria-label="Notifications"><Bell size={16} /></button>
-
           {/* User profile chip clickable for all users */}
           <button
             type="button"
@@ -4085,7 +5220,13 @@ function AppShell({
             onClick={() => navigateTo("profile")}
             title="User Profile & Settings"
           >
-            <div className="user-avatar">{userInitials}</div>
+            <div className="user-avatar" style={{ overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {userAvatar ? (
+                <img src={userAvatar} alt="Avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                userInitials
+              )}
+            </div>
             <b className="user-name-label">{displayName}</b>
             <span className="dex-role-badge pro" title="Verified Trader">
               <ShieldCheck size={11} /> PRO
@@ -4114,10 +5255,10 @@ function AppShell({
       </div>
 
       <main className="app-main">
-        {view === "trade" && <Trade flash={flash} />}
-        {view === "wallet" && <WalletView authUser={authUser} modal={setModal} flash={flash} onNavigate={navigateTo} onSelectCoin={(sym) => { marketStore.setActiveSym(sym); navigateTo("trade"); }} />}
+        {view === "trade" && <Trade flash={flash} onOpenProfitCard={(sym) => setProfitModalSym(sym)} />}
+        {view === "wallet" && <WalletView authUser={authUser} modal={setModal} flash={flash} onNavigate={navigateTo} onSelectCoin={(sym) => { marketStore.setActiveSym(sym); navigateTo("trade"); }} onOpenProfitCard={(sym) => setProfitModalSym(sym)} />}
         {view === "swap" && <SwapView modal={setModal} flash={flash} />}
-        {view === "leaderboard" && <LeaderboardView onNavigate={navigateTo} onSelectCoin={(sym) => { marketStore.setActiveSym(sym); navigateTo("trade"); }} flash={flash} />}
+        {view === "leaderboard" && <LeaderboardView authUser={authUser} onNavigate={navigateTo} onSelectCoin={(sym) => { marketStore.setActiveSym(sym); navigateTo("trade"); }} flash={flash} />}
         {view === "profile" && <ProfileView authUser={authUser} modal={setModal} flash={flash} onNavigate={navigateTo} onLogout={onLogout} />}
       </main>
 
@@ -4146,11 +5287,19 @@ function AppShell({
         </>
       )}
 
-      {modal && <ModalBox authUser={authUser} type={modal} close={() => setModal("")} flash={flash} />}
+      {modal && <ModalBox authUser={authUser} type={modal} close={() => setModal("")} flash={flash} onNavigate={navigateTo} />}
 
-      {toast && (
-        <div className="toast"><Check size={15} />{toast}</div>
+      {profitModalSym && (
+        <ProfitShareModal
+          isOpen={Boolean(profitModalSym)}
+          onClose={() => setProfitModalSym(null)}
+          initialSym={profitModalSym}
+          authUser={authUser}
+          flash={flash}
+        />
       )}
+
+
     </div>
   );
 }
@@ -4207,15 +5356,37 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    syncDollarRateFromBackend();
-    getMe().then((user) => {
-      setAuthUser(user);
+    try {
+      syncDollarRateFromBackend().catch(() => {});
+    } catch {}
+
+    const safetyTimer = setTimeout(() => {
       setAuthChecked(true);
-      marketStore.setUser(user);
-      if (user?.wallet_address) {
-        localStorage.setItem("axiom_wallet_address", user.wallet_address);
-      }
-    });
+    }, 1200);
+
+    getMe()
+      .then((user) => {
+        setAuthUser(user);
+        try {
+          marketStore.setUser(user);
+        } catch (e) {
+          console.warn("marketStore.setUser error:", e);
+        }
+        if (user?.wallet_address) {
+          try {
+            localStorage.setItem("axiom_wallet_address", user.wallet_address);
+          } catch {}
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed checking session status:", err);
+      })
+      .finally(() => {
+        clearTimeout(safetyTimer);
+        setAuthChecked(true);
+      });
+
+    return () => clearTimeout(safetyTimer);
   }, []);
 
   // Dedicated Junior Admin Portal route at /junior-admin

@@ -7,8 +7,9 @@ import {
   ChevronLeft, ChevronRight, ArrowUpRight,
   ArrowDownRight, ToggleLeft, ToggleRight, Save, Layers,
   Globe, Lock, BarChart2, Shield, Skull, TrendingUp, TrendingDown,
-  Copy, RotateCcw, Sparkles, ExternalLink, Edit3,
-  Sun, Moon, Menu, Smartphone, Eye, EyeOff, Trophy, ShieldCheck
+  Copy, RotateCcw, Sparkles, ExternalLink, Edit3, Trash2,
+  Sun, Moon, Menu, Smartphone, Eye, EyeOff, Trophy, ShieldCheck,
+  Upload, Image
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -69,6 +70,7 @@ function Badge({ status }: { status: string }) {
     suspended: ['Suspended',      C.amber, 'rgba(245,158,11,0.12)'],
     REJECTED:  ['Rejected',       C.red,   'rgba(239,68,68,0.12)' ],
     failed:    ['Failed',         C.red,   'rgba(239,68,68,0.12)' ],
+    rugged:    ['Rugged & Locked',C.red,   'rgba(239,68,68,0.22)' ],
   };
   const [label, color, bg] = m[status] ?? [status, C.muted, 'rgba(255,255,255,0.06)'];
   return <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, color, background: bg, border: `1px solid ${color}22` }}>{label}</span>;
@@ -855,14 +857,23 @@ function DashboardPage({ metrics, withdrawals, onApprove, onReject, loading, sea
 }
 
 const AVATAR_PRESETS = [
-  { name: "Popcat", url: "https://coin-images.coingecko.com/coins/images/33890/large/popcat.png", icon: "🐱" },
-  { name: "Doge",   url: "https://coin-images.coingecko.com/coins/images/5/large/dogecoin.png", icon: "🐶" },
-  { name: "Pepe",   url: "https://coin-images.coingecko.com/coins/images/29850/large/pepe-token.png", icon: "🐸" },
-  { name: "Bonk",   url: "https://coin-images.coingecko.com/coins/images/28600/large/bonk.jpg", icon: "🦴" },
-  { name: "Wif",    url: "https://coin-images.coingecko.com/coins/images/33566/large/dogwifhat.jpg", icon: "🧢" },
-  { name: "Rocket", url: "https://images.unsplash.com/photo-1517976487502-5f7946f10157?w=128&auto=format&fit=crop&q=80", icon: "🚀" },
-  { name: "Diamond",url: "https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=128&auto=format&fit=crop&q=80", icon: "💎" },
-  { name: "Flame",  url: "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=128&auto=format&fit=crop&q=80", icon: "🔥" },
+  { name: "Popcat", url: "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/cat.png", icon: "🐱" },
+  { name: "Doge",   url: "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/doge.png", icon: "🐶" },
+  { name: "Pepe",   url: "https://assets.coingecko.com/coins/images/29850/large/pepe-token.png", icon: "🐸" },
+  { name: "Bonk",   url: "https://assets.coingecko.com/coins/images/28600/large/bonk.jpg", icon: "🦴" },
+  { name: "Wif",    url: "https://assets.coingecko.com/coins/images/33566/large/dogwifhat.jpg", icon: "🧢" },
+  { name: "Shiba",  url: "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/shib.png", icon: "🐕" },
+  { name: "Rocket", url: "https://images.unsplash.com/photo-1517976487502-5f7946f10157?w=256&auto=format&fit=crop&q=80", icon: "🚀" },
+  { name: "Diamond",url: "https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=256&auto=format&fit=crop&q=80", icon: "💎" },
+  { name: "Flame",  url: "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=256&auto=format&fit=crop&q=80", icon: "🔥" },
+];
+
+const BANNER_PRESETS = [
+  { name: "Cyber Neon", url: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&auto=format&fit=crop&q=80" },
+  { name: "Solana Sunset", url: "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=1200&auto=format&fit=crop&q=80" },
+  { name: "Deep Space", url: "https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?w=1200&auto=format&fit=crop&q=80" },
+  { name: "Matrix Code", url: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=1200&auto=format&fit=crop&q=80" },
+  { name: "Gold Wealth", url: "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=1200&auto=format&fit=crop&q=80" },
 ];
 
 const generateSolanaAddress = () =>
@@ -878,6 +889,7 @@ function MemeCoinsPage({ search }: { search: string }) {
   const [selectedSym, setSelectedSym] = useState(() => (typeof localStorage !== "undefined" && localStorage.getItem("axiom_selected_sym") && localStorage.getItem("axiom_selected_sym") !== "POPCAT") ? localStorage.getItem("axiom_selected_sym")! : "BTC");
   const [modal, setModal] = useState(false);
   const [rugModal, setRugModal] = useState<string | null>(null);
+  const [deleteModalToken, setDeleteModalToken] = useState<string | null>(null);
   
   // Control modes: dollars ($ USD) vs percent (%) vs target ($ direct target)
   const [controlMode, setControlMode] = useState<'dollars' | 'percent' | 'target'>('dollars');
@@ -894,13 +906,17 @@ function MemeCoinsPage({ search }: { search: string }) {
   const [form, setForm] = useState({
     name: '',
     symbol: '',
+    pair_currency: 'SOL',
     contractAddress: '',
     supply: '1000000000',
     price: '0.005',
     marketCap: '5000000',
     liquidity: '50000',
     logo_url: AVATAR_PRESETS[0].url,
-    description: ''
+    banner_url: BANNER_PRESETS[0].url,
+    description: '',
+    is_liquidity_locked: true,
+    is_verified: true,
   });
 
   // Edit Existing Meme Coin Modal State
@@ -908,12 +924,14 @@ function MemeCoinsPage({ search }: { search: string }) {
   const [editForm, setEditForm] = useState({
     name: '',
     symbol: '',
+    pair_currency: 'SOL',
     contractAddress: '',
     supply: '1000000000',
     price: '0.005',
     marketCap: '5000000',
     liquidity: '50000',
     logo_url: '',
+    banner_url: '',
     change: '+0.00%',
     description: ''
   });
@@ -998,13 +1016,17 @@ function MemeCoinsPage({ search }: { search: string }) {
     setForm({
       name: '',
       symbol: '',
+      pair_currency: 'SOL',
       contractAddress: generateSolanaAddress(),
       supply: '1000000000',
       price: '0.005',
       marketCap: '5000000',
       liquidity: '50000',
       logo_url: AVATAR_PRESETS[0].url,
-      description: 'The next 100x viral community token on Solana'
+      banner_url: BANNER_PRESETS[0].url,
+      description: 'The next 100x viral community token on Solana',
+      is_liquidity_locked: true,
+      is_verified: true,
     });
     setModal(true);
   };
@@ -1026,12 +1048,14 @@ function MemeCoinsPage({ search }: { search: string }) {
     setEditForm({
       name: t.name || '',
       symbol: t.sym || '',
+      pair_currency: t.pair_currency || 'SOL',
       contractAddress: t.contractAddress || t.poolAddress || '',
       supply: supplyVal,
       price: priceVal,
       marketCap: mcapVal,
       liquidity: liqVal,
       logo_url: t.imageUrl || '',
+      banner_url: t.bannerUrl || '',
       change: t.change || '+0.00%',
       description: ''
     });
@@ -1078,11 +1102,13 @@ function MemeCoinsPage({ search }: { search: string }) {
       name: editForm.name.trim(),
       contractAddress: editForm.contractAddress.trim(),
       imageUrl: editForm.logo_url.trim(),
+      bannerUrl: editForm.banner_url?.trim() || undefined,
       supply: parseFloat(editForm.supply) || undefined,
       price: parseFloat(editForm.price) || undefined,
       marketCap: parseFloat(editForm.marketCap) || undefined,
       liquidity: parseFloat(editForm.liquidity) || undefined,
       change: editForm.change.trim() || undefined,
+      pair_currency: editForm.pair_currency || 'SOL',
     });
 
     api.controlToken(editModalToken.sym, 'update', 0, {
@@ -1092,6 +1118,7 @@ function MemeCoinsPage({ search }: { search: string }) {
       liquidity: editForm.liquidity,
       supply: editForm.supply,
       logo_url: editForm.logo_url.trim(),
+      pair_currency: editForm.pair_currency || 'SOL',
     }).catch(() => {});
 
     toast_(`✅ Successfully updated $${editModalToken.sym} metrics and synced DEX!`);
@@ -1114,8 +1141,12 @@ function MemeCoinsPage({ search }: { search: string }) {
       liquidity: form.liquidity,
       contractAddress: contractAddr,
       logo_url: form.logo_url,
+      banner_url: form.banner_url,
       description: form.description,
+      pair_currency: form.pair_currency || 'SOL',
     });
+    marketStore.setTokenLiquidityLocked(cleanSym, form.is_liquidity_locked !== false);
+    marketStore.setTokenVerified(cleanSym, !!form.is_verified);
     try {
       await api.createMemeToken({
         name: form.name.trim(),
@@ -1126,6 +1157,7 @@ function MemeCoinsPage({ search }: { search: string }) {
         contract_address: contractAddr,
         logo_url: form.logo_url,
         description: form.description,
+        pair_currency: form.pair_currency || 'SOL',
       });
     } catch {
       // marketStore updated in memory & persisted locally
@@ -1139,60 +1171,106 @@ function MemeCoinsPage({ search }: { search: string }) {
   // Dollar pump/dump controls
   const handlePumpDollar = (sym: string, dollars: number) => {
     if (!dollars || dollars <= 0) return;
+    const tok = marketStore.getToken(sym);
+    if (tok?.is_rugged) {
+      toast_(`⚠️ Cannot pump $${sym}: Token has been rugpulled and is permanently locked.`);
+      return;
+    }
     setSelectedSym(sym);
     marketStore.setActiveSym(sym);
     marketStore.pumpTokenDollar(sym, dollars);
-    const tok = marketStore.getToken(sym);
-    toast_(`🚀 Pumped $${sym} by +$${dollars}! Live Price: ${tok?.price || ''} | Liquidity: ${tok?.liq || ''}`);
+    const updated = marketStore.getToken(sym);
+    toast_(`🚀 Pumped $${sym} by +$${dollars}! Live Price: ${updated?.price || ''} | Liquidity: ${updated?.liq || ''}`);
   };
 
   const handleDumpDollar = (sym: string, dollars: number) => {
     if (!dollars || dollars <= 0) return;
+    const tok = marketStore.getToken(sym);
+    if (tok?.is_rugged) {
+      toast_(`⚠️ Cannot dump $${sym}: Token has been rugpulled and is permanently locked.`);
+      return;
+    }
     setSelectedSym(sym);
     marketStore.setActiveSym(sym);
     marketStore.dumpTokenDollar(sym, dollars);
-    const tok = marketStore.getToken(sym);
-    toast_(`📉 Dumped $${sym} by -$${dollars}! Live Price: ${tok?.price || ''} | Liquidity: ${tok?.liq || ''}`);
+    const updated = marketStore.getToken(sym);
+    toast_(`📉 Dumped $${sym} by -$${dollars}! Live Price: ${updated?.price || ''} | Liquidity: ${updated?.liq || ''}`);
   };
 
   // Target price direct set
   const handleSetTargetPrice = (sym: string, targetPrice: number) => {
     if (targetPrice <= 0) return;
+    const tok = marketStore.getToken(sym);
+    if (tok?.is_rugged) {
+      toast_(`⚠️ Cannot set price for $${sym}: Token has been rugpulled and is permanently locked.`);
+      return;
+    }
     setSelectedSym(sym);
     marketStore.setActiveSym(sym);
     marketStore.setTokenTargetPrice(sym, targetPrice);
-    const tok = marketStore.getToken(sym);
-    toast_(`🎯 Set $${sym} target price to $${targetPrice}! Live: ${tok?.price || ''} | Liquidity: ${tok?.liq || ''}`);
+    const updated = marketStore.getToken(sym);
+    toast_(`🎯 Set $${sym} target price to $${targetPrice}! Live: ${updated?.price || ''} | Liquidity: ${updated?.liq || ''}`);
   };
 
   // Percentage pump/dump controls
   const handlePump = (sym: string, pct: number) => {
     if (!pct || pct <= 0) return;
+    const tok = marketStore.getToken(sym);
+    if (tok?.is_rugged) {
+      toast_(`⚠️ Cannot pump $${sym}: Token has been rugpulled and is permanently locked.`);
+      return;
+    }
     setSelectedSym(sym);
     marketStore.setActiveSym(sym);
     marketStore.pumpToken(sym, pct);
-    const tok = marketStore.getToken(sym);
-    toast_(`🚀 Pumped $${sym} by +${pct}%! Live Price: ${tok?.price || ''} | Liquidity: ${tok?.liq || ''}`);
+    const updated = marketStore.getToken(sym);
+    toast_(`🚀 Pumped $${sym} by +${pct}%! Live Price: ${updated?.price || ''} | Liquidity: ${updated?.liq || ''}`);
   };
 
   const handleDump = (sym: string, pct: number) => {
     if (!pct || pct <= 0) return;
+    const tok = marketStore.getToken(sym);
+    if (tok?.is_rugged) {
+      toast_(`⚠️ Cannot dump $${sym}: Token has been rugpulled and is permanently locked.`);
+      return;
+    }
     setSelectedSym(sym);
     marketStore.setActiveSym(sym);
     marketStore.dumpToken(sym, pct);
-    const tok = marketStore.getToken(sym);
-    toast_(`📉 Dumped $${sym} by -${pct}%! Live Price: ${tok?.price || ''} | Liquidity: ${tok?.liq || ''}`);
+    const updated = marketStore.getToken(sym);
+    toast_(`📉 Dumped $${sym} by -${pct}%! Live Price: ${updated?.price || ''} | Liquidity: ${updated?.liq || ''}`);
   };
 
-  const handleRugpull = (sym: string) => {
+  const handleRugpull = async (sym: string) => {
     if (marketStore.isMajorToken(sym)) {
       toast_(`🛡️ Major crypto $${sym} is protected and cannot be rugpulled.`);
       setRugModal(null);
       return;
     }
     marketStore.rugpullToken(sym);
+    try {
+      await api.adminControlToken(sym, { action: 'rugpull' });
+    } catch {}
     setRugModal(null);
-    toast_(`⚠️ Liquidity completely drained for $${sym}. Trading suspended.`);
+    toast_(`⚠️ Liquidity completely drained for $${sym}. Trading suspended and coin locked.`);
+  };
+
+  const handleDeleteToken = async (sym: string) => {
+    if (marketStore.isMajorToken(sym)) {
+      toast_(`🛡️ Major crypto $${sym} cannot be deleted.`);
+      setDeleteModalToken(null);
+      return;
+    }
+    const res = marketStore.deleteToken(sym);
+    try {
+      await api.deleteMemeToken(sym);
+    } catch {}
+    setDeleteModalToken(null);
+    if (selectedSym === sym) {
+      const remaining = marketStore.tokens.filter(t => t.sym !== sym);
+      setSelectedSym(remaining[0]?.sym || 'BTC');
+    }
+    toast_(res.message);
   };
 
   return (
@@ -1356,6 +1434,31 @@ function MemeCoinsPage({ search }: { search: string }) {
               >
                 {marketStore.isTokenVerified(activeToken.sym) ? <><Check size={12} color={C.green} /> Verified</> : '○ Unverified'}
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !marketStore.isTokenLiquidityLocked(activeToken.sym);
+                  marketStore.setTokenLiquidityLocked(activeToken.sym, next);
+                  toast_(`${activeToken.sym} liquidity padlock ${next ? 'locked 🔒' : 'unlocked'}`);
+                }}
+                style={{
+                  background: marketStore.isTokenLiquidityLocked(activeToken.sym) ? 'rgba(59,130,246,0.18)' : 'rgba(255,255,255,0.06)',
+                  border: `1px solid ${marketStore.isTokenLiquidityLocked(activeToken.sym) ? '#3B82F6' : C.border}`,
+                  color: marketStore.isTokenLiquidityLocked(activeToken.sym) ? '#60A5FA' : C.muted,
+                  borderRadius: 6,
+                  padding: '3px 8px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  marginLeft: 6,
+                }}
+                title="Click to toggle Liquidity Padlock 🔒 on/off"
+              >
+                {marketStore.isTokenLiquidityLocked(activeToken.sym) ? <>🔒 Liq Locked</> : '🔓 Liq Unlocked'}
+              </button>
             </div>
           </div>
           <div style={{ background: 'rgba(124,58,237,0.12)', padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(124,58,237,0.3)', display: 'flex', alignItems: 'center' }}>
@@ -1385,7 +1488,49 @@ function MemeCoinsPage({ search }: { search: string }) {
               <span>Edit Metrics</span>
             </button>
           </div>
+          {!marketStore.isMajorToken(activeToken.sym) && (
+            <div style={{ background: 'rgba(239,68,68,0.12)', padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center' }}>
+              <button
+                onClick={() => setDeleteModalToken(activeToken.sym)}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  minHeight: 40,
+                  background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '8px 12px',
+                  color: '#fff',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  boxShadow: '0 2px 10px rgba(220,38,38,0.35)',
+                  transition: 'all 150ms'
+                }}
+                title="Permanently delete coin from platform"
+              >
+                <span>🗑️ Delete Coin</span>
+              </button>
+            </div>
+          )}
         </div>
+
+        {/* RUGGED WARNING BANNER */}
+        {activeToken.is_rugged && (
+          <div style={{ background: 'rgba(239, 68, 68, 0.12)', border: '1.5px solid #EF4444', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <AlertTriangle size={24} color="#EF4444" style={{ flexShrink: 0 }} />
+            <div>
+              <div style={{ fontWeight: 900, fontSize: 13, color: '#EF4444' }}>⚠️ TOKEN RUGPULLED & LOCKED</div>
+              <div style={{ fontSize: 11, color: '#FCA5A5', marginTop: 2 }}>
+                This coin's liquidity has been drained and trading is halted. Admin pump and dump controls are disabled. You can permanently delete this coin using the Delete Coin button above.
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* MODE SELECTOR: Dollars ($ USD) vs Percentage (%) vs Exact Target ($) */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 16, background: 'rgba(255,255,255,0.02)', padding: '8px 12px', borderRadius: 12, border: `1px solid ${C.border}` }}>
@@ -1484,9 +1629,21 @@ function MemeCoinsPage({ search }: { search: string }) {
                   return (
                     <button
                       key={pct}
+                      disabled={activeToken.is_rugged}
                       onClick={() => handlePumpDollar(activeToken.sym, amt)}
-                      style={{ padding: '8px 4px', background: 'rgba(16,185,129,0.15)', border: `1px solid ${C.green}44`, borderRadius: 8, color: C.green, fontSize: 11, fontWeight: 800, cursor: 'pointer', textAlign: 'center' }}
-                      title={`Pump +$${amt} (${label})`}
+                      style={{
+                        padding: '8px 4px',
+                        background: 'rgba(16,185,129,0.15)',
+                        border: `1px solid ${C.green}44`,
+                        borderRadius: 8,
+                        color: C.green,
+                        fontSize: 11,
+                        fontWeight: 800,
+                        cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
+                        opacity: activeToken.is_rugged ? 0.4 : 1,
+                        textAlign: 'center'
+                      }}
+                      title={activeToken.is_rugged ? 'Locked: Token is rugged' : `Pump +$${amt} (${label})`}
                     >
                       <div>{label}</div>
                       <div style={{ fontSize: 9, opacity: 0.85, marginTop: 2 }}>+${amt < 0.001 ? amt.toFixed(6) : amt < 1 ? amt.toFixed(3) : amt.toFixed(2)}</div>
@@ -1502,13 +1659,14 @@ function MemeCoinsPage({ search }: { search: string }) {
                   <input
                     type="number"
                     step="any"
+                    disabled={activeToken.is_rugged}
                     value={customDollarPump}
                     onChange={e => setCustomDollarPump(e.target.value)}
                     placeholder="0.0001"
-                    style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 10px 7px 26px', color: C.text, fontSize: 12, outline: 'none' }}
+                    style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 10px 7px 26px', color: C.text, fontSize: 12, outline: 'none', opacity: activeToken.is_rugged ? 0.5 : 1 }}
                   />
                 </div>
-                <Btn sm onClick={() => handlePumpDollar(activeToken.sym, parseFloat(customDollarPump) || 0)}>
+                <Btn sm disabled={activeToken.is_rugged} onClick={() => handlePumpDollar(activeToken.sym, parseFloat(customDollarPump) || 0)}>
                   <Zap size={12} />Pump 🚀
                 </Btn>
               </div>
@@ -1569,9 +1727,21 @@ function MemeCoinsPage({ search }: { search: string }) {
                   return (
                     <button
                       key={pct}
+                      disabled={activeToken.is_rugged}
                       onClick={() => handleDumpDollar(activeToken.sym, amt)}
-                      style={{ padding: '8px 4px', background: 'rgba(239,68,68,0.15)', border: `1px solid ${C.red}44`, borderRadius: 8, color: C.red, fontSize: 11, fontWeight: 800, cursor: 'pointer', textAlign: 'center' }}
-                      title={`Dump -$${amt} (${label})`}
+                      style={{
+                        padding: '8px 4px',
+                        background: 'rgba(239,68,68,0.15)',
+                        border: `1px solid ${C.red}44`,
+                        borderRadius: 8,
+                        color: C.red,
+                        fontSize: 11,
+                        fontWeight: 800,
+                        cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
+                        opacity: activeToken.is_rugged ? 0.4 : 1,
+                        textAlign: 'center'
+                      }}
+                      title={activeToken.is_rugged ? 'Locked: Token is rugged' : `Dump -$${amt} (${label})`}
                     >
                       <div>{label}</div>
                       <div style={{ fontSize: 9, opacity: 0.85, marginTop: 2 }}>-${amt < 0.001 ? amt.toFixed(6) : amt < 1 ? amt.toFixed(3) : amt.toFixed(2)}</div>
@@ -1587,13 +1757,14 @@ function MemeCoinsPage({ search }: { search: string }) {
                   <input
                     type="number"
                     step="any"
+                    disabled={activeToken.is_rugged}
                     value={customDollarDump}
                     onChange={e => setCustomDollarDump(e.target.value)}
                     placeholder="0.0001"
-                    style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 10px 7px 26px', color: C.text, fontSize: 12, outline: 'none' }}
+                    style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 10px 7px 26px', color: C.text, fontSize: 12, outline: 'none', opacity: activeToken.is_rugged ? 0.5 : 1 }}
                   />
                 </div>
-                <Btn sm danger onClick={() => handleDumpDollar(activeToken.sym, parseFloat(customDollarDump) || 0)}>
+                <Btn sm danger disabled={activeToken.is_rugged} onClick={() => handleDumpDollar(activeToken.sym, parseFloat(customDollarDump) || 0)}>
                   <ArrowDownRight size={12} />Dump 📉
                 </Btn>
               </div>
@@ -1708,11 +1879,22 @@ function MemeCoinsPage({ search }: { search: string }) {
                   return (
                     <button
                       key={mult}
+                      disabled={activeToken.is_rugged}
                       onClick={() => {
                         setTargetPriceInput(String(tgt));
                         handleSetTargetPrice(activeToken.sym, tgt);
                       }}
-                      style={{ padding: '8px 12px', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                      style={{
+                        padding: '8px 12px',
+                        background: C.surface2,
+                        border: `1px solid ${C.border}`,
+                        borderRadius: 8,
+                        color: activeToken.is_rugged ? C.muted : C.text,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
+                        opacity: activeToken.is_rugged ? 0.4 : 1
+                      }}
                     >
                       {mult}x (${tgt})
                     </button>
@@ -1720,7 +1902,7 @@ function MemeCoinsPage({ search }: { search: string }) {
                 })}
               </div>
 
-              <Btn onClick={() => handleSetTargetPrice(activeToken.sym, parseFloat(targetPriceInput) || 0.01)}>
+              <Btn disabled={activeToken.is_rugged} onClick={() => handleSetTargetPrice(activeToken.sym, parseFloat(targetPriceInput) || 0.01)}>
                 <Check size={14} />Apply Target Price Immediately 🚀
               </Btn>
             </div>
@@ -1741,20 +1923,53 @@ function MemeCoinsPage({ search }: { search: string }) {
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
                 <button
+                  disabled={activeToken.is_rugged}
                   onClick={() => handlePump(activeToken.sym, 10)}
-                  style={{ padding: '8px 10px', background: 'rgba(16,185,129,0.15)', border: `1px solid ${C.green}44`, borderRadius: 8, color: C.green, fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
+                  style={{
+                    padding: '8px 10px',
+                    background: 'rgba(16,185,129,0.15)',
+                    border: `1px solid ${C.green}44`,
+                    borderRadius: 8,
+                    color: C.green,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
+                    opacity: activeToken.is_rugged ? 0.4 : 1
+                  }}
                 >
                   +10% Pump
                 </button>
                 <button
+                  disabled={activeToken.is_rugged}
                   onClick={() => handlePump(activeToken.sym, 25)}
-                  style={{ padding: '8px 10px', background: 'rgba(16,185,129,0.22)', border: `1px solid ${C.green}66`, borderRadius: 8, color: C.green, fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
+                  style={{
+                    padding: '8px 10px',
+                    background: 'rgba(16,185,129,0.22)',
+                    border: `1px solid ${C.green}66`,
+                    borderRadius: 8,
+                    color: C.green,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
+                    opacity: activeToken.is_rugged ? 0.4 : 1
+                  }}
                 >
                   +25% Super
                 </button>
                 <button
+                  disabled={activeToken.is_rugged}
                   onClick={() => handlePump(activeToken.sym, 50)}
-                  style={{ padding: '8px 10px', background: C.green, border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, fontWeight: 900, cursor: 'pointer' }}
+                  style={{
+                    padding: '8px 10px',
+                    background: activeToken.is_rugged ? 'rgba(16,185,129,0.2)' : C.green,
+                    border: 'none',
+                    borderRadius: 8,
+                    color: '#fff',
+                    fontSize: 12,
+                    fontWeight: 900,
+                    cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
+                    opacity: activeToken.is_rugged ? 0.4 : 1
+                  }}
                 >
                   +50% Mega
                 </button>
@@ -1764,14 +1979,15 @@ function MemeCoinsPage({ search }: { search: string }) {
                 <div style={{ position: 'relative', flex: 1 }}>
                   <input
                     type="number"
+                    disabled={activeToken.is_rugged}
                     value={customPump}
                     onChange={e => setCustomPump(e.target.value)}
                     placeholder="Custom %"
-                    style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 24px 7px 10px', color: C.text, fontSize: 12, outline: 'none' }}
+                    style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 24px 7px 10px', color: C.text, fontSize: 12, outline: 'none', opacity: activeToken.is_rugged ? 0.5 : 1 }}
                   />
                   <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: C.muted, fontSize: 11 }}>%</span>
                 </div>
-                <Btn sm onClick={() => handlePump(activeToken.sym, parseFloat(customPump) || 10)}>
+                <Btn sm disabled={activeToken.is_rugged} onClick={() => handlePump(activeToken.sym, parseFloat(customPump) || 10)}>
                   <Zap size={12} />Pump 🚀
                 </Btn>
               </div>
@@ -1789,20 +2005,53 @@ function MemeCoinsPage({ search }: { search: string }) {
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
                 <button
+                  disabled={activeToken.is_rugged}
                   onClick={() => handleDump(activeToken.sym, 10)}
-                  style={{ padding: '8px 10px', background: 'rgba(239,68,68,0.15)', border: `1px solid ${C.red}44`, borderRadius: 8, color: C.red, fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
+                  style={{
+                    padding: '8px 10px',
+                    background: 'rgba(239,68,68,0.15)',
+                    border: `1px solid ${C.red}44`,
+                    borderRadius: 8,
+                    color: C.red,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
+                    opacity: activeToken.is_rugged ? 0.4 : 1
+                  }}
                 >
                   -10% Shake
                 </button>
                 <button
+                  disabled={activeToken.is_rugged}
                   onClick={() => handleDump(activeToken.sym, 25)}
-                  style={{ padding: '8px 10px', background: 'rgba(239,68,68,0.22)', border: `1px solid ${C.red}66`, borderRadius: 8, color: C.red, fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
+                  style={{
+                    padding: '8px 10px',
+                    background: 'rgba(239,68,68,0.22)',
+                    border: `1px solid ${C.red}66`,
+                    borderRadius: 8,
+                    color: C.red,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
+                    opacity: activeToken.is_rugged ? 0.4 : 1
+                  }}
                 >
                   -25% Heavy
                 </button>
                 <button
+                  disabled={activeToken.is_rugged}
                   onClick={() => handleDump(activeToken.sym, 50)}
-                  style={{ padding: '8px 10px', background: C.red, border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, fontWeight: 900, cursor: 'pointer' }}
+                  style={{
+                    padding: '8px 10px',
+                    background: activeToken.is_rugged ? 'rgba(239,68,68,0.2)' : C.red,
+                    border: 'none',
+                    borderRadius: 8,
+                    color: '#fff',
+                    fontSize: 12,
+                    fontWeight: 900,
+                    cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
+                    opacity: activeToken.is_rugged ? 0.4 : 1
+                  }}
                 >
                   -50% Crash
                 </button>
@@ -1812,14 +2061,15 @@ function MemeCoinsPage({ search }: { search: string }) {
                 <div style={{ position: 'relative', flex: 1 }}>
                   <input
                     type="number"
+                    disabled={activeToken.is_rugged}
                     value={customDump}
                     onChange={e => setCustomDump(e.target.value)}
                     placeholder="Custom %"
-                    style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 24px 7px 10px', color: C.text, fontSize: 12, outline: 'none' }}
+                    style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 24px 7px 10px', color: C.text, fontSize: 12, outline: 'none', opacity: activeToken.is_rugged ? 0.5 : 1 }}
                   />
                   <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: C.muted, fontSize: 11 }}>%</span>
                 </div>
-                <Btn sm danger onClick={() => handleDump(activeToken.sym, parseFloat(customDump) || 10)}>
+                <Btn sm danger disabled={activeToken.is_rugged} onClick={() => handleDump(activeToken.sym, parseFloat(customDump) || 10)}>
                   <ArrowDownRight size={12} />Dump 📉
                 </Btn>
               </div>
@@ -1961,6 +2211,32 @@ function MemeCoinsPage({ search }: { search: string }) {
                         <span>○ Unverified</span>
                       )}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !marketStore.isTokenLiquidityLocked(t.sym);
+                        marketStore.setTokenLiquidityLocked(t.sym, next);
+                        toast_(`${t.sym} liquidity padlock ${next ? 'locked 🔒' : 'unlocked'}`);
+                      }}
+                      style={{
+                        background: marketStore.isTokenLiquidityLocked(t.sym) ? 'rgba(59,130,246,0.18)' : 'rgba(255,255,255,0.05)',
+                        border: `1px solid ${marketStore.isTokenLiquidityLocked(t.sym) ? '#3B82F6' : C.border}`,
+                        color: marketStore.isTokenLiquidityLocked(t.sym) ? '#60A5FA' : C.muted,
+                        borderRadius: 6,
+                        padding: '3px 8px',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        marginLeft: 6,
+                        transition: 'all 150ms'
+                      }}
+                      title="Click to toggle Liquidity Padlock 🔒 on/off"
+                    >
+                      {marketStore.isTokenLiquidityLocked(t.sym) ? <span>🔒 Locked</span> : <span>🔓 Unlocked</span>}
+                    </button>
                   </td>
                   <td style={TD}>
                     {(t.contractAddress || t.poolAddress) ? (
@@ -1992,16 +2268,27 @@ function MemeCoinsPage({ search }: { search: string }) {
                       <span style={{ color: C.muted, fontSize: 11 }}>—</span>
                     )}
                   </td>
-                  <td style={TD}><Badge status={t.is_rugged ? 'failed' : 'active'} /></td>
+                  <td style={TD}><Badge status={t.is_rugged ? 'rugged' : 'active'} /></td>
                   <td style={TD}>
-                    <div style={{ display: 'flex', gap: 6 }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       <Btn sm ghost onClick={() => openEditModal(t)} title="Edit coin metrics">
                         <Edit3 size={12} /> Edit
                       </Btn>
-                      <Btn sm ghost onClick={() => handlePumpDollar(t.sym, 0.05)}>+$0.05 🚀</Btn>
-                      <Btn sm ghost danger onClick={() => handleDumpDollar(t.sym, 0.05)}>-$0.05 📉</Btn>
-                      {!t.is_rugged && (
-                        <Btn sm danger onClick={() => setRugModal(t.sym)}>💀 Drain</Btn>
+                      {!t.is_rugged ? (
+                        <>
+                          <Btn sm ghost onClick={() => handlePumpDollar(t.sym, 0.05)}>+$0.05 🚀</Btn>
+                          <Btn sm ghost danger onClick={() => handleDumpDollar(t.sym, 0.05)}>-$0.05 📉</Btn>
+                          <Btn sm danger onClick={() => setRugModal(t.sym)}>💀 Drain</Btn>
+                        </>
+                      ) : (
+                        <span style={{ fontSize: 10, color: C.red, fontWeight: 800, padding: '3px 8px', background: 'rgba(239,68,68,0.12)', borderRadius: 6, border: '1px solid rgba(239,68,68,0.3)' }}>
+                          🔒 LOCKED
+                        </span>
+                      )}
+                      {!marketStore.isMajorToken(t.sym) && (
+                        <Btn sm danger onClick={() => setDeleteModalToken(t.sym)} title="Permanently delete coin from platform">
+                          <Trash2 size={12} />
+                        </Btn>
                       )}
                     </div>
                   </td>
@@ -2113,8 +2400,8 @@ function MemeCoinsPage({ search }: { search: string }) {
               </div>
 
               <form onSubmit={create} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {/* Name & Symbol Row */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12 }}>
+                {/* Name, Symbol & Pair Currency Row */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.9fr 1.1fr', gap: 10 }}>
                   <div>
                     <label style={{ display: 'block', fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', marginBottom: 5 }}>Token Name *</label>
                     <input
@@ -2126,7 +2413,7 @@ function MemeCoinsPage({ search }: { search: string }) {
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', marginBottom: 5 }}>Symbol / Ticker *</label>
+                    <label style={{ display: 'block', fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', marginBottom: 5 }}>Symbol *</label>
                     <input
                       required
                       value={form.symbol}
@@ -2134,6 +2421,20 @@ function MemeCoinsPage({ search }: { search: string }) {
                       placeholder="e.g. PMOON"
                       style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '9px 12px', color: C.text, fontSize: 13, boxSizing: 'border-box', outline: 'none', fontWeight: 800 }}
                     />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', marginBottom: 5 }}>Base Pair Rail</label>
+                    <select
+                      value={form.pair_currency || 'SOL'}
+                      onChange={e => setForm(prev => ({ ...prev, pair_currency: e.target.value }))}
+                      style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '9px 10px', color: '#A78BFA', fontSize: 12, boxSizing: 'border-box', outline: 'none', fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      <option value="SOL">SOL (Solana)</option>
+                      <option value="ETH">ETH (Ethereum)</option>
+                      <option value="BNB">BNB (BNB Chain)</option>
+                      <option value="USDT">USDT (Tether)</option>
+                      <option value="USDC">USDC (USD Coin)</option>
+                    </select>
                   </div>
                 </div>
 
@@ -2172,15 +2473,60 @@ function MemeCoinsPage({ search }: { search: string }) {
                   </div>
                 </div>
 
-                {/* Picture / Logo with Avatar Presets */}
+                {/* Picture / Logo with Avatar Presets and Manual File Upload */}
                 <div>
-                  <label style={{ display: 'block', fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', marginBottom: 5 }}>
-                    Coin Picture / Logo (Preset or Image URL)
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                    <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase' }}>
+                      Coin Picture / Logo (Preset, URL or Device Upload) *
+                    </label>
+                    <label
+                      htmlFor="deploy-logo-upload"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        background: 'rgba(124,58,237,0.14)',
+                        border: '1px solid rgba(167,139,250,0.3)',
+                        borderRadius: 6,
+                        padding: '3px 8px',
+                        color: '#A78BFA',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                      title="Upload coin logo from device"
+                    >
+                      <Upload size={11} /> Upload Picture
+                    </label>
+                    <input
+                      id="deploy-logo-upload"
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = ev => {
+                            const res = ev.target?.result as string;
+                            if (res) setForm(prev => ({ ...prev, logo_url: res }));
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                    <div style={{ width: 42, height: 42, borderRadius: '50%', border: `2px solid ${C.violet}`, overflow: 'hidden', flexShrink: 0, background: C.surface2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: 44, height: 44, borderRadius: '50%', border: `2px solid ${C.violet}`, overflow: 'hidden', flexShrink: 0, background: C.surface2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {form.logo_url ? (
-                        <img src={form.logo_url} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as any).style.display = 'none'; }} />
+                        <img
+                          src={form.logo_url}
+                          alt="preview"
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          onError={(e) => {
+                            (e.target as any).src = "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/generic.png";
+                          }}
+                        />
                       ) : (
                         <Coins size={20} color={C.muted} />
                       )}
@@ -2188,7 +2534,7 @@ function MemeCoinsPage({ search }: { search: string }) {
                     <input
                       value={form.logo_url}
                       onChange={e => setForm(prev => ({ ...prev, logo_url: e.target.value }))}
-                      placeholder="Paste image URL (https://...)"
+                      placeholder="Paste image URL (https://...) or click Upload Picture"
                       style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '9px 12px', color: C.text, fontSize: 12, outline: 'none' }}
                     />
                   </div>
@@ -2215,6 +2561,99 @@ function MemeCoinsPage({ search }: { search: string }) {
                       >
                         <span>{p.icon}</span>
                         <span>{p.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Coin Background Banner Image */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                    <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase' }}>
+                      Coin Background Banner Image (Header Wallpaper)
+                    </label>
+                    <label
+                      htmlFor="deploy-banner-upload"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        background: 'rgba(59,130,246,0.14)',
+                        border: '1px solid rgba(96,165,250,0.3)',
+                        borderRadius: 6,
+                        padding: '3px 8px',
+                        color: '#60A5FA',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                      title="Upload background banner from device"
+                    >
+                      <Image size={11} /> Upload Banner
+                    </label>
+                    <input
+                      id="deploy-banner-upload"
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = ev => {
+                            const res = ev.target?.result as string;
+                            if (res) setForm(prev => ({ ...prev, banner_url: res }));
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                    <div style={{ width: 80, height: 44, borderRadius: 8, border: `1px solid ${C.border}`, overflow: 'hidden', flexShrink: 0, background: C.surface2 }}>
+                      {form.banner_url ? (
+                        <img
+                          src={form.banner_url}
+                          alt="banner preview"
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          onError={(e) => {
+                            (e.target as any).src = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80";
+                          }}
+                        />
+                      ) : (
+                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.muted, fontSize: 10 }}>No Banner</div>
+                      )}
+                    </div>
+                    <input
+                      value={form.banner_url}
+                      onChange={e => setForm(prev => ({ ...prev, banner_url: e.target.value }))}
+                      placeholder="Paste banner image URL (https://...) or click Upload Banner"
+                      style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '9px 12px', color: C.text, fontSize: 12, outline: 'none' }}
+                    />
+                  </div>
+                  {/* Banner Presets */}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {BANNER_PRESETS.map(b => (
+                      <button
+                        key={b.name}
+                        type="button"
+                        onClick={() => setForm(prev => ({ ...prev, banner_url: b.url }))}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          padding: '3px 8px',
+                          borderRadius: 20,
+                          border: form.banner_url === b.url ? `1px solid #3B82F6` : `1px solid ${C.border}`,
+                          background: form.banner_url === b.url ? 'rgba(59,130,246,0.18)' : C.surface2,
+                          color: form.banner_url === b.url ? '#60A5FA' : C.text,
+                          fontSize: 10,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <span>🖼️</span>
+                        <span>{b.name}</span>
                       </button>
                     ))}
                   </div>
@@ -2279,6 +2718,60 @@ function MemeCoinsPage({ search }: { search: string }) {
                     placeholder="Short description of the coin community..."
                     style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '9px 12px', color: C.text, fontSize: 12, boxSizing: 'border-box', outline: 'none' }}
                   />
+                </div>
+
+                {/* Verified Coin Badge toggle */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: '10px 14px' }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Verified Coin Badge</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>Display the green ✓ Verified tag on Trade screen and pair picker</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setForm(prev => ({ ...prev, is_verified: !prev.is_verified }))}
+                    style={{
+                      background: form.is_verified ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.06)',
+                      border: `1px solid ${form.is_verified ? C.green : C.border}`,
+                      color: form.is_verified ? C.green : C.muted,
+                      borderRadius: 6,
+                      padding: '4px 10px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4
+                    }}
+                  >
+                    {form.is_verified ? <><Check size={12} color={C.green} /> Verified</> : '○ Unverified'}
+                  </button>
+                </div>
+
+                {/* Liquidity Padlock toggle */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: '10px 14px' }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Liquidity Padlock 🔒</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>Display circular lock badge 🔒 next to Liquidity to show locked liquidity</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setForm(prev => ({ ...prev, is_liquidity_locked: !prev.is_liquidity_locked }))}
+                    style={{
+                      background: form.is_liquidity_locked ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.06)',
+                      border: `1px solid ${form.is_liquidity_locked ? '#3B82F6' : C.border}`,
+                      color: form.is_liquidity_locked ? '#60A5FA' : C.muted,
+                      borderRadius: 6,
+                      padding: '4px 10px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4
+                    }}
+                  >
+                    {form.is_liquidity_locked ? <>🔒 Locked</> : '🔓 Unlocked'}
+                  </button>
                 </div>
 
                 <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
@@ -2392,8 +2885,8 @@ function MemeCoinsPage({ search }: { search: string }) {
               </div>
 
               <form onSubmit={saveEditToken} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {/* Name & Symbol */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12 }}>
+                {/* Name, Symbol & Pair Currency */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.9fr 1.1fr', gap: 10 }}>
                   <div>
                     <label style={{ display: 'block', fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', marginBottom: 5 }}>Token Name *</label>
                     <input
@@ -2411,6 +2904,20 @@ function MemeCoinsPage({ search }: { search: string }) {
                       style={{ width: '100%', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: '9px 12px', color: C.muted, fontSize: 13, boxSizing: 'border-box', outline: 'none', fontWeight: 800, cursor: 'not-allowed' }}
                     />
                   </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', marginBottom: 5 }}>Base Pair Rail</label>
+                    <select
+                      value={editForm.pair_currency || 'SOL'}
+                      onChange={e => setEditForm(prev => ({ ...prev, pair_currency: e.target.value }))}
+                      style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '9px 10px', color: '#A78BFA', fontSize: 12, boxSizing: 'border-box', outline: 'none', fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      <option value="SOL">SOL (Solana)</option>
+                      <option value="ETH">ETH (Ethereum)</option>
+                      <option value="BNB">BNB (BNB Chain)</option>
+                      <option value="USDT">USDT (Tether)</option>
+                      <option value="USDC">USDC (USD Coin)</option>
+                    </select>
+                  </div>
                 </div>
 
                 {/* Contract Address */}
@@ -2425,11 +2932,58 @@ function MemeCoinsPage({ search }: { search: string }) {
 
                 {/* Picture / Logo */}
                 <div>
-                  <label style={{ display: 'block', fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', marginBottom: 5 }}>Coin Picture / Logo (Preset or Image URL)</label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                    <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase' }}>
+                      Coin Picture / Logo (Preset, URL or Device Upload) *
+                    </label>
+                    <label
+                      htmlFor="edit-logo-upload"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        background: 'rgba(124,58,237,0.14)',
+                        border: '1px solid rgba(167,139,250,0.3)',
+                        borderRadius: 6,
+                        padding: '3px 8px',
+                        color: '#A78BFA',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                      title="Upload coin logo from device"
+                    >
+                      <Upload size={11} /> Upload Picture
+                    </label>
+                    <input
+                      id="edit-logo-upload"
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = ev => {
+                            const res = ev.target?.result as string;
+                            if (res) setEditForm(prev => ({ ...prev, logo_url: res }));
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                    <div style={{ width: 42, height: 42, borderRadius: '50%', border: `2px solid ${C.violet}`, overflow: 'hidden', flexShrink: 0, background: C.surface2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: 44, height: 44, borderRadius: '50%', border: `2px solid ${C.violet}`, overflow: 'hidden', flexShrink: 0, background: C.surface2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {editForm.logo_url ? (
-                        <img src={editForm.logo_url} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as any).style.display = 'none'; }} />
+                        <img
+                          src={editForm.logo_url}
+                          alt="preview"
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          onError={(e) => {
+                            (e.target as any).src = "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/generic.png";
+                          }}
+                        />
                       ) : (
                         <Coins size={20} color={C.muted} />
                       )}
@@ -2437,7 +2991,7 @@ function MemeCoinsPage({ search }: { search: string }) {
                     <input
                       value={editForm.logo_url}
                       onChange={e => setEditForm(prev => ({ ...prev, logo_url: e.target.value }))}
-                      placeholder="Paste image URL (https://...)"
+                      placeholder="Paste image URL (https://...) or click Upload Picture"
                       style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '9px 12px', color: C.text, fontSize: 12, outline: 'none' }}
                     />
                   </div>
@@ -2463,6 +3017,99 @@ function MemeCoinsPage({ search }: { search: string }) {
                       >
                         <span>{p.icon}</span>
                         <span>{p.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Edit Background Banner Image */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                    <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase' }}>
+                      Coin Background Banner Image (Header Wallpaper)
+                    </label>
+                    <label
+                      htmlFor="edit-banner-upload"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        background: 'rgba(59,130,246,0.14)',
+                        border: '1px solid rgba(96,165,250,0.3)',
+                        borderRadius: 6,
+                        padding: '3px 8px',
+                        color: '#60A5FA',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                      title="Upload background banner from device"
+                    >
+                      <Image size={11} /> Upload Banner
+                    </label>
+                    <input
+                      id="edit-banner-upload"
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = ev => {
+                            const res = ev.target?.result as string;
+                            if (res) setEditForm(prev => ({ ...prev, banner_url: res }));
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                    <div style={{ width: 80, height: 44, borderRadius: 8, border: `1px solid ${C.border}`, overflow: 'hidden', flexShrink: 0, background: C.surface2 }}>
+                      {editForm.banner_url ? (
+                        <img
+                          src={editForm.banner_url}
+                          alt="banner preview"
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          onError={(e) => {
+                            (e.target as any).src = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80";
+                          }}
+                        />
+                      ) : (
+                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.muted, fontSize: 10 }}>No Banner</div>
+                      )}
+                    </div>
+                    <input
+                      value={editForm.banner_url}
+                      onChange={e => setEditForm(prev => ({ ...prev, banner_url: e.target.value }))}
+                      placeholder="Paste banner image URL (https://...) or click Upload Banner"
+                      style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '9px 12px', color: C.text, fontSize: 12, outline: 'none' }}
+                    />
+                  </div>
+                  {/* Banner Presets */}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {BANNER_PRESETS.map(b => (
+                      <button
+                        key={b.name}
+                        type="button"
+                        onClick={() => setEditForm(prev => ({ ...prev, banner_url: b.url }))}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          padding: '3px 8px',
+                          borderRadius: 20,
+                          border: editForm.banner_url === b.url ? `1px solid #3B82F6` : `1px solid ${C.border}`,
+                          background: editForm.banner_url === b.url ? 'rgba(59,130,246,0.18)' : C.surface2,
+                          color: editForm.banner_url === b.url ? '#60A5FA' : C.text,
+                          fontSize: 10,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <span>🖼️</span>
+                        <span>{b.name}</span>
                       </button>
                     ))}
                   </div>
@@ -2555,6 +3202,36 @@ function MemeCoinsPage({ search }: { search: string }) {
                   </button>
                 </div>
 
+                {/* Liquidity Padlock toggle */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: '10px 14px', marginTop: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Liquidity Padlock 🔒</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>Display circular lock badge 🔒 next to Liquidity on DEX snapshot</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = marketStore.isTokenLiquidityLocked(editModalToken.sym);
+                      marketStore.setTokenLiquidityLocked(editModalToken.sym, !cur);
+                    }}
+                    style={{
+                      background: marketStore.isTokenLiquidityLocked(editModalToken.sym) ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.06)',
+                      border: `1px solid ${marketStore.isTokenLiquidityLocked(editModalToken.sym) ? '#3B82F6' : C.border}`,
+                      color: marketStore.isTokenLiquidityLocked(editModalToken.sym) ? '#60A5FA' : C.muted,
+                      borderRadius: 6,
+                      padding: '4px 10px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4
+                    }}
+                  >
+                    {marketStore.isTokenLiquidityLocked(editModalToken.sym) ? <>🔒 Locked</> : '🔓 Unlocked'}
+                  </button>
+                </div>
+
                 <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
                   <Btn ghost onClick={() => setEditModalToken(null)}>Cancel</Btn>
                   <Btn><Save size={14} />Save Changes & Sync DEX 🚀</Btn>
@@ -2583,6 +3260,45 @@ function MemeCoinsPage({ search }: { search: string }) {
                 style={{ padding: '10px 18px', background: '#DC2626', border: 'none', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 900, cursor: 'pointer' }}
               >
                 Yes, Execute Rugpull 💀
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Coin Confirmation Modal */}
+      {deleteModalToken && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 16 }}>
+          <div style={{ background: '#181014', border: '2px solid #EF4444', borderRadius: 20, padding: 26, width: '100%', maxWidth: 440, textAlign: 'center', boxShadow: '0 20px 50px rgba(0,0,0,0.8)' }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(239,68,68,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', border: '1px solid rgba(239,68,68,0.35)' }}>
+              <Trash2 size={28} color="#EF4444" />
+            </div>
+            <div style={{ fontWeight: 900, fontSize: 19, color: '#fff', marginBottom: 8, letterSpacing: '-0.02em' }}>PERMANENTLY DELETE COIN</div>
+            <p style={{ fontSize: 13, color: '#FCA5A5', lineHeight: 1.55, marginBottom: 22 }}>
+              Are you sure you want to permanently delete <b>${deleteModalToken}</b>?
+              <br /><br />
+              This will purge the token, chart price history, pool data, and all trades from the database and DEX. <b>This action cannot be undone.</b>
+            </p>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+              <Btn ghost onClick={() => setDeleteModalToken(null)}>Cancel</Btn>
+              <button
+                onClick={() => handleDeleteToken(deleteModalToken)}
+                style={{
+                  padding: '11px 22px',
+                  background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)',
+                  border: 'none',
+                  borderRadius: 10,
+                  color: '#fff',
+                  fontSize: 13,
+                  fontWeight: 900,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  boxShadow: '0 4px 16px rgba(220,38,38,0.45)'
+                }}
+              >
+                <span>Yes, Permanently Delete 🗑️</span>
               </button>
             </div>
           </div>

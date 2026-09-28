@@ -980,3 +980,80 @@
   }
 }
 
+/* ── P2P Send Process Timeline (Dispatched -> Review/Settlement -> Received) ── */
+.p2p-process-rail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(13, 14, 24, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 16px 14px;
+  margin-bottom: 20px;
+  gap: 8px;
+}
+
+.p2p-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.p2p-step-dot {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.15);
+  border: 2px solid #10B981;
+  color: #10B981;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
+  flex-shrink: 0;
+}
+
+.p2p-step-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #F8FAFC;
+  white-space: nowrap;
+}
+
+.p2p-step-sub {
+  font-size: 10px;
+  color: var(--muted, #94A3B8);
+  margin-top: 2px;
+  line-height: 1.25;
+}
+
+.p2p-rail-line {
+  height: 2px;
+  flex: 1;
+  max-width: 45px;
+  background: linear-gradient(90deg, #10B981 0%, #8B5CF6 100%);
+  border-radius: 2px;
+  margin-top: -24px;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+}
+
+@media (max-width: 500px) {
+  .p2p-step-title {
+    font-size: 10.5px;
+  }
+  .p2p-step-sub {
+    font-size: 9px;
+  }
+  .p2p-step-dot {
+    width: 26px;
+    height: 26px;
+  }
+  .p2p-rail-line {
+    max-width: 24px;
+  }
+}
+

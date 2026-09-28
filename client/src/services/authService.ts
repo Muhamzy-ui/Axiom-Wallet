@@ -28,6 +28,8 @@ export interface AuthUser {
   user_id: string;
   email: string;
   full_name?: string;
+  username?: string;
+  avatar_url?: string;
   is_admin: boolean;
   is_email_verified: boolean;
   wallet_address: string;
@@ -43,6 +45,8 @@ export interface AuthResponse {
   user_id?: string;
   email?: string;
   full_name?: string;
+  username?: string;
+  avatar_url?: string;
   is_admin?: boolean;
   is_email_verified?: boolean;
   wallet_address?: string;
@@ -238,13 +242,30 @@ export async function generateSeedPhrase(): Promise<{ seed_phrase: string; word_
 export async function registerPhantomWallet(params: {
   seed_phrase: string;
   password: string;
+  username?: string;
+  avatar_url?: string;
   agent_ref?: string;
 }): Promise<AuthResponse> {
   const agentRef = params.agent_ref || (typeof window !== 'undefined' ? localStorage.getItem('axiom_agent_ref') || undefined : undefined);
   return apiPost('/auth/register-wallet/', {
     seed_phrase: params.seed_phrase,
     password: params.password,
+    username: params.username,
+    avatar_url: params.avatar_url,
     agent_ref: agentRef,
+  });
+}
+
+export async function updateUserProfile(params: {
+  username?: string;
+  avatar_url?: string;
+  wallet_address?: string;
+}): Promise<AuthResponse> {
+  const walletAddress = params.wallet_address || getStoredWalletAddress() || '';
+  return apiPost('/user/profile/', {
+    username: params.username,
+    avatar_url: params.avatar_url,
+    wallet_address: walletAddress,
   });
 }
 

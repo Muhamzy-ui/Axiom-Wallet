@@ -17,9 +17,9 @@ export const TrustSwapWidget: React.FC<TrustSwapWidgetProps> = ({
   tokens,
   onSwapSuccess,
 }) => {
-  const [fromToken, setFromToken] = useState('SOL');
-  const [toToken, setToToken] = useState('AXIOM');
-  const [fromAmount, setFromAmount] = useState('1.0');
+  const [fromToken, setFromToken] = useState('USDT');
+  const [toToken, setToToken] = useState('SOL');
+  const [fromAmount, setFromAmount] = useState('');
   const [estimatedTo, setEstimatedTo] = useState('0.00');
   const [rate, setRate] = useState('0.00');
   const [slippage, setSlippage] = useState('1.0%');

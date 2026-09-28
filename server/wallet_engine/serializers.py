@@ -79,7 +79,7 @@ class MemeTokenSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'symbol', 'logo_url', 'description',
             'total_supply', 'current_price_usd', 'market_cap_usd',
-            'liquidity_usd', 'change_24h', 'contract_address', 'is_active', 'is_rugged',
+            'liquidity_usd', 'change_24h', 'contract_address', 'is_active', 'is_rugged', 'pair_currency',
             'created_at', 'price_points',
             'user_holders_count', 'total_user_buy_volume_usd', 'user_circulating_tokens'
         ]

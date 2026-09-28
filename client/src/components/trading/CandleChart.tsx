@@ -63,11 +63,40 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   // OHLCV inspection state for header readout
   const [readout, setReadout] = useState<OHLCVState | null>(null);
 
+  // Live pulsing dot tracking at the tip of the line graph
+  const [liveDot, setLiveDot] = useState<{ x: number; y: number; isUp: boolean } | null>(null);
+  const latestPointRef = useRef<{ time: UTCTimestamp; value: number; isUp: boolean } | null>(null);
+
+  const updateDotPos = useCallback(() => {
+    if (!chartRef.current || !areaSeriesRef.current || showCandle) {
+      setLiveDot(null);
+      return;
+    }
+    const pt = latestPointRef.current;
+    if (!pt) {
+      setLiveDot(null);
+      return;
+    }
+    try {
+      const x = chartRef.current.timeScale().timeToCoordinate(pt.time);
+      const y = areaSeriesRef.current.priceToCoordinate(pt.value);
+      const maxW = containerRef.current?.clientWidth || 9999;
+      if (x !== null && y !== null && x > 0 && y > 0 && x <= maxW) {
+        setLiveDot({ x, y, isUp: pt.isUp });
+      } else {
+        setLiveDot(null);
+      }
+    } catch {
+      setLiveDot(null);
+    }
+  }, [showCandle]);
+
   // Helper to format values cleanly according to active dispMode / currMode
   const formatVal = useCallback(
     (val: number) => {
       const isMcap = dispMode === 'Mcap';
       const isSol = currMode === 'SOL';
+      if (val <= 0) return isSol ? '0.00000 SOL' : '$0.00';
       if (isMcap) {
         if (val >= 1e9) return `$${(val / 1e9).toFixed(2)}B`;
         if (val >= 1e6) return `$${(val / 1e6).toFixed(1)}M`;
@@ -167,8 +196,14 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     candleSeries.setData(candleData);
     areaSeries.setData(lineData);
 
-    // Update Line Graph colors: Green if pumping, Red if going down (optimized for dark vs light)
-    const isUp = token.pos ?? (token.changeNum >= 0);
+    // Update Line Graph colors: Green if pumping, Red if going down (or rugged)
+    const isUp = !token.is_rugged && (token.changeNum > 0 || (token.pos && token.changeNum >= 0));
+
+    const lastItem = lineData[lineData.length - 1];
+    if (lastItem) {
+      latestPointRef.current = { time: lastItem.time, value: lastItem.value, isUp };
+      setTimeout(() => updateDotPos(), 25);
+    }
     const lineColor = isUp ? (isLight ? '#059669' : '#10B981') : (isLight ? '#DC2626' : '#EF4444');
     const topColor = isUp ? (isLight ? 'rgba(5, 150, 105, 0.25)' : 'rgba(16, 185, 129, 0.28)') : (isLight ? 'rgba(220, 38, 38, 0.22)' : 'rgba(239, 68, 68, 0.28)');
     const bottomColor = isUp ? 'rgba(16, 185, 129, 0.00)' : 'rgba(239, 68, 68, 0.00)';
@@ -182,6 +217,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     });
 
     const customFormatter = (val: number) => {
+      if (val <= 0) return isSol ? '0.00000 SOL' : '$0.00';
       if (isMcap) {
         if (val >= 1e9) return `$${(val / 1e9).toFixed(2)}B`;
         if (val >= 1e6) return `$${(val / 1e6).toFixed(1)}M`;
@@ -194,11 +230,21 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       return `$${val.toFixed(2)}`;
     };
 
+    const autoscaleInfo = (original: any) => {
+      const res = original();
+      if (res !== null && res.priceRange !== null) {
+        res.priceRange.minValue = Math.max(0, res.priceRange.minValue);
+        res.margins = { above: 0.15, below: 0.02 };
+      }
+      return res;
+    };
+
     candleSeries.applyOptions({
       priceFormat: {
         type: 'custom',
         formatter: customFormatter,
       },
+      autoscaleInfoProvider: autoscaleInfo,
     });
 
     areaSeries.applyOptions({
@@ -206,6 +252,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
         type: 'custom',
         formatter: customFormatter,
       },
+      autoscaleInfoProvider: autoscaleInfo,
     });
 
     // Display healthy readable candles with right breathing room and unrestricted historical scrolling
@@ -220,14 +267,14 @@ export const CandleChart: React.FC<CandleChartProps> = ({
 
     // Default readout to latest candle
     const lastRaw = sorted[sorted.length - 1];
-    const isPos = lastRaw.close >= lastRaw.open;
-    const diffPct = lastRaw.open > 0 ? ((lastRaw.close - lastRaw.open) / lastRaw.open) * 100 : 0;
+    const isPos = !token.is_rugged && (lastRaw.close >= lastRaw.open && (token.changeNum >= 0));
+    const diffPct = token.is_rugged ? -99.99 : (lastRaw.open > 0 ? ((lastRaw.close - lastRaw.open) / lastRaw.open) * 100 : 0);
     setReadout({
       open: formatVal(lastRaw.open * mult),
       high: formatVal(lastRaw.high * mult),
       low: formatVal(lastRaw.low * mult),
       close: formatVal(lastRaw.close * mult),
-      change: `${isPos ? '+' : ''}${diffPct.toFixed(2)}%`,
+      change: token.is_rugged ? '-99.99%' : `${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(2)}%`,
       isPositive: isPos,
     });
   }, [targetSym, timeframe, dispMode, currMode, isLight, formatVal]);
@@ -269,7 +316,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
         mouseWheel: true,
         pressedMouseMove: true,
         horzTouchDrag: true,
-        vertTouchDrag: true,
+        vertTouchDrag: false,
       },
       handleScale: {
         axisPressedMouseMove: true,
@@ -288,8 +335,8 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       rightPriceScale: {
         borderColor: isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)',
         scaleMargins: {
-          top: 0.22,
-          bottom: 0.22,
+          top: 0.20,
+          bottom: 0.05,
         },
         autoScale: true,
       },
@@ -313,9 +360,9 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     });
     candleSeriesRef.current = candleSeries;
 
-    // Area Series (Green when pumping, Red when going down)
+    // Area Series (Green when pumping, Red when going down or rugged)
     const initToken = marketStore.getToken(targetSym);
-    const isUpInit = initToken.pos ?? (initToken.changeNum >= 0);
+    const isUpInit = !initToken.is_rugged && (initToken.changeNum > 0 || (initToken.pos && initToken.changeNum >= 0));
     const lineColor = isUpInit ? (isLight ? '#059669' : '#10B981') : (isLight ? '#DC2626' : '#EF4444');
     const topColor = isUpInit ? (isLight ? 'rgba(5, 150, 105, 0.25)' : 'rgba(16, 185, 129, 0.28)') : (isLight ? 'rgba(220, 38, 38, 0.22)' : 'rgba(239, 68, 68, 0.28)');
     const bottomColor = isUpInit ? 'rgba(16, 185, 129, 0.00)' : 'rgba(239, 68, 68, 0.00)';
@@ -349,14 +396,14 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       if (candleSeriesRef.current && showCandle) {
         const cData = param.seriesData.get(candleSeriesRef.current) as CandlestickData<UTCTimestamp> | undefined;
         if (cData && 'open' in cData) {
-          const isPos = cData.close >= cData.open;
-          const diffPct = cData.open > 0 ? ((cData.close - cData.open) / cData.open) * 100 : 0;
+          const isPos = !initToken.is_rugged && (cData.close >= cData.open && (initToken.changeNum >= 0));
+          const diffPct = initToken.is_rugged ? -99.99 : (cData.open > 0 ? ((cData.close - cData.open) / cData.open) * 100 : 0);
           setReadout({
             open: formatVal(cData.open),
             high: formatVal(cData.high),
             low: formatVal(cData.low),
             close: formatVal(cData.close),
-            change: `${isPos ? '+' : ''}${diffPct.toFixed(2)}%`,
+            change: initToken.is_rugged ? '-99.99%' : `${isPos ? '+' : ''}${diffPct.toFixed(2)}%`,
             isPositive: isPos,
           });
           return;
@@ -371,11 +418,16 @@ export const CandleChart: React.FC<CandleChartProps> = ({
             high: '-',
             low: '-',
             close: formatVal(aData.value),
-            change: '',
+            change: initToken.is_rugged ? '-99.99%' : (initToken.change || ''),
             isPositive: isUpInit,
           });
         }
       }
+    });
+
+    // Subscribe to range changes to keep live price dot locked to the line tip
+    chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+      updateDotPos();
     });
 
     // Container responsiveness via ResizeObserver
@@ -385,6 +437,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       const { width } = entry.contentRect;
       if (width > 0) {
         chartRef.current.resize(width, effectiveHeight);
+        updateDotPos();
       }
     });
     ro.observe(container);
@@ -403,7 +456,8 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     if (!chartRef.current || !containerRef.current) return;
     const w = containerRef.current.clientWidth || (typeof window !== 'undefined' ? window.innerWidth : 400);
     chartRef.current.resize(w, effectiveHeight);
-  }, [effectiveHeight]);
+    updateDotPos();
+  }, [effectiveHeight, updateDotPos]);
 
   // Update timeScale options when timeframe changes
   useEffect(() => {
@@ -472,8 +526,8 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       const rawCandles = marketStore.getCandles(targetSym, timeframe);
       if (!rawCandles || rawCandles.length === 0) return;
 
-      // If full dataset count changed (e.g. real candles loaded), refresh whole series without losing scroll position
-      if (rawCandles.length !== candleCountRef.current) {
+      // Only re-apply full dataset if there is a major jump (e.g. initial fetch or API batch load of > 3 candles)
+      if (Math.abs(rawCandles.length - candleCountRef.current) > 3) {
         const chart = chartRef.current;
         const prevRange = chart ? chart.timeScale().getVisibleLogicalRange() : null;
         applyFullData();
@@ -528,8 +582,11 @@ export const CandleChart: React.FC<CandleChartProps> = ({
         value: cl,
       });
 
-      // Update Line Graph colors live: Green if pumping, Red if going down
-      const isUp = token.pos ?? (cl >= o);
+      // Update Line Graph colors live: Green if pumping, Red if going down (or rugged)
+      const isUp = !token.is_rugged && (token.changeNum > 0 || (token.pos && token.changeNum >= 0));
+
+      latestPointRef.current = { time: t, value: cl, isUp };
+      updateDotPos();
       const lineColor = isUp ? (isLight ? '#059669' : '#10B981') : (isLight ? '#DC2626' : '#EF4444');
       const topColor = isUp ? (isLight ? 'rgba(5, 150, 105, 0.25)' : 'rgba(16, 185, 129, 0.28)') : (isLight ? 'rgba(220, 38, 38, 0.22)' : 'rgba(239, 68, 68, 0.28)');
       const bottomColor = isUp ? 'rgba(16, 185, 129, 0.00)' : 'rgba(239, 68, 68, 0.00)';
@@ -543,14 +600,14 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       });
 
       // Update readout if user is not hovering with crosshair
-      const isPos = cl >= o;
-      const diffPct = o > 0 ? ((cl - o) / o) * 100 : 0;
+      const isPos = !token.is_rugged && (cl >= o && token.changeNum >= 0);
+      const diffPct = token.is_rugged ? -99.99 : (o > 0 ? ((cl - o) / o) * 100 : 0);
       setReadout({
         open: formatVal(o),
         high: formatVal(h),
         low: formatVal(l),
         close: formatVal(cl),
-        change: `${isPos ? '+' : ''}${diffPct.toFixed(2)}%`,
+        change: token.is_rugged ? '-99.99%' : `${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(2)}%`,
         isPositive: isPos,
       });
     };
@@ -736,7 +793,45 @@ export const CandleChart: React.FC<CandleChartProps> = ({
           minHeight: `${effectiveHeight}px`,
           position: 'relative',
         }}
-      />
+      >
+        {!showCandle && liveDot && (
+          <div
+            style={{
+              position: 'absolute',
+              left: `${liveDot.x}px`,
+              top: `${liveDot.y}px`,
+              transform: 'translate(-50%, -50%)',
+              pointerEvents: 'none',
+              zIndex: 15,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <span
+              style={{
+                position: 'absolute',
+                width: 18,
+                height: 18,
+                borderRadius: '50%',
+                background: liveDot.isUp ? 'rgba(16, 185, 129, 0.45)' : 'rgba(239, 68, 68, 0.45)',
+                animation: 'chartPulseRing 1.6s infinite ease-out',
+              }}
+            />
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: '50%',
+                background: liveDot.isUp ? '#10B981' : '#EF4444',
+                border: '1.5px solid #FFFFFF',
+                boxShadow: liveDot.isUp ? '0 0 8px #10B981, 0 0 3px #10B981' : '0 0 8px #EF4444, 0 0 3px #EF4444',
+                display: 'block',
+              }}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 };

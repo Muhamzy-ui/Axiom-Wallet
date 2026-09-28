@@ -289,7 +289,7 @@ export const JuniorAdminPortal: React.FC = () => {
                 <input
                   type={showPasscode ? 'text' : 'password'}
                   autoFocus
-                  placeholder="Enter assigned PIN (e.g. 123456)"
+                  placeholder="Enter assigned security PIN"
                   value={passcode}
                   onChange={(e) => setPasscode(e.target.value)}
                   style={{

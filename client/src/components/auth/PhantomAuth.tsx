@@ -3,18 +3,20 @@ import {
   ChevronLeft, ChevronRight, Eye, EyeOff, Copy, Check, ShieldAlert,
   Sparkles, KeyRound, ArrowRight, Loader2, CheckCircle2,
   Lock, Zap, Shield, TrendingUp, Activity, Sun, Moon, Wallet,
-  ShieldCheck, Cpu, Flame, Layers, ChevronDown
+  ShieldCheck, Cpu, Flame, Layers, ChevronDown, Camera, RefreshCw
 } from "lucide-react";
 import {
   generateSeedPhrase, registerPhantomWallet, unlockPhantomWallet,
   getStoredWalletAddress, setStoredWalletAddress, clearStoredWalletAddress,
   type AuthUser
 } from "../../services/authService";
+import { generatePhantomAvatar, PHANTOM_AVATAR_PRESETS } from "../../utils/avatar";
 import { useTheme } from "../../services/themeContext";
 import { copyToClipboard } from "../../services/clipboard";
 import { CountrySelectModal } from "../modals/CountrySelectModal";
 import { getCountryByCode, CountryInfo, syncDollarRateFromBackend } from "../../constants/countries";
 import { CountryFlag } from "../common/CountryFlag";
+import { AxiomLogo } from "../common/AxiomLogo";
 import "./PhantomAuth.css";
 
 type PhantomView =
@@ -108,7 +110,7 @@ function BrandingPanel({ view }: { view: PhantomView }) {
       {/* Brand Header */}
       <div className="phantom-brand-top-bar">
         <div className="phantom-brand-logo">
-          <div className="phantom-brand-logo-icon">A</div>
+          <AxiomLogo size={30} />
           <span className="phantom-brand-logo-text">AXIOM</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -282,8 +284,21 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(true);
+  const [username, setUsername] = useState(() => {
+    if (typeof localStorage !== "undefined") {
+      return localStorage.getItem("axiom_user_username") || "";
+    }
+    return "";
+  });
+  const [avatarUrl, setAvatarUrl] = useState(() => {
+    if (typeof localStorage !== "undefined") {
+      const saved = localStorage.getItem("axiom_user_avatar");
+      if (saved) return saved;
+    }
+    return generatePhantomAvatar(Math.random().toString(36).substring(2, 8));
+  });
   const [selectedCountry, setSelectedCountry] = useState<CountryInfo>(() => {
-    const saved = localStorage.getItem("axiom_user_country") || "NG";
+    const saved = localStorage.getItem("axiom_user_country") || "US";
     return getCountryByCode(saved);
   });
   const [isCountryModalOpen, setIsCountryModalOpen] = useState(false);
@@ -291,12 +306,12 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
   // Sync dollar exchange rate on mount and listen to admin updates
   useEffect(() => {
     syncDollarRateFromBackend().then(() => {
-      const saved = localStorage.getItem("axiom_user_country") || "NG";
+      const saved = localStorage.getItem("axiom_user_country") || "US";
       setSelectedCountry(getCountryByCode(saved));
     });
 
     const handleRateChange = () => {
-      const saved = localStorage.getItem("axiom_user_country") || "NG";
+      const saved = localStorage.getItem("axiom_user_country") || "US";
       setSelectedCountry(getCountryByCode(saved));
     };
 
@@ -373,6 +388,11 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
     e.preventDefault();
     setError(null);
 
+    const cleanUsername = username.trim();
+    if (!cleanUsername) {
+      setError("Please choose a trader username for your wallet & leaderboard.");
+      return;
+    }
     if (password.length < 8) {
       setError("Password must be at least 8 characters long.");
       return;
@@ -412,11 +432,21 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
       const resp = await registerPhantomWallet({
         seed_phrase: seedPhrase,
         password: password,
+        username: username.trim() || undefined,
+        avatar_url: avatarUrl || undefined,
         agent_ref: agentRef || undefined,
       });
 
       if (!resp.success || !resp.wallet_address) {
         throw new Error(resp.error || "Failed to create wallet");
+      }
+
+      const finalUsername = resp.username || username.trim() || `Axiom_${resp.wallet_address.slice(0, 5)}`;
+      const finalAvatar = resp.avatar_url || avatarUrl;
+
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("axiom_user_username", finalUsername);
+        localStorage.setItem("axiom_user_avatar", finalAvatar);
       }
 
       const user: AuthUser = {
@@ -425,7 +455,9 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
         wallet_address: resp.wallet_address,
         is_admin: !!resp.is_admin,
         is_email_verified: true,
-        full_name: resp.full_name || "Account 1",
+        full_name: resp.full_name || finalUsername,
+        username: finalUsername,
+        avatar_url: finalAvatar,
       };
 
       setStoredWalletAddress(resp.wallet_address);
@@ -523,13 +555,21 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
         throw new Error(resp.error || "Incorrect password.");
       }
 
+      const finalUsername = resp.username || (typeof localStorage !== "undefined" ? localStorage.getItem("axiom_user_username") : "") || `Axiom_${resp.wallet_address.slice(0, 5)}`;
+      const finalAvatar = resp.avatar_url || (typeof localStorage !== "undefined" ? localStorage.getItem("axiom_user_avatar") : "") || undefined;
+
+      if (resp.username && typeof localStorage !== "undefined") localStorage.setItem("axiom_user_username", resp.username);
+      if (resp.avatar_url && typeof localStorage !== "undefined") localStorage.setItem("axiom_user_avatar", resp.avatar_url);
+
       const user: AuthUser = {
         user_id: resp.user_id || "",
         email: resp.email || "",
         wallet_address: resp.wallet_address,
         is_admin: !!resp.is_admin,
         is_email_verified: true,
-        full_name: resp.full_name || "Account 1",
+        full_name: resp.full_name || finalUsername,
+        username: finalUsername,
+        avatar_url: finalAvatar,
       };
 
       setStoredWalletAddress(resp.wallet_address);
@@ -608,7 +648,7 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
               }}
             >
               <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={13} />
-              <span>1 USD ≈ {selectedCountry.currencySymbol}{selectedCountry.rateToUsd >= 100 ? selectedCountry.rateToUsd.toLocaleString() : selectedCountry.rateToUsd} {selectedCountry.currency}</span>
+              <span>{selectedCountry.name}</span>
               <ChevronDown size={11} color="#A78BFA" />
             </button>
             <div className="phantom-status-security">
@@ -714,7 +754,7 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
                     }}
                   >
                     <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={15} />
-                    <span>Rate: 1 USD ≈ {selectedCountry.currencySymbol}{selectedCountry.rateToUsd >= 100 ? selectedCountry.rateToUsd.toLocaleString() : selectedCountry.rateToUsd} {selectedCountry.currency}</span>
+                    <span>{selectedCountry.name}</span>
                     <ChevronDown size={12} color="#A78BFA" />
                   </button>
                 </div>
@@ -777,9 +817,9 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
           {view === "create-password" && (
             <form className="phantom-content" onSubmit={handleCreatePasswordSubmit}>
               <div>
-                <h2 className="phantom-title">Create a password</h2>
+                <h2 className="phantom-title">Create Wallet Profile</h2>
                 <p className="phantom-subtitle">
-                  You will use this password to unlock your wallet on this device.
+                  Choose your trader identity and secure your wallet with a master password.
                 </p>
 
                 {error && (
@@ -788,6 +828,32 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
                     <span>{error}</span>
                   </div>
                 )}
+
+                {/* ── Username Field (Only username in signup, rest in Profile page) ── */}
+                <div className="phantom-field">
+                  <label className="phantom-field-label">Username *</label>
+                  <div className="phantom-input-wrap">
+                    <input
+                      type="text"
+                      className="phantom-input"
+                      placeholder="Choose your username (e.g. SatoshiWhale)"
+                      value={username}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setUsername(val);
+                        if (val.trim()) {
+                          setAvatarUrl(generatePhantomAvatar(val.trim()));
+                        }
+                      }}
+                      maxLength={30}
+                      autoFocus
+                      required
+                    />
+                  </div>
+                  <p style={{ fontSize: 11, color: "var(--muted, #94A3B8)", margin: "4px 0 12px 0" }}>
+                    Your public trader identity for the Leaderboard. You can customize your avatar and profile photo later in your Profile page.
+                  </p>
+                </div>
 
                 <div className="phantom-field">
                   <label className="phantom-field-label">Password</label>
@@ -854,14 +920,9 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
                   >
                     <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={20} />
                     <span style={{ flex: 1, fontWeight: 600, color: "inherit" }}>{selectedCountry.name}</span>
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
-                      <span style={{ fontSize: 11, color: "var(--muted, #94A3B8)", fontWeight: 700 }}>
-                        {selectedCountry.currency}
-                      </span>
-                      <span style={{ fontSize: 10, color: "#A78BFA", fontWeight: 600 }}>
-                        1 USD = {selectedCountry.currencySymbol}{selectedCountry.rateToUsd >= 100 ? selectedCountry.rateToUsd.toLocaleString() : selectedCountry.rateToUsd}
-                      </span>
-                    </div>
+                    <span style={{ fontSize: 11, color: "var(--muted, #94A3B8)", fontWeight: 700 }}>
+                      {selectedCountry.currency}
+                    </span>
                     <ChevronDown size={15} color="#94A3B8" />
                   </button>
                 </div>
@@ -878,7 +939,7 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
                 <button
                   type="submit"
                   className="phantom-btn-primary"
-                  disabled={loading || password.length < 8 || password !== confirmPassword || !agreeTerms}
+                  disabled={loading || !username.trim() || password.length < 8 || password !== confirmPassword || !agreeTerms}
                 >
                   {loading ? (
                     <div className="phantom-btn-inner" style={{ width: "100%", justifyContent: "center" }}>
@@ -1228,7 +1289,7 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
                     }}
                   >
                     <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={14} />
-                    <span>Rate: 1 USD ≈ {selectedCountry.currencySymbol}{selectedCountry.rateToUsd >= 100 ? selectedCountry.rateToUsd.toLocaleString() : selectedCountry.rateToUsd} {selectedCountry.currency}</span>
+                    <span>{selectedCountry.name}</span>
                     <ChevronDown size={11} color="#A78BFA" />
                   </button>
                 </div>
@@ -1321,7 +1382,8 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
           setIsCountryModalOpen(false);
         }}
         selectedCode={selectedCountry.code}
-        title="Select Country & Currency"
+        title="Select Your Country"
+        hideRates={true}
       />
     </div>
   );

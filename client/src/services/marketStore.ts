@@ -33,11 +33,13 @@ export interface MarketToken {
   traders: number;
   buyers: number;
   sellers: number;
+  pair_currency?: string;
   is_rugged?: boolean;
   network?: string;
   poolAddress?: string;
   contractAddress?: string;
   imageUrl?: string;
+  bannerUrl?: string;
   isMajor?: boolean;
   isStablecoin?: boolean;
   sparkline?: number[];
@@ -49,6 +51,7 @@ export interface MarketToken {
   total_user_buy_volume_usd?: number;
   user_circulating_tokens?: number;
   is_verified?: boolean;
+  is_liquidity_locked?: boolean;
 }
 
 export function generateSparkline(p: number, isUp: boolean): number[] {
@@ -117,7 +120,7 @@ export interface UserOrder {
   price: number;
   timestamp: number;
   dateStr: string;
-  orderType?: "Market" | "Limit" | "TP/SL";
+  orderType?: "Market" | "Limit" | "TP/SL" | "P2P Transfer";
   triggerNote?: string;
 }
 
@@ -549,8 +552,38 @@ const TRADER_ROSTER = [
 function generateInitialTrades(token: MarketToken): LiveTrade[] {
   const trades: LiveTrade[] = [];
   const now = Date.now();
+  const p = Math.max(0.00000001, token.numericPrice);
+
+  if (token.is_rugged) {
+    // Rugged tokens: dead market, only sparse historical panic sell dust from hours ago
+    const ruggedHistory = [
+      { tStr: "48m ago", ms: 48 * 60 * 1000, usd: 0.08 },
+      { tStr: "1h 15m ago", ms: 75 * 60 * 1000, usd: 0.03 },
+      { tStr: "2h 40m ago", ms: 160 * 60 * 1000, usd: 0.12 },
+      { tStr: "5h ago", ms: 300 * 60 * 1000, usd: 0.05 },
+    ];
+    ruggedHistory.forEach((rh, i) => {
+      const roster = TRADER_ROSTER[(i + 4) % TRADER_ROSTER.length];
+      const tokenAmt = Math.round(rh.usd / 0.00000001);
+      trades.push({
+        id: `trade-rugged-${now - rh.ms}`,
+        sym: token.sym,
+        date: rh.tStr,
+        timestamp: now - rh.ms,
+        type: "Sell",
+        usd: rh.usd,
+        tokenAmt,
+        solAmt: Number((rh.usd / 179.84).toFixed(6)),
+        price: 0.00000001,
+        trader: roster.addr,
+        traderEmoji: "📉",
+        txHash: Math.random().toString(36).substring(2, 10),
+      });
+    });
+    return trades;
+  }
+
   const times = ["30s ago", "1m ago", "2m ago", "2m ago", "2m ago", "2m ago", "3m ago", "4m ago", "5m ago", "7m ago"];
-  const p = token.numericPrice;
 
   times.forEach((tStr, i) => {
     const isBuy = i % 3 !== 0;
@@ -603,14 +636,17 @@ class MarketStore {
   private channel: BroadcastChannel | null = null;
   private momentums: Record<string, number> = {};
   private priceAnchors: Record<string, number> = {};
+  private marketCycles: Record<string, { baselinePrice: number; phase: "impulse" | "pullback" | "consolidation"; phaseTicksLeft: number; totalCycleGains: number }> = {};
 
   constructor() {
     this.initVerifiedTokens();
+    this.initLiquidityLockedTokens();
     this.tokens.forEach(t => {
       this.trades[t.sym] = generateInitialTrades(t);
       this.priceAnchors[t.sym] = t.numericPrice;
       this.momentums[t.sym] = 0;
       t.is_verified = this.isTokenVerified(t.sym);
+      t.is_liquidity_locked = this.isTokenLiquidityLocked(t.sym);
     });
     this.initSync();
     this.syncBackendTokens();
@@ -686,6 +722,65 @@ class MarketStore {
     return { ...this.verifiedTokens };
   }
 
+  private liquidityLockedTokens: Record<string, boolean> = {};
+
+  private initLiquidityLockedTokens() {
+    const DEFAULT_LOCKED: Record<string, boolean> = {
+      BTC: true,
+      ETH: true,
+      SOL: true,
+      BNB: true,
+      XRP: true,
+      DOGE: true,
+      ADA: true,
+      AVAX: true,
+      SUI: true,
+      USDT: true,
+      USDC: true,
+    };
+    if (typeof localStorage !== "undefined") {
+      try {
+        const raw = localStorage.getItem("axiom_admin_liquidity_locked_tokens");
+        if (raw) {
+          this.liquidityLockedTokens = { ...DEFAULT_LOCKED, ...JSON.parse(raw) };
+          return;
+        }
+      } catch (e) {
+        console.warn("Failed to parse locked tokens from localStorage:", e);
+      }
+    }
+    this.liquidityLockedTokens = { ...DEFAULT_LOCKED };
+  }
+
+  isTokenLiquidityLocked(sym: string): boolean {
+    if (!sym) return false;
+    const s = sym.toUpperCase();
+    const tok = this.tokens.find(t => t.sym.toUpperCase() === s);
+    if (tok && tok.is_rugged) return false;
+    if (this.liquidityLockedTokens[s] !== undefined) return this.liquidityLockedTokens[s];
+    return true; // default true for standard healthy coins
+  }
+
+  setTokenLiquidityLocked(sym: string, locked: boolean) {
+    if (!sym) return;
+    const s = sym.toUpperCase();
+    this.liquidityLockedTokens[s] = locked;
+    const tok = this.tokens.find(t => t.sym.toUpperCase() === s);
+    if (tok) tok.is_liquidity_locked = locked;
+    if (typeof localStorage !== "undefined") {
+      try {
+        localStorage.setItem("axiom_admin_liquidity_locked_tokens", JSON.stringify(this.liquidityLockedTokens));
+      } catch (e) {
+        console.warn("Failed to persist locked tokens:", e);
+      }
+    }
+    this.notify();
+  }
+
+  getAllLiquidityLockedTokens(): Record<string, boolean> {
+    return { ...this.liquidityLockedTokens };
+  }
+
   // Guarantee 9 Majors (BTC, ETH, SOL, BNB, XRP, DOGE, ADA, AVAX, SUI) stay pinned at the top in order, others sorted descending by 24h volume
   sortTokensList() {
     const majorOrder: Record<string, number> = {
@@ -723,6 +818,7 @@ class MarketStore {
 
       let hasUpdates = false;
       const formatShort = (n: number) => {
+        if (n >= 1e12) return `$${Math.min(999.9, n / 1e12).toFixed(2)}T`;
         if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
         if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
         if (n >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
@@ -735,15 +831,20 @@ class MarketStore {
         // Never allow backend to override genuine major cryptos (SOL, BTC, etc.)
         if (this.isMajorToken(sym)) return;
 
-        const numPrice = parseFloat(bt.current_price_usd) || 0.001;
+        const rawP = parseFloat(bt.current_price_usd) || 0;
+        const isRugged = !!bt.is_rugged || (rawP > 0 && rawP <= 0.00000001) || parseFloat(bt.liquidity_usd) === 0;
+        const numPrice = isRugged ? 0.00000001 : (rawP || 0.001);
         const numSupply = parseFloat(bt.total_supply) || 1000000000;
-        const numCap = parseFloat(bt.market_cap_usd) || (numPrice * numSupply);
-        const numLiq = parseFloat(bt.liquidity_usd) || 50000;
-        const numChange = parseFloat(bt.change_24h) || 0;
+        const numCap = isRugged ? 10.0 : (parseFloat(bt.market_cap_usd) || (numPrice * numSupply));
+        const numLiq = isRugged ? 0.0 : (parseFloat(bt.liquidity_usd) || 50000);
+        let numChange = isRugged ? -99.99 : (parseFloat(bt.change_24h) || 0);
+        if (numChange > 99999) numChange = 99999;
+        if (numChange < -99.99) numChange = -99.99;
         const contractAddr = (bt.contract_address || "").trim();
+        const pairCurrency = (bt.pair_currency || 'SOL').toUpperCase().trim();
 
         const formattedPrice = numPrice < 0.001 ? `$${numPrice.toFixed(8)}` : numPrice < 1 ? `$${numPrice.toFixed(4)}` : `$${numPrice.toFixed(2)}`;
-        const changeStr = numChange >= 0 ? `+${numChange.toFixed(2)}%` : `${numChange.toFixed(2)}%`;
+        const changeStr = isRugged ? "-99.99%" : (numChange >= 0 ? `+${numChange.toFixed(2)}%` : `${numChange.toFixed(2)}%`);
 
         const idx = this.tokens.findIndex(t => t.sym === sym);
         if (idx >= 0) {
@@ -754,6 +855,7 @@ class MarketStore {
           const updated: MarketToken = {
             ...current,
             name: bt.name || current.name,
+            pair_currency: pairCurrency || current.pair_currency || 'SOL',
             contractAddress: contractAddr || current.contractAddress,
             poolAddress: contractAddr || current.poolAddress,
             imageUrl: bt.logo_url || current.imageUrl,
@@ -766,9 +868,9 @@ class MarketStore {
             supply: numSupply,
             change: changeStr,
             changeNum: numChange,
-            pos: numChange >= 0,
-            is_rugged: bt.is_rugged !== undefined ? bt.is_rugged : current.is_rugged,
-            sparkline: current.sparkline && current.sparkline.length > 1 ? current.sparkline : generateSparkline(effectivePrice, numChange >= 0),
+            pos: !isRugged && numChange >= 0,
+            is_rugged: isRugged,
+            sparkline: current.sparkline && current.sparkline.length > 1 ? current.sparkline : generateSparkline(effectivePrice, !isRugged && numChange >= 0),
             user_holders_count: bt.user_holders_count || 0,
             total_user_buy_volume_usd: bt.total_user_buy_volume_usd || 0,
             user_circulating_tokens: bt.user_circulating_tokens || 0,
@@ -806,6 +908,7 @@ class MarketStore {
           const newToken: MarketToken = {
             sym,
             name: bt.name || sym,
+            pair_currency: pairCurrency || 'SOL',
             price: formattedPrice,
             numericPrice: numPrice,
             solPrice: `${(numPrice / 179.84).toFixed(6)} SOL`,
@@ -814,7 +917,8 @@ class MarketStore {
             cap: formatShort(numCap),
             fdv: formatShort(numCap),
             liq: formatShort(numLiq),
-            pos: numChange >= 0,
+            pos: !isRugged && numChange >= 0,
+            is_rugged: isRugged,
             supply: numSupply,
             m5: { val: "0%", up: true, zero: true },
             h1: { val: "0%", up: true, zero: true },
@@ -823,9 +927,9 @@ class MarketStore {
             txns: 1,
             buys: 1,
             sells: 0,
-            vol: Number((numLiq / 1e6).toFixed(2)),
+            vol: Number(((numLiq * 1.8) / 1e6).toFixed(2)),
             buyVol: Number((numLiq / 1e6).toFixed(2)),
-            sellVol: 0,
+            sellVol: Number(((numLiq * 0.8) / 1e6).toFixed(2)),
             traders: 1,
             buyers: 1,
             sellers: 0,
@@ -838,7 +942,7 @@ class MarketStore {
             isMajor: false,
             isMarketMakerActive: true,
             customPrice: true,
-            sparkline: generateSparkline(numPrice, numChange >= 0),
+            sparkline: generateSparkline(numPrice, !isRugged && numChange >= 0),
             user_holders_count: bt.user_holders_count || 0,
             total_user_buy_volume_usd: bt.total_user_buy_volume_usd || 0,
             user_circulating_tokens: bt.user_circulating_tokens || 0,
@@ -997,7 +1101,7 @@ class MarketStore {
   currentUserWallet: string = typeof window !== "undefined" && window.localStorage ? (window.localStorage.getItem("axiom_wallet_address") || "") : "";
 
   async setUser(user: { user_id?: string; id?: string; email?: string; wallet_address?: string } | null) {
-    const uid = user ? (user.user_id || user.id || user.email || "") : "";
+    const uid = user ? (user.user_id || user.id || user.email || user.wallet_address || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("axiom_wallet_address") : "") || "axiom_user") : "";
     const wallet = user?.wallet_address || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("axiom_wallet_address") || "" : "");
 
     this.currentUserId = uid;
@@ -1018,8 +1122,6 @@ class MarketStore {
         BTC: { bal: 0.00, usdValue: 0.00, name: "Bitcoin", totalInvested: 0.00, avgBuyPrice: 77724.00 },
         ETH: { bal: 0.00, usdValue: 0.00, name: "Ethereum", totalInvested: 0.00, avgBuyPrice: 2650.00 },
       };
-      this.userOrders = [];
-      this.pendingOrders = [];
       this.notify();
       return;
     }
@@ -1041,8 +1143,40 @@ class MarketStore {
         BTC: { bal: 0.00, usdValue: 0.00, name: "Bitcoin", totalInvested: 0.00, avgBuyPrice: 77724.00 },
         ETH: { bal: 0.00, usdValue: 0.00, name: "Ethereum", totalInvested: 0.00, avgBuyPrice: 2650.00 },
       };
-      this.userOrders = [];
-      this.pendingOrders = [];
+      this.savePersistedStateNow();
+    }
+
+    // Always restore user orders and trade activity history, never delete or reset
+    if (typeof window !== "undefined" && window.localStorage) {
+      const userOrdersKey = `axiom_user_orders_v5_${uid}`;
+      const savedOrders = window.localStorage.getItem(userOrdersKey) || window.localStorage.getItem("axiom_user_orders_v5");
+      if (savedOrders) {
+        try {
+          const parsed = JSON.parse(savedOrders);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const existingIds = new Set(this.userOrders.map(o => o.id));
+            const merged = [...this.userOrders];
+            parsed.forEach((o: any) => {
+              if (!existingIds.has(o.id)) {
+                merged.push(o);
+                existingIds.add(o.id);
+              }
+            });
+            this.userOrders = merged;
+          }
+        } catch { }
+      }
+
+      const userPendingKey = `axiom_pending_orders_v5_${uid}`;
+      const savedPending = window.localStorage.getItem(userPendingKey) || window.localStorage.getItem("axiom_pending_orders_v5");
+      if (savedPending) {
+        try {
+          const parsed = JSON.parse(savedPending);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            this.pendingOrders = parsed;
+          }
+        } catch { }
+      }
       this.savePersistedStateNow();
     }
 
@@ -1092,8 +1226,8 @@ class MarketStore {
                 buys: 1,
                 sells: 0,
                 vol: 10,
-                buyVol: 10,
-                sellVol: 0,
+                buyVol: 5.8,
+                sellVol: 4.2,
                 traders: 1,
                 buyers: 1,
                 sellers: 0,
@@ -1145,6 +1279,8 @@ class MarketStore {
     this.saveTimeout = setTimeout(() => {
       try {
         window.localStorage.setItem("axiom_tokens_v3", JSON.stringify(this.tokens));
+        window.localStorage.setItem("axiom_user_orders_v5", JSON.stringify(this.userOrders));
+        window.localStorage.setItem("axiom_pending_orders_v5", JSON.stringify(this.pendingOrders));
         if (this.currentUserId) {
           window.localStorage.setItem(`axiom_user_balances_v16_${this.currentUserId}`, JSON.stringify(this.balances));
           window.localStorage.setItem(`axiom_user_orders_v5_${this.currentUserId}`, JSON.stringify(this.userOrders));
@@ -1161,6 +1297,8 @@ class MarketStore {
     if (this.saveTimeout) clearTimeout(this.saveTimeout);
     try {
       window.localStorage.setItem("axiom_tokens_v3", JSON.stringify(this.tokens));
+      window.localStorage.setItem("axiom_user_orders_v5", JSON.stringify(this.userOrders));
+      window.localStorage.setItem("axiom_pending_orders_v5", JSON.stringify(this.pendingOrders));
       if (this.currentUserId) {
         window.localStorage.setItem(`axiom_user_balances_v16_${this.currentUserId}`, JSON.stringify(this.balances));
         window.localStorage.setItem(`axiom_user_orders_v5_${this.currentUserId}`, JSON.stringify(this.userOrders));
@@ -1225,6 +1363,24 @@ class MarketStore {
           });
         }
       }
+
+      // Self-healing: Guarantee any meme token that has been rugged or dropped to 0.00000001 always shows -99.99%
+      this.tokens.forEach(t => {
+        if (!this.isMajorToken(t.sym)) {
+          if (t.is_rugged || t.numericPrice <= 0.00000001 || t.price === "$0.00000001" || t.changeNum <= -99) {
+            t.is_rugged = true;
+            t.numericPrice = 0.00000001;
+            t.price = "$0.00000001";
+            t.solPrice = "0.00000000 SOL";
+            t.change = "-99.99%";
+            t.changeNum = -99.99;
+            t.pos = false;
+            t.liq = "$0.00";
+            t.cap = "$10.00";
+            t.fdv = "$10.00";
+          }
+        }
+      });
 
       // Guarantee all initial tokens are present and valid
       INITIAL_TOKENS.forEach(it => {
@@ -1291,8 +1447,6 @@ class MarketStore {
           USDC: { bal: 0.00, usdValue: 0.00, name: "USD Coin", totalInvested: 0.00, avgBuyPrice: 1.0 },
           SOL: { bal: 0.00, usdValue: 0.00, name: "Solana", totalInvested: 0.00, avgBuyPrice: 179.84 },
         };
-        this.userOrders = [];
-        this.pendingOrders = [];
         this.savePersistedState();
       } else {
         // Clean legacy un-scoped balance keys
@@ -1302,7 +1456,8 @@ class MarketStore {
           window.localStorage.removeItem("axiom_pending_orders_v4");
         } catch { }
 
-        const userKey = this.currentUserId ? `axiom_user_balances_v12_${this.currentUserId}` : null;
+        const uid = this.currentUserId || (typeof window !== "undefined" && window.localStorage ? (window.localStorage.getItem("axiom_user_id") || window.localStorage.getItem("axiom_wallet_address") || "") : "");
+        const userKey = uid ? `axiom_user_balances_v16_${uid}` : null;
         const savedBalances = userKey ? window.localStorage.getItem(userKey) : null;
         if (savedBalances) {
           try {
@@ -1319,20 +1474,35 @@ class MarketStore {
             SOL: { bal: 0.00, usdValue: 0.00, name: "Solana", totalInvested: 0.00, avgBuyPrice: 179.84 },
           };
         }
-        const userOrdersKey = this.currentUserId ? `axiom_user_orders_v5_${this.currentUserId}` : null;
-        const savedOrders = userOrdersKey ? window.localStorage.getItem(userOrdersKey) : null;
+
+        // Always restore user orders from user-scoped key and fallback global key
+        const userOrdersKey = uid ? `axiom_user_orders_v5_${uid}` : null;
+        const savedOrders = (userOrdersKey ? window.localStorage.getItem(userOrdersKey) : null) || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("axiom_user_orders_v5") : null);
         if (savedOrders) {
           try {
             const parsed = JSON.parse(savedOrders);
-            if (Array.isArray(parsed)) this.userOrders = parsed;
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const existingIds = new Set(this.userOrders.map((o: any) => o.id));
+              const merged = [...this.userOrders];
+              parsed.forEach((o: any) => {
+                if (!existingIds.has(o.id)) {
+                  merged.push(o);
+                  existingIds.add(o.id);
+                }
+              });
+              this.userOrders = merged;
+            }
           } catch { }
         }
-        const userPendingKey = this.currentUserId ? `axiom_pending_orders_v5_${this.currentUserId}` : null;
-        const savedPending = userPendingKey ? window.localStorage.getItem(userPendingKey) : null;
+
+        const userPendingKey = uid ? `axiom_pending_orders_v5_${uid}` : null;
+        const savedPending = (userPendingKey ? window.localStorage.getItem(userPendingKey) : null) || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("axiom_pending_orders_v5") : null);
         if (savedPending) {
           try {
             const parsed = JSON.parse(savedPending);
-            if (Array.isArray(parsed)) this.pendingOrders = parsed;
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              this.pendingOrders = parsed;
+            }
           } catch { }
         }
       }
@@ -1392,6 +1562,11 @@ class MarketStore {
       case "RUGPULL_TOKEN": {
         const { sym } = msg.payload;
         this.rugpullToken(sym, true);
+        break;
+      }
+      case "DELETE_TOKEN": {
+        const { sym } = msg.payload;
+        this.deleteToken(sym, true);
         break;
       }
       case "CREATE_TOKEN": {
@@ -1528,7 +1703,13 @@ class MarketStore {
       const ts = (t.sym || "").toUpperCase().trim().replace(/^\$/, "");
       return ts === s || (t.sym || "").toUpperCase().trim() === raw;
     });
-    if (found) return found;
+    if (found) {
+      if (!found.sellVol || found.sellVol <= 0.0001) {
+        found.sellVol = Number((Math.max(0.018, (found.buyVol || 0.05) * 0.74)).toFixed(3));
+        found.vol = Number(((found.buyVol || 0.05) + found.sellVol).toFixed(2));
+      }
+      return found;
+    }
 
     // Return a clean synthetic MarketToken for sym instead of misleading fallback to Bitcoin
     const fallbackPrice = (this.balances[s]?.avgBuyPrice || this.balances[raw]?.avgBuyPrice || 0);
@@ -1552,9 +1733,9 @@ class MarketStore {
       txns: 0,
       buys: 0,
       sells: 0,
-      vol: 0,
-      buyVol: 0,
-      sellVol: 0,
+      vol: 0.088,
+      buyVol: 0.05,
+      sellVol: 0.038,
       traders: 0,
       buyers: 0,
       sellers: 0,
@@ -1600,23 +1781,15 @@ class MarketStore {
   } {
     const totalValue = this.getPortfolioValue();
 
-    // Calculate live 24h baseline derived strictly from user's actual owned holdings
-    let calculatedBaseline = 0;
     let totalInvestedCrypto = 0;
     let totalCurrentCrypto = 0;
 
     Object.entries(this.balances).forEach(([sym, b]) => {
       if (b.bal > 0.000001) {
-        if (sym === "USDC" || sym === "USDT") {
-          calculatedBaseline += b.bal; // Stablecoins 24h ago were $1.00
-        } else {
+        if (sym !== "USDC" && sym !== "USDT") {
           const token = this.getToken(sym);
           const p = token ? token.numericPrice : (sym === "SOL" ? 179.84 : 0);
           if (p > 0) {
-            const chgPct = token?.changeNum || 6.84;
-            const p24h = p / (1 + chgPct / 100);
-            calculatedBaseline += b.bal * p24h;
-
             const invested = b.totalInvested || (b.bal * (b.avgBuyPrice || p));
             totalInvestedCrypto += invested;
             totalCurrentCrypto += b.bal * p;
@@ -1625,36 +1798,36 @@ class MarketStore {
       }
     });
 
-    if (calculatedBaseline <= 0) {
-      calculatedBaseline = totalValue;
-    }
+    let diffUsd = 0;
+    let diffPct = 0;
 
-    let diffUsd = totalValue - calculatedBaseline;
-    let diffPct = calculatedBaseline > 0 ? (diffUsd / calculatedBaseline) * 100 : 0;
-
-    // If user has bought crypto holdings, prioritize their actual trade profit & holding performance
     if (totalInvestedCrypto > 0) {
+      // User has active crypto positions: their 24h PnL is their real trade profit/loss!
       const holdingPnl = totalCurrentCrypto - totalInvestedCrypto;
-      if (Math.abs(holdingPnl) > 0.001) {
-        diffUsd = holdingPnl;
-        diffPct = (diffUsd / totalInvestedCrypto) * 100;
+      diffUsd = Number(holdingPnl.toFixed(2));
+      // Tally directly against invested capital so e.g. +10% profit on position shows as +10.00%!
+      diffPct = totalInvestedCrypto > 0 ? Number(((holdingPnl / totalInvestedCrypto) * 100).toFixed(2)) : 0;
+      if (Math.abs(diffUsd) < 0.005) {
+        diffUsd = 0;
+        diffPct = 0;
       }
-    } else if (Math.abs(diffUsd) < 0.001 && totalValue > 0) {
-      // If user holds cash balance ($20), reflect today's active Solana/crypto market momentum (+6.23%)
-      // so the green percentage is never frozen dead at +$0.00 · 0.00%!
+    } else if (totalValue > 0) {
+      // User only holds cash/stablecoins: reflect gentle positive market momentum (+2.4%)
       const solToken = this.getToken("SOL");
       const btcToken = this.getToken("BTC");
-      const avgChg = ((solToken?.changeNum || 6.84) + (btcToken?.changeNum || 5.61)) / 2;
+      const avgChg = Math.max(0.5, ((solToken?.changeNum || 4.2) + (btcToken?.changeNum || 3.1)) / 2);
       diffPct = Number(avgChg.toFixed(2));
       diffUsd = Number(((totalValue * diffPct) / 100).toFixed(2));
     }
 
+    const baseline24h = Math.max(0, totalValue - diffUsd);
+
     return {
       totalValue,
-      baseline24h: calculatedBaseline,
+      baseline24h,
       diffUsd,
       diffPct,
-      isPositive: diffUsd >= 0,
+      isPositive: diffUsd >= -0.0049,
     };
   }
 
@@ -1693,6 +1866,88 @@ class MarketStore {
     };
   }
 
+  // Transfer funds directly to another Axiom user by UID (Instant, Zero Network Fee)
+  transferFundsToUid(sym: string, amount: number, recipientUid: string): { success: boolean; message: string; newBalance?: number } {
+    if (amount <= 0 || isNaN(amount)) {
+      return { success: false, message: "Enter a valid transfer amount" };
+    }
+    const cleanSym = sym.toUpperCase().trim();
+    const token = this.getToken(cleanSym);
+    const p = (cleanSym === "USDT" || cleanSym === "USDC")
+      ? 1.0
+      : token && token.numericPrice > 0
+        ? token.numericPrice
+        : 1.0;
+
+    const curBal = this.balances[cleanSym]?.bal || 0;
+    if (curBal < amount) {
+      return { success: false, message: `Insufficient ${cleanSym} balance! Available: ${curBal.toFixed(4)} ${cleanSym}` };
+    }
+
+    // Deduct from sender
+    this.balances[cleanSym].bal -= amount;
+    this.balances[cleanSym].usdValue = this.balances[cleanSym].bal * p;
+
+    // Record transfer in sender's activity
+    this.userOrders.unshift({
+      id: `tx-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      sym: cleanSym,
+      name: token?.name || cleanSym,
+      side: "Sell",
+      amountUsd: Number((amount * p).toFixed(2)),
+      tokenAmt: amount,
+      price: p,
+      timestamp: Date.now(),
+      dateStr: "just now",
+      orderType: "P2P Transfer",
+      triggerNote: `P2P Sent to UID ${recipientUid}: -${amount >= 1000 ? amount.toLocaleString() : amount.toFixed(4)} ${cleanSym}`,
+    });
+    if (this.userOrders.length > 50) this.userOrders = this.userOrders.slice(0, 50);
+
+    // If recipient is another user stored in local storage, credit their local balance & activity
+    try {
+      const recipientKey = `axiom_user_balances_v16_${recipientUid}`;
+      const rawRec = localStorage.getItem(recipientKey);
+      if (rawRec) {
+        const recBal = JSON.parse(rawRec);
+        if (!recBal[cleanSym]) {
+          recBal[cleanSym] = { bal: 0, usdValue: 0, name: cleanSym, totalInvested: 0, avgBuyPrice: p };
+        }
+        recBal[cleanSym].bal += amount;
+        recBal[cleanSym].usdValue = recBal[cleanSym].bal * p;
+        localStorage.setItem(recipientKey, JSON.stringify(recBal));
+      }
+
+      // Also record in recipient's recent activities if stored
+      const recipientOrdersKey = `axiom_user_orders_v16_${recipientUid}`;
+      const rawOrders = localStorage.getItem(recipientOrdersKey);
+      const recOrders = rawOrders ? JSON.parse(rawOrders) : [];
+      recOrders.unshift({
+        id: `rx-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        sym: cleanSym,
+        name: token?.name || cleanSym,
+        side: "Buy",
+        amountUsd: Number((amount * p).toFixed(2)),
+        tokenAmt: amount,
+        price: p,
+        timestamp: Date.now(),
+        dateStr: "just now",
+        orderType: "P2P Transfer",
+        triggerNote: `Received from Axiom Transfer: +${amount >= 1000 ? amount.toLocaleString() : amount.toFixed(4)} ${cleanSym}`,
+      });
+      localStorage.setItem(recipientOrdersKey, JSON.stringify(recOrders.slice(0, 50)));
+    } catch {}
+
+    this.savePersistedStateNow();
+    this.notify();
+
+    return {
+      success: true,
+      message: `Successfully sent ${amount >= 1000 ? amount.toLocaleString() : amount.toFixed(4)} ${cleanSym} to UID ${recipientUid}!`,
+      newBalance: this.balances[cleanSym].bal,
+    };
+  }
+
   // Deposit funds (Minimum: $5.00)
   depositFunds(sym: string, amount: number): { success: boolean; message: string } {
     if (amount <= 0 || isNaN(amount)) return { success: false, message: "Enter a valid deposit amount" };
@@ -1722,7 +1977,23 @@ class MarketStore {
     this.balances[sym].totalInvested = (this.balances[sym].totalInvested || 0) + usdVal;
     this.balances[sym].avgBuyPrice = p;
 
-    this.savePersistedState();
+    // Record in userOrders so fiat onramp & crypto purchases appear in trade activity
+    this.userOrders.unshift({
+      id: `dep-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      sym,
+      name: token?.name || sym,
+      side: "Buy",
+      amountUsd: Number(usdVal.toFixed(2)),
+      tokenAmt: amount,
+      price: p,
+      timestamp: Date.now(),
+      dateStr: "just now",
+      orderType: "Market",
+      triggerNote: `Onramp / Deposit: +${amount >= 1000 ? amount.toLocaleString(undefined, { maximumFractionDigits: 1 }) : amount.toFixed(4)} ${sym}`,
+    });
+    if (this.userOrders.length > 50) this.userOrders = this.userOrders.slice(0, 50);
+
+    this.savePersistedStateNow();
     this.notify();
     return {
       success: true,
@@ -1747,9 +2018,13 @@ class MarketStore {
     const p = token && token.numericPrice > 0 ? token.numericPrice : (cleanSym === "SOL" ? 179.84 : cleanSym === "USDC" || cleanSym === "USDT" ? 1 : (b?.avgBuyPrice || 0));
     const currentVal = bal * p;
     const invested = b?.totalInvested !== undefined && b?.totalInvested > 0 ? b.totalInvested : (bal * (b?.avgBuyPrice || p));
-    const pnlUsd = bal > 0.000001 ? currentVal - invested : 0;
-    const pnlPct = invested > 0 ? (pnlUsd / invested) * 100 : (bal > 0.000001 ? -99.99 : 0);
-    const activeTpSl = this.pendingOrders.find(o => o.sym.toUpperCase().replace(/^\$/, "") === cleanSym && o.type === "TP/SL");
+    let pnlUsd = bal > 0.000001 ? currentVal - invested : 0;
+    let pnlPct = invested > 0 ? (pnlUsd / invested) * 100 : (bal > 0.000001 ? -99.99 : 0);
+    if (Math.abs(pnlUsd) < 0.005) {
+      pnlUsd = 0;
+      pnlPct = 0;
+    }
+    const activeTpSl = bal > 0.000001 ? this.pendingOrders.find(o => o.sym.toUpperCase().replace(/^\$/, "") === cleanSym && o.type === "TP/SL") : undefined;
     const activeLimitOrders = this.pendingOrders.filter(o => o.sym.toUpperCase().replace(/^\$/, "") === cleanSym && o.type === "Limit");
     return {
       bal,
@@ -1769,8 +2044,16 @@ class MarketStore {
   private loadingCandles = new Set<string>();
 
   getTrades(sym: string): LiveTrade[] {
+    const token = this.getToken(sym);
+    if (token.is_rugged) {
+      const existing = this.trades[sym];
+      // If missing or legacy high-volume trades exist, regenerate sparse panic sells
+      if (!existing || existing.length === 0 || existing.some(t => t.type === "Buy" || t.usd > 1.0)) {
+        this.trades[sym] = generateInitialTrades(token);
+      }
+      return this.trades[sym];
+    }
     if (!this.trades[sym]) {
-      const token = this.getToken(sym);
       this.trades[sym] = generateInitialTrades(token);
     }
     return this.trades[sym];
@@ -1779,7 +2062,7 @@ class MarketStore {
   async loadRealTrades(sym: string) {
     if (this.loadingTrades.has(sym)) return;
     const token = this.getToken(sym);
-    if (!token || !token.network || !token.poolAddress) return;
+    if (!token || !token.network || !token.poolAddress || token.is_rugged) return;
 
     this.loadingTrades.add(sym);
     try {
@@ -1856,6 +2139,19 @@ class MarketStore {
 
   getCandles(sym: string, tf: string): Candle[] {
     if (!this.candleSeries[sym]) this.candleSeries[sym] = {};
+    const token = this.getToken(sym);
+    if (token.is_rugged) {
+      const existing = this.candleSeries[sym][tf];
+      // Automatically regenerate if missing or if legacy flat crosshair candles detected (open === close)
+      if (
+        !existing ||
+        existing.length === 0 ||
+        (existing.length > 5 && existing[0].open === existing[0].close && existing[1].open === existing[1].close)
+      ) {
+        this.candleSeries[sym][tf] = this.buildInitialCandles(sym, tf);
+      }
+      return this.candleSeries[sym][tf];
+    }
     if (!this.candleSeries[sym][tf]) {
       this.candleSeries[sym][tf] = this.buildInitialCandles(sym, tf);
     }
@@ -1907,6 +2203,104 @@ class MarketStore {
     const currentInterval = Math.floor(now / stepMs) * stepMs;
 
     const isMajor = this.isMajorToken(sym);
+
+    if (token.is_rugged) {
+      // Rugged token authentic chart:
+      // Phase 1 (first ~80% of candles): Authentic pre-rug market trading with organic waves, alternating green/red bodies, natural wicks
+      // Phase 2 (~4 candles): Dramatic red cascade selloff (whale dump, panic waterfall, liquidity pull)
+      // Phase 3 (last ~20% of candles): Clean, quiet flatline on the floor at $0.00000001
+      const preRugBase = Math.max(0.005, p * 50000);
+      const preRugCount = Math.max(20, Math.floor(N * 0.80));
+      const dumpCount = 4;
+
+      // Timeframe volatility multiplier for pre-rug trading
+      let volMult = 1.0;
+      if (tf === "1s") volMult = 0.25;
+      else if (tf === "1m") volMult = 0.70;
+      else if (tf === "5m") volMult = 1.15;
+      else if (tf === "15m") volMult = 1.65;
+      else if (tf === "1h") volMult = 2.40;
+      else volMult = 3.50;
+
+      // Multi-harmonic wave cycles for organic price movement
+      const w1 = (2 * Math.PI) / 24;
+      const w2 = (2 * Math.PI) / 10;
+      const w3 = (2 * Math.PI) / 58;
+
+      const amp1 = preRugBase * 0.007 * volMult;
+      const amp2 = preRugBase * 0.003 * volMult;
+      const amp3 = preRugBase * 0.010 * volMult;
+      const microVol = preRugBase * 0.0018 * volMult;
+
+      const noise = new Array(preRugCount).fill(0);
+      let accNoise = 0;
+      for (let k = 1; k < preRugCount; k++) {
+        accNoise = accNoise * 0.92 + (Math.random() - 0.5) * microVol;
+        noise[k] = accNoise;
+      }
+
+      const preRugCloses = new Array(preRugCount);
+      for (let i = 0; i < preRugCount; i++) {
+        const harmonic = amp1 * Math.sin(i * w1) + amp2 * Math.sin(i * w2) + amp3 * Math.sin(i * w3);
+        const slightPump = (i / preRugCount) * preRugBase * 0.04;
+        preRugCloses[i] = Math.max(preRugBase * 0.6, preRugBase + harmonic + slightPump + noise[i]);
+      }
+
+      // Build Phase 1 pre-rug candles with strict continuity and realistic alternating bodies/wicks
+      for (let i = 0; i < preRugCount; i++) {
+        const time = currentInterval - (N - 1 - i) * stepMs;
+        const close = preRugCloses[i];
+        const open = i === 0 ? close * (1 - (Math.random() - 0.5) * 0.002 * volMult) : preRugCloses[i - 1];
+
+        const bodyHigh = Math.max(open, close);
+        const bodyLow = Math.min(open, close);
+        const bodySize = bodyHigh - bodyLow;
+
+        const baseWick = Math.max(preRugBase * 0.0005 * volMult, bodySize * 0.35);
+        const upperWick = Math.random() * baseWick * (Math.random() > 0.82 ? 1.8 : 0.95);
+        const lowerWick = Math.random() * baseWick * (Math.random() > 0.82 ? 1.8 : 0.95);
+
+        const high = bodyHigh + upperWick;
+        const low = Math.max(preRugBase * 0.4, bodyLow - lowerWick);
+        const vol = 35 + Math.random() * 85;
+
+        candles.push({ open, high, low, close, vol, time });
+      }
+
+      // Phase 2: Catastrophic red dump waterfall (4 steep candles)
+      const lastPreRug = candles[candles.length - 1];
+      const dumpRatios = [0.45, 0.20, 0.04, 0.00000001 / preRugBase];
+
+      let prevClose = lastPreRug.close;
+      for (let d = 0; d < dumpCount; d++) {
+        const time = currentInterval - (N - 1 - (preRugCount + d)) * stepMs;
+        const open = prevClose;
+        const targetClose = d === dumpCount - 1 ? p : Math.max(p, preRugBase * dumpRatios[d]);
+        const close = targetClose;
+        const high = open * (d === 0 ? 1.01 : 1.002);
+        const low = Math.max(p, close * (d === dumpCount - 1 ? 1.0 : 0.92));
+        const vol = 8000 + d * 6000;
+
+        candles.push({ open, high, low, close, vol, time });
+        prevClose = close;
+      }
+
+      // Phase 3: Post-rug flatline zero on the floor at p ($0.00000001)
+      const remainingStart = preRugCount + dumpCount;
+      for (let i = remainingStart; i < N; i++) {
+        const time = currentInterval - (N - 1 - i) * stepMs;
+        candles.push({
+          open: p,
+          high: p,
+          low: p,
+          close: p,
+          vol: Math.random() < 0.08 ? 1 : 0,
+          time,
+        });
+      }
+
+      return candles;
+    }
 
     // Natural timeframe volatility tuning
     let volMult = 1.0;
@@ -2002,11 +2396,21 @@ class MarketStore {
     }
   }
 
+  getBasePriceUsd(pair: string): number {
+    const p = (pair || "SOL").toUpperCase();
+    if (p === "SOL") return this.getToken("SOL")?.numericPrice || 179.84;
+    if (p === "ETH") return this.getToken("ETH")?.numericPrice || 2749.95;
+    if (p === "BNB") return this.getToken("BNB")?.numericPrice || 796.00;
+    if (p === "BTC") return this.getToken("BTC")?.numericPrice || 85850.00;
+    if (p === "USDT" || p === "USDC" || p === "USD") return 1.0;
+    return 1.0;
+  }
+
   // ── Place User Order with Real Balance Deduction ──────────────────
   placeOrder(params: {
     sym: string;
     side: "Buy" | "Sell";
-    amount: number; // in quote currency (USDC) for Buy, or in token units for Sell
+    amount: number; // in quote/pair currency for Buy (e.g. SOL or USD), or in token units for Sell
   }): { success: boolean; message: string; tokensExchanged?: number; usdcExchanged?: number } {
     const { sym, side, amount } = params;
     const token = this.getToken(sym);
@@ -2016,46 +2420,65 @@ class MarketStore {
     }
 
     const p = token.numericPrice;
+    const pair = (token.pair_currency || "SOL").toUpperCase();
+    const isCash = pair === "USDT" || pair === "USDC" || pair === "USD";
+    const basePriceUsd = this.getBasePriceUsd(pair);
 
     if (side === "Buy") {
-      // User pays cash (USDT / USDC), receives Token
-      const availableUsdt = this.balances["USDT"]?.bal || 0;
-      const availableUsdc = this.balances["USDC"]?.bal || 0;
-      const totalCash = availableUsdt + availableUsdc;
-
       if (amount <= 0) return { success: false, message: "Enter an amount greater than 0" };
-      if (amount > totalCash) {
-        return { success: false, message: `Insufficient cash balance! Available: $${totalCash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (USDT: $${availableUsdt.toFixed(2)}, USDC: $${availableUsdc.toFixed(2)})` };
+
+      let usdAmount = 0;
+      let usedSym = pair;
+
+      if (isCash) {
+        const availableUsdt = this.balances["USDT"]?.bal || 0;
+        const availableUsdc = this.balances["USDC"]?.bal || 0;
+        const totalCash = availableUsdt + availableUsdc;
+
+        if (amount > totalCash) {
+          return { success: false, message: `Insufficient cash balance! Available: $${totalCash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (USDT: $${availableUsdt.toFixed(2)}, USDC: $${availableUsdc.toFixed(2)})` };
+        }
+        usdAmount = amount;
+        let remaining = amount;
+        if (this.balances["USDT"] && this.balances["USDT"].bal > 0) {
+          const take = Math.min(this.balances["USDT"].bal, remaining);
+          this.balances["USDT"].bal -= take;
+          this.balances["USDT"].usdValue = this.balances["USDT"].bal;
+          this.balances["USDT"].totalInvested = this.balances["USDT"].bal;
+          remaining -= take;
+          usedSym = "USDT";
+        }
+        if (remaining > 0 && this.balances["USDC"]) {
+          const take = Math.min(this.balances["USDC"].bal, remaining);
+          this.balances["USDC"].bal -= take;
+          this.balances["USDC"].usdValue = this.balances["USDC"].bal;
+          this.balances["USDC"].totalInvested = this.balances["USDC"].bal;
+          remaining -= take;
+          usedSym = "USDC";
+        }
+      } else {
+        // Paired with SOL, ETH, BNB, etc. User must have sufficient balance in that specific currency!
+        const availableBase = this.balances[pair]?.bal || 0;
+        if (amount > availableBase) {
+          return {
+            success: false,
+            message: `Insufficient ${pair} balance! You have ${availableBase.toFixed(4)} ${pair}, but this trade requires ${amount} ${pair}. Please deposit or swap to ${pair} first.`
+          };
+        }
+        usdAmount = Number((amount * basePriceUsd).toFixed(2));
+        usedSym = pair;
+        this.balances[pair].bal = Math.max(0, Number((this.balances[pair].bal - amount).toFixed(6)));
+        this.balances[pair].usdValue = Number((this.balances[pair].bal * basePriceUsd).toFixed(2));
       }
 
-      const tokensReceived = amount / p;
-      let remaining = amount;
-      let usedSym = "USDT";
-
-      // Deduct from USDT first if available, then USDC
-      if (this.balances["USDT"] && this.balances["USDT"].bal > 0) {
-        const take = Math.min(this.balances["USDT"].bal, remaining);
-        this.balances["USDT"].bal -= take;
-        this.balances["USDT"].usdValue = this.balances["USDT"].bal;
-        this.balances["USDT"].totalInvested = this.balances["USDT"].bal;
-        remaining -= take;
-        usedSym = "USDT";
-      }
-      if (remaining > 0 && this.balances["USDC"]) {
-        const take = Math.min(this.balances["USDC"].bal, remaining);
-        this.balances["USDC"].bal -= take;
-        this.balances["USDC"].usdValue = this.balances["USDC"].bal;
-        this.balances["USDC"].totalInvested = this.balances["USDC"].bal;
-        remaining -= take;
-        usedSym = "USDC";
-      }
+      const tokensReceived = usdAmount / p;
 
       if (!this.balances[sym]) {
         this.balances[sym] = { bal: 0, usdValue: 0, name: token.name, totalInvested: 0, avgBuyPrice: p };
       }
 
       const prevInvested = this.balances[sym].totalInvested || 0;
-      const newInvested = Number((prevInvested + amount).toFixed(2));
+      const newInvested = Number((prevInvested + usdAmount).toFixed(2));
 
       this.balances[sym].bal += tokensReceived;
       this.balances[sym].usdValue = this.balances[sym].bal * p;
@@ -2066,7 +2489,7 @@ class MarketStore {
       this.addTrade({
         sym,
         type: "Buy",
-        usd: amount,
+        usd: usdAmount,
         tokenAmt: tokensReceived,
         price: p,
         trader: "JD...7b2",
@@ -2080,7 +2503,7 @@ class MarketStore {
         sym,
         name: token.name,
         side: "Buy",
-        amountUsd: amount,
+        amountUsd: usdAmount,
         tokenAmt: tokensReceived,
         price: p,
         timestamp: Date.now(),
@@ -2089,84 +2512,129 @@ class MarketStore {
       this.userOrders.unshift(userOrder);
       if (this.userOrders.length > 50) this.userOrders = this.userOrders.slice(0, 50);
 
-      // Dynamic real-time price impact with persistent memory
+      // Dynamic real-time price impact with persistent memory (Dexscreener bonding curve pump)
       const isMajor = this.isMajorToken(sym);
       const impactRatio = isMajor
-        ? Math.min(0.005, (amount / 2000000))
-        : Math.min(0.12, Math.max(0.015, amount / (p * 50000 + 500)));
+        ? Math.min(0.005, (usdAmount / 2000000))
+        : Math.min(0.18, Math.max(0.025, usdAmount / (p * 35000 + 400)));
       const newP = p * (1 + impactRatio);
 
       this.priceAnchors[sym] = newP;
-      this.momentums[sym] = Math.min(0.08, (this.momentums[sym] || 0) + impactRatio * 0.7);
+      this.momentums[sym] = Math.min(0.12, (this.momentums[sym] || 0) + impactRatio * 0.85);
       token.customPrice = true;
       token.isMarketMakerActive = true;
       this.applyPriceTick(sym, newP, true);
+
+      // Immediately pump 24h change & market cap (Dexscreener live impact)
+      const pumpPct = Number((impactRatio * 100).toFixed(2));
+      token.changeNum = Number((token.changeNum + pumpPct).toFixed(2));
+      token.change = `${token.changeNum >= 0 ? "+" : ""}${token.changeNum.toFixed(2)}%`;
+      token.pos = token.changeNum >= 0;
+
+      if (token.supply && token.supply > 0) {
+        const newMcap = newP * token.supply;
+        const fmtMcap = newMcap >= 1e9 ? `$${(newMcap / 1e9).toFixed(2)}B` : newMcap >= 1e6 ? `$${(newMcap / 1e6).toFixed(1)}M` : newMcap >= 1e3 ? `$${(newMcap / 1e3).toFixed(0)}K` : `$${newMcap.toFixed(2)}`;
+        token.cap = fmtMcap;
+        token.fdv = fmtMcap;
+      }
+
+      // Update user position holding value immediately with pumped price
+      if (this.balances[sym]) {
+        this.balances[sym].usdValue = Number((this.balances[sym].bal * newP).toFixed(2));
+      }
 
       // Update buyers counters
       token.txns += 1;
       token.buys += 1;
       token.buyers += 1;
       token.traders = token.buyers + token.sellers;
-      token.buyVol = Number((token.buyVol + amount / 1e6).toFixed(2));
-      token.vol = Number((token.buyVol + token.sellVol).toFixed(1));
+      token.buyVol = (token.buyVol || 0) + (usdAmount / 1e6);
+      token.vol = (token.buyVol || 0) + (token.sellVol || 0);
 
-      this.savePersistedState();
+      this.savePersistedStateNow();
       const targetWalletBuy = this.currentUserWallet || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("axiom_wallet_address") || "" : "");
       if (targetWalletBuy) {
         api.syncBalances(targetWalletBuy, this.balances, {
           sym,
           type: "Buy",
-          usd: amount,
+          usd: usdAmount,
           tokenAmt: tokensReceived,
           price: p,
         });
       }
       this.notify();
+      const payStr = isCash ? `$${amount.toFixed(2)} ${usedSym}` : `${amount} ${pair} ($${usdAmount.toFixed(2)})`;
       return {
         success: true,
-        message: `Bought ${tokensReceived >= 1000 ? tokensReceived.toLocaleString(undefined, { maximumFractionDigits: 1 }) : tokensReceived.toFixed(4)} ${sym} for $${amount.toFixed(2)} ${usedSym}!`,
+        message: `Bought ${tokensReceived >= 1000 ? tokensReceived.toLocaleString(undefined, { maximumFractionDigits: 0 }) : tokensReceived.toFixed(4)} ${sym} for ${payStr}!`,
         tokensExchanged: tokensReceived,
-        usdcExchanged: amount,
+        usdcExchanged: usdAmount,
       };
     } else {
-      // User pays Token, receives cash credit
+      // User pays Token, receives quote/pair currency credit
       const availableToken = this.balances[sym]?.bal || 0;
       if (amount <= 0) return { success: false, message: "Enter an amount greater than 0" };
       if (amount > availableToken) {
         return { success: false, message: `Insufficient ${sym} balance! Available: ${availableToken.toLocaleString()}` };
       }
 
-      const usdcReceived = Number((amount * p).toFixed(2));
+      const grossUsdReceived = Number((amount * p).toFixed(2));
       const prevBal = this.balances[sym].bal;
       const prevInvested = this.balances[sym].totalInvested || (prevBal * p);
       const remainingRatio = Math.max(0, (prevBal - amount) / prevBal);
       const newInvested = Number((prevInvested * remainingRatio).toFixed(2));
 
       this.balances[sym].bal = Math.max(0, this.balances[sym].bal - amount);
-      this.balances[sym].usdValue = Number((this.balances[sym].bal * p).toFixed(2));
-      this.balances[sym].totalInvested = newInvested;
-      this.balances[sym].avgBuyPrice = this.balances[sym].bal > 0 ? newInvested / this.balances[sym].bal : p;
-
-      // Credit proceeds strictly to user's stablecoin cash balance (USDT or USDC)
-      const settlementSym = (this.balances["USDT"]?.bal || 0) >= (this.balances["USDC"]?.bal || 0) ? "USDT" : "USDC";
-      if (!this.balances[settlementSym]) {
-        this.balances[settlementSym] = {
-          bal: 0,
-          usdValue: 0,
-          name: settlementSym === "USDT" ? "Tether USD" : "USD Coin",
-          totalInvested: 0,
-          avgBuyPrice: 1.0,
-        };
+      if (this.balances[sym].bal <= 0.000001) {
+        this.balances[sym].bal = 0;
+        this.balances[sym].usdValue = 0;
+        this.balances[sym].totalInvested = 0;
+        this.balances[sym].avgBuyPrice = p;
+        this.pendingOrders = this.pendingOrders.filter(o => !(o.sym.toUpperCase().replace(/^\$/, "") === sym.toUpperCase().replace(/^\$/, "") && o.type === "TP/SL"));
+      } else {
+        this.balances[sym].usdValue = Number((this.balances[sym].bal * p).toFixed(2));
+        this.balances[sym].totalInvested = newInvested;
+        this.balances[sym].avgBuyPrice = newInvested / this.balances[sym].bal;
       }
-      this.balances[settlementSym].bal = Number((this.balances[settlementSym].bal + usdcReceived).toFixed(2));
-      this.balances[settlementSym].usdValue = this.balances[settlementSym].bal;
-      this.balances[settlementSym].totalInvested = this.balances[settlementSym].bal;
+
+      // Credit proceeds: if cash pair, to USDT/USDC. If crypto pair, to that specific crypto (SOL, ETH, BNB)
+      let receiveStr = '';
+      if (isCash) {
+        const settlementSym = (this.balances["USDT"]?.bal || 0) >= (this.balances["USDC"]?.bal || 0) ? "USDT" : "USDC";
+        if (!this.balances[settlementSym]) {
+          this.balances[settlementSym] = {
+            bal: 0,
+            usdValue: 0,
+            name: settlementSym === "USDT" ? "Tether USD" : "USD Coin",
+            totalInvested: 0,
+            avgBuyPrice: 1.0,
+          };
+        }
+        this.balances[settlementSym].bal = Number((this.balances[settlementSym].bal + grossUsdReceived).toFixed(2));
+        this.balances[settlementSym].usdValue = this.balances[settlementSym].bal;
+        this.balances[settlementSym].totalInvested = this.balances[settlementSym].bal;
+        receiveStr = `$${grossUsdReceived.toFixed(2)} ${settlementSym}`;
+      } else {
+        const cryptoToCredit = Number((grossUsdReceived / basePriceUsd).toFixed(6));
+        if (!this.balances[pair]) {
+          this.balances[pair] = {
+            bal: 0,
+            usdValue: 0,
+            name: pair,
+            totalInvested: 0,
+            avgBuyPrice: basePriceUsd,
+          };
+        }
+        this.balances[pair].bal = Number((this.balances[pair].bal + cryptoToCredit).toFixed(6));
+        this.balances[pair].usdValue = Number((this.balances[pair].bal * basePriceUsd).toFixed(2));
+        receiveStr = `${cryptoToCredit.toFixed(4)} ${pair} ($${grossUsdReceived.toFixed(2)})`;
+      }
 
       // Add trade to Recent Trades
       this.addTrade({
         sym,
         type: "Sell",
-        usd: usdcReceived,
+        usd: grossUsdReceived,
         tokenAmt: amount,
         price: p,
         trader: "JD...7b2",
@@ -2180,7 +2648,7 @@ class MarketStore {
         sym,
         name: token.name,
         side: "Sell",
-        amountUsd: usdcReceived,
+        amountUsd: grossUsdReceived,
         tokenAmt: amount,
         price: p,
         timestamp: Date.now(),
@@ -2192,8 +2660,8 @@ class MarketStore {
       // Dynamic real-time price impact with persistent memory
       const isMajor = this.isMajorToken(sym);
       const impactRatio = isMajor
-        ? Math.min(0.005, (usdcReceived / 2000000))
-        : Math.min(0.12, Math.max(0.015, usdcReceived / (p * 50000 + 500)));
+        ? Math.min(0.005, (grossUsdReceived / 2000000))
+        : Math.min(0.12, Math.max(0.015, grossUsdReceived / (p * 50000 + 500)));
       const newP = Math.max(0.00000001, p * (1 - impactRatio));
 
       this.priceAnchors[sym] = newP;
@@ -2202,13 +2670,31 @@ class MarketStore {
       token.isMarketMakerActive = true;
       this.applyPriceTick(sym, newP, false);
 
+      // Immediately impact 24h change & market cap (Dexscreener live dump impact)
+      const dumpPct = Number((impactRatio * 100).toFixed(2));
+      token.changeNum = Number((token.changeNum - dumpPct).toFixed(2));
+      token.change = `${token.changeNum >= 0 ? "+" : ""}${token.changeNum.toFixed(2)}%`;
+      token.pos = token.changeNum >= 0;
+
+      if (token.supply && token.supply > 0) {
+        const newMcap = newP * token.supply;
+        const fmtMcap = newMcap >= 1e9 ? `$${(newMcap / 1e9).toFixed(2)}B` : newMcap >= 1e6 ? `$${(newMcap / 1e6).toFixed(1)}M` : newMcap >= 1e3 ? `$${(newMcap / 1e3).toFixed(0)}K` : `$${newMcap.toFixed(2)}`;
+        token.cap = fmtMcap;
+        token.fdv = fmtMcap;
+      }
+
+      // Update user position holding value immediately with new price
+      if (this.balances[sym]) {
+        this.balances[sym].usdValue = Number((this.balances[sym].bal * newP).toFixed(2));
+      }
+
       // Update sellers counters
       token.txns += 1;
       token.sells += 1;
       token.sellers += 1;
       token.traders = token.buyers + token.sellers;
-      token.sellVol = Number((token.sellVol + usdcReceived / 1e6).toFixed(2));
-      token.vol = Number((token.buyVol + token.sellVol).toFixed(1));
+      token.sellVol = (token.sellVol || 0) + (grossUsdReceived / 1e6);
+      token.vol = (token.buyVol || 0) + (token.sellVol || 0);
 
       this.notify();
       this.broadcast({
@@ -2217,17 +2703,17 @@ class MarketStore {
           sym,
           balances: this.balances,
           trade: this.trades[sym]?.[0],
-          newPrice: p * 0.998,
+          newPrice: newP,
           isUp: false,
         },
       });
-      this.savePersistedState();
+      this.savePersistedStateNow();
       const targetWalletSell = this.currentUserWallet || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("axiom_wallet_address") || "" : "");
       if (targetWalletSell) {
         api.syncBalances(targetWalletSell, this.balances, {
           sym,
           type: "Sell",
-          usd: usdcReceived,
+          usd: grossUsdReceived,
           tokenAmt: amount,
           price: p,
         });
@@ -2235,9 +2721,9 @@ class MarketStore {
 
       return {
         success: true,
-        message: `Sold ${amount >= 1000 ? amount.toLocaleString(undefined, { maximumFractionDigits: 1 }) : amount.toFixed(4)} ${sym} for $${usdcReceived.toFixed(2)} USDT!`,
+        message: `Sold ${amount >= 1000 ? amount.toLocaleString(undefined, { maximumFractionDigits: 1 }) : amount.toFixed(4)} ${sym} for ${receiveStr}!`,
         tokensExchanged: amount,
-        usdcExchanged: usdcReceived,
+        usdcExchanged: grossUsdReceived,
       };
     }
   }
@@ -2519,15 +3005,53 @@ class MarketStore {
 
   formatShortUsd(n: number): string {
     if (!n || isNaN(n)) return "$0.00";
+    if (n >= 1e12) return `$${Math.min(999.9, n / 1e12).toFixed(2)}T`;
     if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
     if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
     if (n >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
     return `$${n.toFixed(2)}`;
   }
 
+  deleteToken(sym: string, fromRemote = false): { success: boolean; message: string } {
+    if (this.isMajorToken(sym)) {
+      return { success: false, message: `Cannot delete major cryptocurrency $${sym}` };
+    }
+    const targetSym = sym.toUpperCase().replace(/^\$/, "");
+    const idx = this.tokens.findIndex(t => t.sym.toUpperCase() === targetSym);
+    if (idx < 0) {
+      return { success: false, message: `Token $${targetSym} not found` };
+    }
+
+    this.tokens.splice(idx, 1);
+    this.tokens = [...this.tokens];
+
+    delete this.priceAnchors[targetSym];
+    delete this.momentums[targetSym];
+    delete this.candleSeries[targetSym];
+    delete this.trades[targetSym];
+    delete this.balances[targetSym];
+    this.pendingOrders = this.pendingOrders.filter(o => o.sym.toUpperCase() !== targetSym);
+
+    if (this.activeSym.toUpperCase() === targetSym) {
+      this.activeSym = this.tokens[0]?.sym || "SOL";
+    }
+
+    if (!fromRemote) {
+      this.broadcast({ type: "DELETE_TOKEN", payload: { sym: targetSym } });
+      api.deleteMemeToken(targetSym).catch(() => {});
+    }
+
+    this.savePersistedStateNow();
+    if (this.currentUserWallet) {
+      api.syncBalances(this.currentUserWallet, this.balances).catch(() => {});
+    }
+    this.notify();
+    return { success: true, message: `Token $${targetSym} has been permanently deleted.` };
+  }
+
   pumpToken(sym: string, percent: number, fromRemote = false) {
     const token = this.getToken(sym);
-    if (!token) return;
+    if (!token || token.is_rugged) return;
     const factor = 1 + percent / 100;
     const newPrice = token.numericPrice * factor;
 
@@ -2631,7 +3155,7 @@ class MarketStore {
 
   pumpTokenDollar(sym: string, dollarAmount: number, fromRemote = false) {
     const token = this.getToken(sym);
-    if (!token) return;
+    if (!token || token.is_rugged) return;
     const oldPrice = token.numericPrice || 0.001;
     const newPrice = oldPrice + dollarAmount;
     const pct = oldPrice > 0 ? ((newPrice - oldPrice) / oldPrice) * 100 : 10;
@@ -2640,7 +3164,7 @@ class MarketStore {
 
   dumpTokenDollar(sym: string, dollarAmount: number, fromRemote = false) {
     const token = this.getToken(sym);
-    if (!token) return;
+    if (!token || token.is_rugged) return;
     const oldPrice = token.numericPrice || 0.001;
     const newPrice = Math.max(0.00000001, oldPrice - dollarAmount);
     const pct = oldPrice > 0 ? ((oldPrice - newPrice) / oldPrice) * 100 : 10;
@@ -2649,7 +3173,7 @@ class MarketStore {
 
   setTokenTargetPrice(sym: string, targetPrice: number, fromRemote = false) {
     const token = this.getToken(sym);
-    if (!token) return;
+    if (!token || token.is_rugged) return;
     const oldPrice = token.numericPrice || 0.001;
     if (targetPrice >= oldPrice) {
       const pct = oldPrice > 0 ? ((targetPrice - oldPrice) / oldPrice) * 100 : 10;
@@ -2662,7 +3186,7 @@ class MarketStore {
 
   dumpToken(sym: string, percent: number, fromRemote = false) {
     const token = this.getToken(sym);
-    if (!token) return;
+    if (!token || token.is_rugged) return;
     const factor = Math.max(0.00000001, 1 - percent / 100);
     const newPrice = Math.max(0.00000001, token.numericPrice * factor);
 
@@ -2670,8 +3194,16 @@ class MarketStore {
     token.price = newPrice < 0.001 ? `$${newPrice.toFixed(8)}` : newPrice < 1 ? `$${newPrice.toFixed(4)}` : `$${newPrice.toFixed(2)}`;
     token.solPrice = `${(newPrice / 179.84).toFixed(6)} SOL`;
     token.changeNum = Number((token.changeNum - percent).toFixed(2));
-    token.change = `${token.changeNum >= 0 ? "+" : ""}${token.changeNum.toFixed(2)}%`;
-    token.pos = token.changeNum >= 0;
+    if (newPrice <= 0.00000001 || token.changeNum <= -99) {
+      token.is_rugged = true;
+      token.changeNum = -99.99;
+      token.change = "-99.99%";
+      token.pos = false;
+      token.liq = "$0.00";
+    } else {
+      token.change = `${token.changeNum >= 0 ? "+" : ""}${token.changeNum.toFixed(2)}%`;
+      token.pos = token.changeNum >= 0;
+    }
     token.isMarketMakerActive = true;
     token.customPrice = true;
     token.sparkline = generateSparkline(newPrice, false);
@@ -2773,22 +3305,22 @@ class MarketStore {
     if (!token) return;
     const newPrice = 0.00000001;
 
-    token.numericPrice = 0;
-    token.price = `$0.00`;
+    token.numericPrice = 0.00000001;
+    token.price = `$0.00000001`;
     token.solPrice = "0.00000000 SOL";
-    token.change = "-100.00%";
-    token.changeNum = -100.00;
+    token.change = "-99.99%";
+    token.changeNum = -99.99;
     token.pos = false;
     token.liq = "$0.00";
-    token.cap = "$0.00";
-    token.fdv = "$0.00";
+    token.cap = "$10.00";
+    token.fdv = "$10.00";
     token.is_rugged = true;
     token.isMarketMakerActive = true;
     token.customPrice = true;
     token.sparkline = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
     // Anchor locked to 0 permanently
-    this.priceAnchors[sym] = 0;
+    this.priceAnchors[sym] = newPrice;
     this.momentums[sym] = 0;
 
     // Zero out user balance holding value completely
@@ -2845,6 +3377,9 @@ class MarketStore {
 
     if (!fromRemote) {
       this.broadcast({ type: "RUGPULL_TOKEN", payload: { sym } });
+      try {
+        api.adminControlToken(sym, { action: 'rugpull' }).catch(() => {});
+      } catch {}
     }
     this.savePersistedStateNow();
     if (this.currentUserWallet) {
@@ -2861,7 +3396,13 @@ class MarketStore {
     token.numericPrice = newPrice;
     token.price = newPrice < 0.001 ? `$${newPrice.toFixed(8)}` : newPrice < 1 ? `$${newPrice.toFixed(4)}` : `$${newPrice.toFixed(2)}`;
     token.solPrice = `${(newPrice / 179.84).toFixed(6)} SOL`;
-    if (change24h !== undefined) {
+    if (newPrice <= 0.00000001 || (change24h !== undefined && change24h <= -99)) {
+      token.is_rugged = true;
+      token.changeNum = -99.99;
+      token.change = "-99.99%";
+      token.pos = false;
+      token.liq = "$0.00";
+    } else if (change24h !== undefined) {
       token.changeNum = Number(change24h.toFixed(2));
       token.change = `${token.changeNum >= 0 ? "+" : ""}${token.changeNum.toFixed(2)}%`;
       token.pos = token.changeNum >= 0;
@@ -2919,9 +3460,12 @@ class MarketStore {
     liquidity: string;
     contractAddress?: string;
     logo_url?: string;
+    banner_url?: string;
     description?: string;
+    pair_currency?: string;
   }, fromRemote = false) {
     const sym = params.symbol.toUpperCase().trim().replace(/^\$/, "");
+    const pairCurrency = (params.pair_currency || 'SOL').toUpperCase().trim();
     const numPrice = parseFloat(params.price) || 0.001;
     const numLiq = parseFloat(params.liquidity) || 50000;
     const numSupply = parseFloat(params.supply) || 1000000000;
@@ -2946,6 +3490,7 @@ class MarketStore {
     const newToken: MarketToken = {
       sym,
       name: params.name,
+      pair_currency: pairCurrency,
       price: numPrice < 0.001 ? `$${numPrice.toFixed(8)}` : numPrice < 1 ? `$${numPrice.toFixed(4)}` : `$${numPrice.toFixed(2)}`,
       numericPrice: numPrice,
       solPrice: `${(numPrice / 179.84).toFixed(6)} SOL`,
@@ -2963,9 +3508,9 @@ class MarketStore {
       txns: 1,
       buys: 1,
       sells: 0,
-      vol: Number((numLiq / 1e6).toFixed(2)),
+      vol: Number(((numLiq * 1.8) / 1e6).toFixed(2)),
       buyVol: Number((numLiq / 1e6).toFixed(2)),
-      sellVol: 0,
+      sellVol: Number(((numLiq * 0.8) / 1e6).toFixed(2)),
       traders: 1,
       buyers: 1,
       sellers: 0,
@@ -2973,6 +3518,7 @@ class MarketStore {
       poolAddress: poolAddr,
       contractAddress: poolAddr,
       imageUrl: fallbackImg,
+      bannerUrl: params.banner_url || undefined,
       isNew: true,
       createdAt: Date.now(),
       isMajor: false,
@@ -3020,8 +3566,10 @@ class MarketStore {
     supply?: number | string;
     contractAddress?: string;
     imageUrl?: string;
+    bannerUrl?: string;
     change?: string;
     description?: string;
+    pair_currency?: string;
   }, fromRemote = false): { success: boolean; message: string } {
     const s = sym.toUpperCase();
     const token = this.getToken(s);
@@ -3030,12 +3578,17 @@ class MarketStore {
     token.isMarketMakerActive = true;
     token.customPrice = true;
 
+    if (updates.pair_currency && updates.pair_currency.trim()) {
+      token.pair_currency = updates.pair_currency.trim().toUpperCase();
+    }
+
     if (updates.name && updates.name.trim()) token.name = updates.name.trim();
     if (updates.contractAddress && updates.contractAddress.trim()) {
       token.contractAddress = updates.contractAddress.trim();
       token.poolAddress = updates.contractAddress.trim();
     }
     if (updates.imageUrl && updates.imageUrl.trim()) token.imageUrl = updates.imageUrl.trim();
+    if (updates.bannerUrl !== undefined) token.bannerUrl = updates.bannerUrl ? updates.bannerUrl.trim() : undefined;
 
     if (updates.supply !== undefined) {
       const sup = parseFloat(String(updates.supply));
@@ -3312,14 +3865,75 @@ class MarketStore {
           return;
         }
 
-        // Rugged tokens stay locked at $0.00000001
-        if (token.is_rugged) {
+        // Rugged tokens stay locked at $0.00000001 with -99.99% change
+        const isRuggedToken = token.is_rugged || token.numericPrice <= 0.00000001 || token.price === "$0.00000001" || token.liq === "$0.00";
+        if (isRuggedToken) {
+          token.is_rugged = true;
           token.numericPrice = 0.00000001;
           token.price = "$0.00000001";
-          token.solPrice = "0.00000001 SOL";
+          token.solPrice = "0.00000000 SOL";
           token.change = "-99.99%";
           token.changeNum = -99.99;
+          token.pos = false;
           token.liq = "$0.00";
+          token.cap = "$10.00";
+          token.fdv = "$10.00";
+
+          // Keep active candle strictly flat on the zero floor during live intervals
+          if (this.candleSeries[token.sym]) {
+            const now = Date.now();
+            Object.keys(this.candleSeries[token.sym]).forEach(tf => {
+              const candles = this.candleSeries[token.sym][tf];
+              if (!candles || candles.length === 0) return;
+              const stepMs = this.getTfStepMs(tf);
+              const currentInterval = Math.floor(now / stepMs) * stepMs;
+              const last = candles[candles.length - 1];
+
+              if (last.time === currentInterval) {
+                last.close = 0.00000001;
+                last.high = 0.00000001;
+                last.low = 0.00000001;
+                last.open = last.open > 0.00000001 ? last.open : 0.00000001;
+              } else if (currentInterval > last.time) {
+                if (candles.length >= 800) candles.shift();
+                candles.push({
+                  open: 0.00000001,
+                  high: 0.00000001,
+                  low: 0.00000001,
+                  close: 0.00000001,
+                  vol: 0,
+                  time: currentInterval,
+                });
+              }
+            });
+          }
+
+          // Slow, rare trade activity for rugged tokens:
+          // User requirement: "it should not be showing users buy and selling anymore like it should be showing but not fast like before."
+          // Extremely slow trickle (~once every 2.5 - 3 minutes on 1s ticks):
+          // - Only "Sell" (bagholder dumping dust, no buys)
+          // - Tiny dust amounts ($0.01 - $0.06)
+          if (token.sym === this.activeSym && Math.random() < 0.006) {
+            const dustUsd = Number((0.01 + Math.random() * 0.05).toFixed(2));
+            const dustTokens = Number((dustUsd / 0.00000001).toFixed(0));
+            const roster = TRADER_ROSTER[Math.floor(Math.random() * TRADER_ROSTER.length)];
+
+            this.addTrade({
+              sym: token.sym,
+              type: "Sell",
+              usd: dustUsd,
+              tokenAmt: dustTokens,
+              price: 0.00000001,
+              trader: roster.addr,
+              traderEmoji: "📉",
+            });
+
+            token.txns += 1;
+            token.sells += 1;
+            token.sellers += 1;
+            token.traders = token.buyers + token.sellers;
+          }
+
           return;
         }
 
@@ -3332,22 +3946,98 @@ class MarketStore {
 
         const isMajor = this.isMajorToken(token.sym);
 
-        // Slowly update anchor every 90 ticks so organic trends can develop
-        if (tickCount % 90 === 0) {
-          this.priceAnchors[token.sym] = token.numericPrice;
+        // Check if admin has set manual control
+        let adminMode: string | null = null;
+        let isBuy = true;
+        let minUsd = 25;
+        let maxUsd = 280;
+
+        try {
+          const ctrlRaw = typeof window !== "undefined" ? localStorage.getItem("axiom_admin_trade_control") : null;
+          if (ctrlRaw) {
+            const ctrl = JSON.parse(ctrlRaw);
+            if (ctrl.mode === "only_buy") { adminMode = "only_buy"; isBuy = true; }
+            else if (ctrl.mode === "only_sell") { adminMode = "only_sell"; isBuy = false; }
+            else if (ctrl.mode === "heavy_buy") { adminMode = "heavy_buy"; isBuy = Math.random() < 0.88; }
+            else if (ctrl.mode === "heavy_sell") { adminMode = "heavy_sell"; isBuy = Math.random() < 0.12; }
+            else if (typeof ctrl.buyRatio === "number") { isBuy = (Math.random() * 100) < ctrl.buyRatio; }
+
+            if (ctrl.minUsd && ctrl.maxUsd) {
+              minUsd = Number(ctrl.minUsd);
+              maxUsd = Math.max(minUsd + 10, Number(ctrl.maxUsd));
+            }
+          }
+        } catch {
+          // fallback
         }
 
-        const anchor = this.priceAnchors[token.sym];
-        const driftRatio = (token.numericPrice - anchor) / anchor;
-        const revertForce = -driftRatio * (isMajor ? 0.02 : 0.005); // major coins strongly anchor to real market price
+        // Initialize or update organic wave cycle for non-major tokens when admin is not overriding
+        if (!isMajor && !adminMode) {
+          if (!this.marketCycles[token.sym]) {
+            this.marketCycles[token.sym] = {
+              baselinePrice: token.numericPrice,
+              phase: "impulse",
+              phaseTicksLeft: 10 + Math.floor(Math.random() * 8),
+              totalCycleGains: 0,
+            };
+          }
 
-        // Real market order-flow simulation (like Bybit):
-        this.momentums[token.sym] *= (isMajor ? 0.6 : 0.86);
-        const microNoise = (Math.random() - 0.495) * (isMajor ? 0.00003 : 0.00018);
-        let deltaPct = this.momentums[token.sym] + microNoise + revertForce;
+          const cycle = this.marketCycles[token.sym];
+          cycle.phaseTicksLeft -= 1;
 
-        // Hard realistic tick clamp: max ±0.01% for majors, ±0.06% for memes
-        const maxDelta = isMajor ? 0.0001 : 0.0006;
+          const currentGainPct = ((token.numericPrice - cycle.baselinePrice) / cycle.baselinePrice) * 100;
+
+          if (cycle.phase === "impulse") {
+            // Impulse phase: 62% buys, 38% sells — upward wave with natural profit-taking
+            isBuy = Math.random() < 0.62;
+            minUsd = 25;
+            maxUsd = 240;
+            if (cycle.phaseTicksLeft <= 0) {
+              // Transition to organic pullback/dip (4 to 7 ticks)
+              cycle.phase = "pullback";
+              cycle.phaseTicksLeft = 4 + Math.floor(Math.random() * 4);
+            }
+          } else if (cycle.phase === "pullback") {
+            // Pullback phase: 38% buys, 62% sells — healthy dips with bounce buyers
+            isBuy = Math.random() < 0.38;
+            minUsd = 20;
+            maxUsd = 180;
+            if (cycle.phaseTicksLeft <= 0) {
+              // Transition to consolidation
+              cycle.phase = "consolidation";
+              cycle.phaseTicksLeft = 4 + Math.floor(Math.random() * 5);
+            }
+          } else {
+            // Consolidation phase: 52% buys, 48% sells — balanced support base
+            isBuy = Math.random() < 0.52;
+            minUsd = 15;
+            maxUsd = 120;
+            if (cycle.phaseTicksLeft <= 0) {
+              if (currentGainPct >= 10) {
+                cycle.baselinePrice = token.numericPrice * 0.95;
+              }
+              cycle.phase = "impulse";
+              cycle.phaseTicksLeft = 10 + Math.floor(Math.random() * 8);
+            }
+          }
+        } else if (isMajor) {
+          // Major coins: realistic Bybit order-flow balance
+          isBuy = Math.random() > 0.49;
+          minUsd = 60;
+          maxUsd = 450;
+        }
+
+        // Apply trade momentum to token price with smooth realistic DexScreener/TradingView rates
+        const momentumStep = isMajor
+          ? (isBuy ? 0.000008 : -0.000008)
+          : (isBuy ? 0.00005 : -0.000045);
+
+        this.momentums[token.sym] = (this.momentums[token.sym] || 0) * 0.85 + momentumStep;
+        const microJitter = (Math.random() - 0.49) * (isMajor ? 0.00001 : 0.00003);
+        let deltaPct = this.momentums[token.sym] + microJitter;
+
+        // Realistic limits per second: max 0.008% for majors, 0.035% for memes
+        const maxDelta = isMajor ? 0.00008 : 0.00035;
         deltaPct = Math.max(-maxDelta, Math.min(maxDelta, deltaPct));
 
         const newP = Math.max(0.00000001, token.numericPrice * (1 + deltaPct));
@@ -3358,13 +4048,19 @@ class MarketStore {
           token.sparkline[token.sparkline.length - 1] = newP;
         }
 
+        // Self-heal token.sellVol if zero or uninitialized
+        if (!token.sellVol || token.sellVol <= 0.0001) {
+          token.sellVol = Number((Math.max(0.018, (token.buyVol || 0.05) * 0.74)).toFixed(3));
+          token.vol = (token.buyVol || 0.05) + token.sellVol;
+        }
+
         // Live update user balance holding value if held
         if (this.balances[token.sym] && this.balances[token.sym].bal > 0) {
           this.balances[token.sym].usdValue = Number((this.balances[token.sym].bal * newP).toFixed(2));
         }
 
         // Update 24h change smoothly
-        token.changeNum = Number((token.changeNum + deltaPct * 3).toFixed(2));
+        token.changeNum = Number((token.changeNum + deltaPct * 100).toFixed(2));
         token.change = `${token.changeNum >= 0 ? "+" : ""}${token.changeNum.toFixed(2)}%`;
         token.pos = token.changeNum >= 0;
 
@@ -3382,13 +4078,11 @@ class MarketStore {
             const last = candles[candles.length - 1];
 
             if (last.time === currentInterval) {
-              // Same candle interval: gentle live update
               last.close = newP;
               last.high = Math.max(last.high, newP);
               last.low = Math.min(last.low, newP);
-              last.vol += 0.15;
+              last.vol += 0.25;
             } else if (currentInterval > last.time) {
-              // Current timeframe interval has rolled over! Open next candle
               if (candles.length >= 800) candles.shift();
               candles.push({
                 open: last.close,
@@ -3402,36 +4096,9 @@ class MarketStore {
           });
         }
 
-        // Live simulated trades with admin-controllable Buy vs. Sell direction and size
-        let isBuy = Math.random() > 0.48;
-        let minUsd = 15;
-        let maxUsd = 240;
-
-        try {
-          const ctrlRaw = typeof window !== "undefined" ? localStorage.getItem("axiom_admin_trade_control") : null;
-          if (ctrlRaw) {
-            const ctrl = JSON.parse(ctrlRaw);
-            if (ctrl.mode === "only_buy") isBuy = true;
-            else if (ctrl.mode === "only_sell") isBuy = false;
-            else if (ctrl.mode === "heavy_buy") isBuy = Math.random() < 0.88;
-            else if (ctrl.mode === "heavy_sell") isBuy = Math.random() < 0.12;
-            else if (typeof ctrl.buyRatio === "number") isBuy = (Math.random() * 100) < ctrl.buyRatio;
-
-            if (ctrl.minUsd && ctrl.maxUsd) {
-              minUsd = Number(ctrl.minUsd);
-              maxUsd = Math.max(minUsd + 10, Number(ctrl.maxUsd));
-            }
-          }
-        } catch {
-          // fallback
-        }
-
-        if (token.sym === this.activeSym && Math.random() < 0.35) {
-          // Major coins have deep liquidity, almost zero retail price impact
-          this.momentums[token.sym] += isMajor
-            ? (isBuy ? 0.000008 : -0.000008)
-            : (isBuy ? 0.00008 : -0.00008);
-
+        // Organic live trade cadence (~68% chance each tick = 1.5-2.5s gaps)
+        const shouldEmit = Math.random() < 0.68;
+        if (token.sym === this.activeSym && shouldEmit) {
           const roster = TRADER_ROSTER[Math.floor(Math.random() * TRADER_ROSTER.length)];
           const usd = Number((minUsd + Math.random() * (maxUsd - minUsd)).toFixed(2));
           const tokenAmt = Number((usd / newP).toFixed(newP < 0.001 ? 0 : 2));
@@ -3446,19 +4113,19 @@ class MarketStore {
             traderEmoji: roster.emoji,
           });
 
-          // Update metrics
+          // Update metrics accurately without lossy toFixed truncating small trade volumes
           token.txns += 1;
           if (isBuy) {
             token.buys += 1;
             token.buyers += 1;
-            token.buyVol = Number((token.buyVol + usd / 1e6).toFixed(2));
+            token.buyVol = (token.buyVol || 0) + (usd / 1e6);
           } else {
             token.sells += 1;
             token.sellers += 1;
-            token.sellVol = Number((token.sellVol + usd / 1e6).toFixed(2));
+            token.sellVol = (token.sellVol || 0) + (usd / 1e6);
           }
           token.traders = token.buyers + token.sellers;
-          token.vol = Number((token.buyVol + token.sellVol).toFixed(1));
+          token.vol = (token.buyVol || 0) + (token.sellVol || 0);
         }
       });
 
@@ -3567,6 +4234,12 @@ class MarketStore {
 
       // Check TP/SL Orders
       if (order.type === "TP/SL") {
+        const orderBal = this.balances[order.sym]?.bal || 0;
+        if (orderBal <= 0.000001) {
+          // Token balance is zero; user closed this position, drop orphaned TP/SL
+          stateChanged = true;
+          continue;
+        }
         if (order.tpPrice && currentP >= order.tpPrice) {
           // TAKE PROFIT TRIGGERED!
           const fillPrice = currentP;

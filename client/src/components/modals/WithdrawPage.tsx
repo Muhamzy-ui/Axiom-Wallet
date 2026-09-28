@@ -1,36 +1,28 @@
 import React, { useState, useEffect } from "react";
 import {
-  ChevronLeft, Send, Building2, CheckCircle2, Clock, AlertTriangle,
-  Wallet, ShieldCheck, ArrowRight, Copy, Check, Globe
+  ChevronLeft, Send, CheckCircle2, Clock, AlertTriangle,
+  Wallet, ShieldCheck, ArrowRight, Copy, Check
 } from "lucide-react";
 import { api } from "../../services/api";
 import { marketStore } from "../../services/marketStore";
 import { copyToClipboard } from "../../services/clipboard";
 import { type AuthUser } from "../../services/authService";
-import { CountrySelectModal } from "./CountrySelectModal";
-import { CountryInfo, DEFAULT_COUNTRY, getCountryByCode } from "../../constants/countries";
-import { CountryFlag } from "../common/CountryFlag";
 import "./Modals.css";
-
-const POPULAR_COUNTRY_CODES = [
-  "NG", "US", "GB", "EU", "CA", "GH", "KE", "ZA", "AE", "IN",
-  "BR", "AU", "JP", "CN", "SG", "PH", "MY", "CH", "SA", "TR",
-  "CM", "CI", "EG", "RW", "UG", "TZ", "SN", "MX", "AR", "CO"
-];
 
 interface WithdrawPageProps {
   onClose: () => void;
   onDone: (msg: string) => void;
   flash: (msg: string) => void;
   authUser?: AuthUser | null;
-  initialMode?: "crypto" | "bank";
+  initialMode?: "crypto";
+  onNavigateToProfile?: () => void;
 }
 
 type WithdrawCoin = "USDT" | "USDC" | "SOL";
 
 const SEND_NETWORKS: Record<WithdrawCoin, { label: string; networkKey: string; fee: string; note: string }[]> = {
   USDT: [
-    { label: "TRC-20", networkKey: "TRON (TRC-20)", fee: "$0.00", note: "Tron TRC-20 • Fast & Low Fee" },
+    { label: "TRC-20", networkKey: "TRON (TRC-20)", fee: "$0.00", note: "Tron TRC-20 • Fast & Zero Fee" },
     { label: "BEP-20", networkKey: "BNB Chain (BEP-20)", fee: "$0.00", note: "BNB Smart Chain" },
     { label: "Solana", networkKey: "Solana (SPL)", fee: "$0.00", note: "Solana SPL • Instant Settlement" },
     { label: "ERC-20", networkKey: "Ethereum (ERC-20)", fee: "$1.50", note: "Ethereum ERC-20" },
@@ -40,7 +32,7 @@ const SEND_NETWORKS: Record<WithdrawCoin, { label: string; networkKey: string; f
     { label: "ERC-20", networkKey: "Ethereum (ERC-20)", fee: "$1.50", note: "Ethereum ERC-20 USD Coin" },
   ],
   SOL: [
-    { label: "Solana Native", networkKey: "Solana (SPL)", fee: "$0.00", note: "Solana Mainnet" },
+    { label: "Solana Native", networkKey: "Solana (SPL)", fee: "$0.00", note: "Solana Mainnet Native" },
   ],
 };
 
@@ -49,38 +41,12 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
   onDone,
   flash,
   authUser,
-  initialMode = "crypto",
 }) => {
-  // Mode: "crypto" (On-chain address) vs "bank" (Local Bank Cashout)
-  const [mode, setMode] = useState<"crypto" | "bank">(initialMode);
-
-  // Country for Local Bank Cashout
-  const [selectedCountry, setSelectedCountry] = useState<CountryInfo>(() => {
-    const savedCode = localStorage.getItem("axiom_user_country") || "NG";
-    return getCountryByCode(savedCode);
-  });
-  const [isCountryModalOpen, setIsCountryModalOpen] = useState(false);
-
-  useEffect(() => {
-    const handleRateChange = () => {
-      setSelectedCountry((prev) => getCountryByCode(prev.code));
-    };
-    window.addEventListener("axiom_dollar_rate_updated", handleRateChange);
-    return () => window.removeEventListener("axiom_dollar_rate_updated", handleRateChange);
-  }, []);
-
   // Crypto Withdrawal Form State
   const [sendCoin, setSendCoin] = useState<WithdrawCoin>("USDT");
   const [sendNetwork, setSendNetwork] = useState<string>("TRON (TRC-20)");
   const [recipientAddress, setRecipientAddress] = useState<string>("");
   const [sendAmt, setSendAmt] = useState<string>("");
-
-  // Bank Withdrawal Form State
-  const [bankName, setBankName] = useState<string>(
-    selectedCountry.banks && selectedCountry.banks.length > 0 ? selectedCountry.banks[0] : "Access Bank"
-  );
-  const [accountNumber, setAccountNumber] = useState<string>("");
-  const [accountName, setAccountName] = useState<string>("");
 
   // Execution & UI state
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -92,16 +58,6 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
   // Available Balances
   const balances = marketStore.getBalances();
   const availableCoinBalance = balances[sendCoin]?.bal || 0;
-  const cashBalance = (balances["USDT"]?.bal || 0) + (balances["USDC"]?.bal || 0);
-
-  // If country changes, update default bank
-  const handleSelectCountry = (c: CountryInfo) => {
-    setSelectedCountry(c);
-    localStorage.setItem("axiom_user_country", c.code);
-    if (c.banks && c.banks.length > 0) {
-      setBankName(c.banks[0]);
-    }
-  };
 
   const handleSelectCoin = (sym: WithdrawCoin) => {
     setSendCoin(sym);
@@ -119,7 +75,6 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
   }, [authUser]);
 
   const numAmt = parseFloat(sendAmt) || 0;
-  const localPayout = Math.round(numAmt * (selectedCountry.rateToUsd || 1));
 
   const handleReview = () => {
     setError(null);
@@ -128,28 +83,13 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
       return;
     }
 
-    if (mode === "crypto") {
-      if (numAmt > availableCoinBalance) {
-        setError(`Insufficient ${sendCoin} balance! Available: $${availableCoinBalance.toFixed(2)}`);
-        return;
-      }
-      if (!recipientAddress.trim()) {
-        setError("Please enter a valid destination address.");
-        return;
-      }
-    } else {
-      if (numAmt > cashBalance) {
-        setError(`Insufficient cash balance! Available: $${cashBalance.toFixed(2)} USD`);
-        return;
-      }
-      if (!accountNumber.trim() || accountNumber.length < 8) {
-        setError("Please enter a valid bank account number.");
-        return;
-      }
-      if (!accountName.trim()) {
-        setError("Please enter the beneficiary account name.");
-        return;
-      }
+    if (numAmt > availableCoinBalance) {
+      setError(`Insufficient ${sendCoin} balance! Available: $${availableCoinBalance.toFixed(2)}`);
+      return;
+    }
+    if (!recipientAddress.trim() || recipientAddress.trim().length < 15) {
+      setError("Please enter a valid destination crypto address.");
+      return;
     }
 
     setStep("confirm");
@@ -162,21 +102,13 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
     const userAddr = authUser?.wallet_address || "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
     const userTradeCount = marketStore.getUserTradeCount();
     const hasTraded = Boolean(eligibility?.has_trading_activity || userTradeCount > 0);
-
-    const destination =
-      mode === "crypto"
-        ? recipientAddress.trim()
-        : `${bankName} • ${accountNumber.trim()} (${accountName.trim()})`;
-
-    const rail =
-      mode === "crypto"
-        ? sendNetwork
-        : `${selectedCountry.name} Local Bank Transfer (${selectedCountry.currency})`;
+    const destination = recipientAddress.trim();
+    const rail = sendNetwork;
 
     try {
       const res = await api.requestWithdrawal({
         address: userAddr,
-        currency: mode === "crypto" ? sendCoin : "USDT",
+        currency: sendCoin,
         amount: numAmt.toFixed(2),
         destination_address: destination,
         network: rail,
@@ -185,7 +117,7 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
       });
 
       // Deduct balance locally
-      marketStore.withdrawFunds(numAmt, mode === "crypto" ? sendCoin : "USDT");
+      marketStore.withdrawFunds(numAmt, sendCoin);
 
       setResultData({
         is_instant: res.is_instant,
@@ -193,8 +125,7 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
         withdrawal_id: res.withdrawal_id,
         tx_hash: res.tx_hash,
         amount: res.amount,
-        currency: mode === "crypto" ? sendCoin : "USD",
-        localAmount: mode === "bank" ? `${selectedCountry.currencySymbol}${localPayout.toLocaleString()} ${selectedCountry.currency}` : undefined,
+        currency: sendCoin,
         network: rail,
         destination_address: destination,
         message: res.message,
@@ -214,59 +145,68 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
     }
   };
 
+  const currentNetworks = SEND_NETWORKS[sendCoin] || [];
+
   return (
     <div className="fullpage-modal-wrap">
       {/* Sticky Header */}
-      <header className="fullpage-modal-header">
-        <button type="button" className="fullpage-back-btn" onClick={onClose}>
-          <ChevronLeft size={16} />
-          <span>Back</span>
+      <header className="fullpage-header">
+        <button
+          type="button"
+          className="fullpage-back-btn"
+          onClick={() => {
+            if (step === "confirm") setStep("form");
+            else onClose();
+          }}
+        >
+          <ChevronLeft size={20} />
+          <span>{step === "confirm" ? "Back to Edit" : "Close"}</span>
         </button>
 
         <div className="fullpage-header-title">
-          <h1>Withdraw Funds</h1>
-          <span>External wallet & local bank payouts</span>
+          <h1>Withdraw Crypto</h1>
+          <span>On-chain cryptocurrency withdrawal with direct vault routing</span>
         </div>
 
         <div className="fullpage-status-badge">
           <span className="pulse-dot" />
-          <span>VAULT DISPATCH READY</span>
+          <span>INSTANT CRYPTO VAULT</span>
         </div>
       </header>
 
       {/* Main Body */}
       <div className="fullpage-modal-body">
         {step === "result" && resultData ? (
-          /* Result Screen */
-          <div className="pro-card" style={{ textAlign: "center", padding: "28px 20px" }}>
+          /* Step 3: Result Screen */
+          <div className="pro-card" style={{ textAlign: "center", padding: "30px 20px" }}>
             <div
               style={{
                 width: 64,
                 height: 64,
                 borderRadius: "50%",
-                background: resultData.is_instant ? "rgba(16, 185, 129, 0.15)" : "rgba(59, 130, 246, 0.15)",
-                border: `2px solid ${resultData.is_instant ? "#10B981" : "#3B82F6"}`,
+                background: resultData.is_instant ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)",
+                border: `2px solid ${resultData.is_instant ? "#10B981" : "#F59E0B"}`,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 margin: "0 auto 16px",
-                boxShadow: `0 0 24px ${resultData.is_instant ? "rgba(16, 185, 129, 0.35)" : "rgba(59, 130, 246, 0.35)"}`,
+                boxShadow: resultData.is_instant
+                  ? "0 0 24px rgba(16, 185, 129, 0.35)"
+                  : "0 0 24px rgba(245, 158, 11, 0.35)",
               }}
             >
               {resultData.is_instant ? (
                 <CheckCircle2 size={36} color="#10B981" />
               ) : (
-                <Clock size={36} color="#3B82F6" />
+                <Clock size={36} color="#F59E0B" />
               )}
             </div>
 
             <h2 style={{ fontSize: 20, fontWeight: 800, margin: "0 0 6px" }}>
-              {resultData.is_instant ? "Withdrawal Processed Successfully!" : "Withdrawal Request Submitted"}
+              {resultData.is_instant ? "Withdrawal Dispatched Instantly!" : "Withdrawal Submitted for Vault Processing"}
             </h2>
             <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 20px" }}>
-              {resultData.is_instant
-                ? "Your funds have been dispatched from the vault."
-                : "Your withdrawal has been received and queued for dispatch."}
+              {resultData.message}
             </p>
 
             <div
@@ -283,32 +223,32 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                <span style={{ color: "var(--muted)" }}>Withdrawal Amount:</span>
-                <span style={{ fontWeight: 800, color: resultData.is_instant ? "#10B981" : "var(--text)" }}>
+                <span style={{ color: "var(--muted)" }}>Amount:</span>
+                <span style={{ fontWeight: 800, color: "#10B981" }}>
                   ${resultData.amount} {resultData.currency}
                 </span>
               </div>
 
-              {resultData.localAmount && (
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                  <span style={{ color: "var(--muted)" }}>Local Payout:</span>
-                  <span style={{ fontWeight: 800, color: "#C4B5FD" }}>
-                    {resultData.localAmount}
-                  </span>
-                </div>
-              )}
-
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                <span style={{ color: "var(--muted)" }}>Network / Channel:</span>
+                <span style={{ color: "var(--muted)" }}>Transfer Network:</span>
                 <span style={{ fontWeight: 600 }}>{resultData.network}</span>
               </div>
 
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-                <span style={{ color: "var(--muted)" }}>Destination:</span>
-                <span style={{ fontFamily: "monospace", color: "var(--text)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {resultData.destination_address}
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                <span style={{ color: "var(--muted)" }}>Destination Address:</span>
+                <span style={{ fontFamily: "monospace", color: "var(--text)" }}>
+                  {resultData.destination_address.slice(0, 10)}...{resultData.destination_address.slice(-6)}
                 </span>
               </div>
+
+              {resultData.tx_hash && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                  <span style={{ color: "var(--muted)" }}>Transaction Hash:</span>
+                  <span style={{ fontFamily: "monospace", color: "#A78BFA" }}>
+                    {resultData.tx_hash}
+                  </span>
+                </div>
+              )}
 
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, paddingTop: 8, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
                 <span style={{ color: "var(--muted)" }}>Status:</span>
@@ -318,11 +258,11 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
                     fontSize: 11,
                     padding: "2px 8px",
                     borderRadius: 6,
-                    background: resultData.is_instant ? "rgba(16, 185, 129, 0.15)" : "rgba(59, 130, 246, 0.15)",
-                    color: resultData.is_instant ? "#10B981" : "#3B82F6",
+                    background: resultData.is_instant ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)",
+                    color: resultData.is_instant ? "#10B981" : "#F59E0B",
                   }}
                 >
-                  {resultData.is_instant ? "COMPLETED" : "PROCESSING"}
+                  {resultData.status || "PROCESSING"}
                 </span>
               </div>
             </div>
@@ -339,14 +279,14 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
           /* Step 2: Confirmation Review Slip */
           <div className="pro-card">
             <div className="pro-card-header">
-              <span className="pro-card-label">Review Withdrawal Slip</span>
-              <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>Final Step</span>
+              <span className="pro-card-label">Confirm On-Chain Withdrawal</span>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>Review details carefully</span>
             </div>
 
             <div
               style={{
-                background: "rgba(0, 0, 0, 0.35)",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
+                background: "rgba(0, 0, 0, 0.25)",
+                border: "1px solid rgba(255, 255, 255, 0.08)",
                 borderRadius: 14,
                 padding: "16px",
                 display: "flex",
@@ -356,38 +296,37 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                <span style={{ color: "var(--muted)" }}>Method:</span>
-                <span style={{ fontWeight: 700, color: "var(--text)" }}>
-                  {mode === "crypto" ? "External Crypto Address" : "Direct Local Bank Transfer"}
-                </span>
+                <span style={{ color: "var(--muted)" }}>Payout Method:</span>
+                <span style={{ fontWeight: 700, color: "var(--text)" }}>Crypto Wallet</span>
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
                 <span style={{ color: "var(--muted)" }}>Amount to Send:</span>
                 <span style={{ fontWeight: 800, fontSize: 16, color: "var(--text)" }}>
-                  ${numAmt.toFixed(2)} {mode === "crypto" ? sendCoin : "USD"}
+                  ${numAmt.toFixed(2)} {sendCoin}
                 </span>
               </div>
 
-              {mode === "bank" && (
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                  <span style={{ color: "var(--muted)" }}>Local Bank Credit:</span>
-                  <span style={{ fontWeight: 800, fontSize: 16, color: "#10B981" }}>
-                    {selectedCountry.currencySymbol}{localPayout.toLocaleString()} {selectedCountry.currency}
-                  </span>
-                </div>
-              )}
-
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-                <span style={{ color: "var(--muted)" }}>Destination:</span>
-                <span style={{ fontFamily: "monospace", color: "#C4B5FD", fontWeight: 700, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {mode === "crypto" ? recipientAddress : `${bankName} (${accountNumber})`}
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                <span style={{ color: "var(--muted)" }}>Destination Address:</span>
+                <span style={{ fontFamily: "monospace", color: "#C4B5FD", fontWeight: 700, fontSize: 12 }}>
+                  {recipientAddress}
                 </span>
               </div>
 
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                <span style={{ color: "var(--muted)" }}>Network:</span>
+                <span style={{ fontWeight: 600 }}>{sendNetwork}</span>
+              </div>
+
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-                <span style={{ color: "var(--muted)" }}>Network Fee:</span>
+                <span style={{ color: "var(--muted)" }}>Estimated Network Gas:</span>
                 <span style={{ color: "#10B981", fontWeight: 700 }}>$0.00 (Zero Fee)</span>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                <span style={{ color: "var(--muted)" }}>Settlement Dispatch:</span>
+                <span style={{ color: "#10B981", fontWeight: 700 }}>Instant Ledger Routing</span>
               </div>
             </div>
 
@@ -399,7 +338,7 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
                 onClick={handleExecuteWithdrawal}
                 disabled={isSubmitting}
               >
-                {isSubmitting ? "Dispatched from Vault..." : "Confirm & Send"}
+                {isSubmitting ? "Processing Withdrawal..." : "Confirm & Send Funds"}
               </button>
               <button
                 type="button"
@@ -421,379 +360,238 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
           </div>
         ) : (
           /* Step 1: Form View */
-          <>
-            {/* Mode Switcher */}
-            <div className="rail-mode-switch">
-              <button
-                type="button"
-                className={`rail-mode-btn ${mode === "crypto" ? "active" : ""}`}
-                onClick={() => setMode("crypto")}
-              >
-                <Wallet size={16} />
-                <span>Crypto Wallet</span>
-              </button>
-              <button
-                type="button"
-                className={`rail-mode-btn ${mode === "bank" ? "active" : ""}`}
-                onClick={() => setMode("bank")}
-              >
-                <Building2 size={16} />
-                <span>Local Bank Cashout</span>
-              </button>
+          <div className="pro-card">
+            {/* Header: Available Balance Banner */}
+            <div
+              style={{
+                background: "rgba(124, 58, 237, 0.1)",
+                border: "1px solid rgba(124, 58, 237, 0.25)",
+                borderRadius: 14,
+                padding: "14px 16px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>
+                  Available {sendCoin} Balance
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: "var(--text)", marginTop: 2 }}>
+                  ${availableCoinBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <span style={{ fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 10, background: "rgba(16, 185, 129, 0.15)", color: "#10B981" }}>
+                  INSTANT PAYOUT ACTIVE
+                </span>
+              </div>
             </div>
 
-            {/* One Long Unified Withdrawal Card */}
-            <div className="pro-card">
-              {/* Header: Available Balance Banner */}
-              <div
-                style={{
-                  background: "rgba(124, 58, 237, 0.1)",
-                  border: "1px solid rgba(124, 58, 237, 0.25)",
-                  borderRadius: 14,
-                  padding: "14px 16px",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>
-                    Available {mode === "crypto" ? sendCoin : "Cash"} Balance
-                  </div>
-                  <div style={{ fontSize: 22, fontWeight: 900, color: "var(--text)", marginTop: 2 }}>
-                    ${(mode === "crypto" ? availableCoinBalance : cashBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
-                  </div>
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <span style={{ fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 10, background: "rgba(16, 185, 129, 0.15)", color: "#10B981" }}>
-                    INSTANT PAYOUT ACTIVE
-                  </span>
-                </div>
+            <div className="card-divider" />
+
+            {/* 1. Asset & Network Section */}
+            <div className="card-section">
+              <div className="pro-card-header">
+                <span className="pro-card-label">1. Asset & Network</span>
               </div>
 
-              <div className="card-divider" />
+              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                {(["USDT", "USDC", "SOL"] as const).map((sym) => (
+                  <button
+                    key={sym}
+                    type="button"
+                    className={`asset-pill ${sendCoin === sym ? "active" : ""}`}
+                    style={{ flex: 1, padding: "8px" }}
+                    onClick={() => handleSelectCoin(sym)}
+                  >
+                    <span className="asset-pill-sym">{sym}</span>
+                    <span className="asset-pill-price">${(balances[sym]?.bal || 0).toFixed(2)}</span>
+                  </button>
+                ))}
+              </div>
 
-              {mode === "crypto" ? (
-                /* Crypto Mode */
-                <>
-                  {/* 1. Asset & Network Section */}
-                  <div className="card-section">
-                    <div className="pro-card-header">
-                      <span className="pro-card-label">1. Asset & Network</span>
-                    </div>
-
-                    <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                      {(["USDT", "USDC", "SOL"] as const).map((sym) => (
-                        <button
-                          key={sym}
-                          type="button"
-                          className={`asset-pill ${sendCoin === sym ? "active" : ""}`}
-                          style={{ flex: 1, padding: "8px" }}
-                          onClick={() => handleSelectCoin(sym)}
-                        >
-                          <span className="asset-pill-sym">{sym}</span>
-                          <span className="asset-pill-price">${(balances[sym]?.bal || 0).toFixed(2)}</span>
-                        </button>
-                      ))}
-                    </div>
-
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 6 }}>
-                      Select Rail / Chain:
-                    </div>
-                    <div className="network-pills-row">
-                      {(SEND_NETWORKS[sendCoin] || []).map((n) => (
-                        <button
-                          key={n.networkKey}
-                          type="button"
-                          className={`network-pill ${sendNetwork === n.networkKey ? "active" : ""}`}
-                          onClick={() => setSendNetwork(n.networkKey)}
-                        >
-                          {n.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="card-divider" />
-
-                  {/* 2. Destination Address Section */}
-                  <div className="card-section">
-                    <div className="pro-card-header">
-                      <span className="pro-card-label">2. Destination Address</span>
-                    </div>
-
-                    <div style={{ position: "relative" }}>
-                      <input
-                        type="text"
-                        className="modal-input"
-                        placeholder={`Paste recipient ${sendNetwork.split(" ")[0]} address...`}
-                        value={recipientAddress}
-                        onChange={(e) => {
-                          setRecipientAddress(e.target.value);
-                          setError(null);
-                        }}
-                        style={{ margin: 0, fontFamily: "monospace", fontSize: 12 }}
-                      />
-                    </div>
-                  </div>
-                </>
-              ) : (
-                /* Local Bank Mode */
-                <>
-                  {/* 1. Country Selection Section */}
-                  <div className="card-section">
-                    <div className="pro-card-header">
-                      <span className="pro-card-label">
-                        <Globe size={13} />
-                        1. Payout Country & Currency
-                      </span>
-                      <span style={{ fontSize: 11, color: "var(--violet, #7C3AED)", fontWeight: 700 }}>
-                        190+ Countries Live
-                      </span>
-                    </div>
-
-                    {/* Fast Flags Scroll Rail */}
-                    <div className="popular-flags-rail-wrap">
-                      <div className="popular-flags-rail-label">
-                        <span>Quick Select Country Flag:</span>
-                        <span>Tap to Switch</span>
-                      </div>
-                      <div className="popular-flags-rail">
-                        {POPULAR_COUNTRY_CODES.map((code) => {
-                          const c = getCountryByCode(code);
-                          const isActive = selectedCountry.code === c.code;
-                          return (
-                            <button
-                              key={code}
-                              type="button"
-                              className={`flag-chip-pill ${isActive ? "active" : ""}`}
-                              onClick={() => handleSelectCountry(c)}
-                              title={`${c.name} (${c.currency})`}
-                            >
-                              <CountryFlag code={c.code} flag={c.flag} size={15} />
-                              <span>{c.code}</span>
-                              <span className="flag-chip-sub">({c.currencySymbol})</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      className="country-pill-btn"
-                      onClick={() => setIsCountryModalOpen(true)}
-                      style={{ marginTop: 10 }}
-                    >
-                      <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={28} />
-                      <div style={{ flex: 1 }}>
-                        <div className="country-pill-name">{selectedCountry.name}</div>
-                        <div className="country-pill-currency">
-                          Payout in {selectedCountry.currency} ({selectedCountry.currencySymbol}) · 1 USD = {selectedCountry.rateToUsd >= 100 ? selectedCountry.rateToUsd.toLocaleString() : selectedCountry.rateToUsd} {selectedCountry.currency}
-                        </div>
-                      </div>
-                      <div
+              {/* Network Select Dropdown */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>
+                  Select Transfer Network:
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 6 }}>
+                  {currentNetworks.map((net) => {
+                    const isSel = sendNetwork === net.networkKey;
+                    return (
+                      <button
+                        key={net.networkKey}
+                        type="button"
+                        onClick={() => setSendNetwork(net.networkKey)}
                         style={{
-                          padding: "5px 10px",
-                          borderRadius: 8,
-                          background: "rgba(124, 58, 237, 0.18)",
-                          fontSize: 11.5,
-                          fontWeight: 700,
-                          color: "#C4B5FD",
+                          background: isSel ? "rgba(124, 58, 237, 0.25)" : "rgba(255, 255, 255, 0.04)",
+                          border: isSel ? "1.5px solid #8B5CF6" : "1px solid rgba(255, 255, 255, 0.08)",
+                          borderRadius: 10,
+                          padding: "8px 10px",
+                          textAlign: "left",
+                          cursor: "pointer",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 2,
                         }}
                       >
-                        Change
-                      </div>
-                    </button>
-                  </div>
-
-                  <div className="card-divider" />
-
-                  {/* 2. Beneficiary Bank Details Section */}
-                  <div className="card-section">
-                    <div className="pro-card-header">
-                      <span className="pro-card-label">2. Beneficiary Bank Details</span>
-                    </div>
-
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      <div>
-                        <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 4, display: "block" }}>
-                          Bank Name
-                        </label>
-                        <select
-                          className="modal-input"
-                          value={bankName}
-                          onChange={(e) => setBankName(e.target.value)}
-                          style={{ margin: 0, height: 42, background: "rgba(10, 11, 20, 0.85)", color: "var(--text)" }}
-                        >
-                          {(selectedCountry.banks || ["Access Bank", "Zenith Bank", "GTBank", "First Bank", "Kuda", "OPay"]).map((b) => (
-                            <option key={b} value={b} style={{ background: "#13131F", color: "#fff" }}>
-                              {b}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 4, display: "block" }}>
-                          Account Number
-                        </label>
-                        <input
-                          type="text"
-                          className="modal-input"
-                          placeholder="e.g. 0123456789"
-                          value={accountNumber}
-                          onChange={(e) => {
-                            setAccountNumber(e.target.value);
-                            setError(null);
-                          }}
-                          style={{ margin: 0 }}
-                        />
-                      </div>
-
-                      <div>
-                        <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 4, display: "block" }}>
-                          Account Holder Full Name
-                        </label>
-                        <input
-                          type="text"
-                          className="modal-input"
-                          placeholder="e.g. John Doe"
-                          value={accountName}
-                          onChange={(e) => {
-                            setAccountName(e.target.value);
-                            setError(null);
-                          }}
-                          style={{ margin: 0 }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              <div className="card-divider" />
-
-              {/* 3. Amount Section */}
-              <div className="card-section">
-                <div className="pro-card-header">
-                  <span className="pro-card-label">
-                    {mode === "crypto" ? "3. Amount to Withdraw" : "3. Cash Amount ($ USD)"}
-                  </span>
-                  <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>
-                    Min: $10.00 USD
-                  </span>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: isSel ? "#fff" : "var(--text)" }}>
+                            {net.label}
+                          </span>
+                          <span style={{ fontSize: 10, color: "#10B981", fontWeight: 700 }}>
+                            {net.fee}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: 10, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {net.note}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
+              </div>
+            </div>
 
-                <div className="converter-box">
-                  <div className="converter-row">
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
-                      <span style={{ fontSize: 20, fontWeight: 800, color: "var(--text)" }}>$</span>
-                      <input
-                        type="number"
-                        min="10"
-                        className="converter-input"
-                        value={sendAmt}
-                        onChange={(e) => {
-                          setSendAmt(e.target.value);
-                          setError(null);
-                        }}
-                        placeholder="10.00"
-                      />
-                    </div>
-                    <div className="converter-badge">
-                      <span>{mode === "crypto" ? sendCoin : "USD"}</span>
-                    </div>
-                  </div>
-                </div>
+            <div className="card-divider" />
 
-                {/* Percentage Chips */}
-                <div className="preset-chips-row">
-                  {["25%", "50%", "75%", "MAX"].map((pct) => (
-                    <button
-                      key={pct}
-                      type="button"
-                      className="preset-chip-btn"
-                      onClick={() => {
-                        const maxBal = mode === "crypto" ? availableCoinBalance : cashBalance;
-                        const fraction = pct === "25%" ? 0.25 : pct === "50%" ? 0.5 : pct === "75%" ? 0.75 : 1.0;
-                        setSendAmt((maxBal * fraction).toFixed(2));
-                        setError(null);
-                      }}
-                    >
-                      {pct}
-                    </button>
-                  ))}
-                </div>
-
-                {mode === "bank" && numAmt > 0 && (
-                  <div
-                    style={{
-                      marginTop: 10,
-                      padding: "8px 12px",
-                      borderRadius: 10,
-                      background: "rgba(16, 185, 129, 0.1)",
-                      border: "1px solid rgba(16, 185, 129, 0.25)",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      fontSize: 12,
-                    }}
-                  >
-                    <span style={{ color: "var(--muted)" }}>You will receive in bank:</span>
-                    <span style={{ fontWeight: 800, color: "#10B981", fontSize: 14 }}>
-                      ≈ {selectedCountry.currencySymbol}{localPayout.toLocaleString()} {selectedCountry.currency}
-                    </span>
-                  </div>
-                )}
+            {/* 2. Destination Wallet Address Section */}
+            <div className="card-section">
+              <div className="pro-card-header">
+                <span className="pro-card-label">2. Destination Address</span>
               </div>
 
-              {error && (
-                <div
-                  style={{
-                    marginTop: 14,
-                    padding: "10px 14px",
-                    borderRadius: 10,
-                    background: "rgba(239, 68, 68, 0.12)",
-                    border: "1px solid rgba(239, 68, 68, 0.3)",
-                    color: "#F87171",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
+              <div style={{ position: "relative" }}>
+                <input
+                  type="text"
+                  className="modal-input"
+                  placeholder={`Paste your ${sendNetwork} address`}
+                  value={recipientAddress}
+                  onChange={(e) => {
+                    setRecipientAddress(e.target.value);
+                    setError(null);
                   }}
-                >
-                  <AlertTriangle size={15} />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              {/* Submit CTA */}
-              <div style={{ marginTop: 18 }}>
+                  style={{
+                    margin: 0,
+                    paddingRight: 75,
+                    fontFamily: "monospace",
+                    fontSize: 12.5,
+                  }}
+                />
                 <button
                   type="button"
-                  className="pro-submit-btn"
-                  onClick={handleReview}
-                  style={{ width: "100%", margin: 0 }}
+                  onClick={async () => {
+                    try {
+                      const text = await navigator.clipboard.readText();
+                      if (text) setRecipientAddress(text.trim());
+                    } catch {}
+                  }}
+                  style={{
+                    position: "absolute",
+                    right: 8,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "rgba(124, 58, 237, 0.2)",
+                    border: "1px solid rgba(124, 58, 237, 0.4)",
+                    borderRadius: 6,
+                    color: "#C4B5FD",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: "4px 8px",
+                    cursor: "pointer",
+                  }}
                 >
-                  <Send size={16} />
-                  <span>Review & Withdraw {sendAmt ? `$${sendAmt}` : "0.00"}</span>
+                  PASTE
                 </button>
               </div>
             </div>
-          </>
+
+            <div className="card-divider" />
+
+            {/* 3. Amount Section */}
+            <div className="card-section">
+              <div className="pro-card-header">
+                <span className="pro-card-label">3. Amount to Withdraw</span>
+                <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>
+                  Min: $10.00 USD
+                </span>
+              </div>
+
+              <div className="converter-box">
+                <div className="converter-row">
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
+                    <span style={{ fontSize: 20, fontWeight: 800, color: "var(--text)" }}>$</span>
+                    <input
+                      type="number"
+                      min="10"
+                      className="converter-input"
+                      value={sendAmt}
+                      onChange={(e) => {
+                        setSendAmt(e.target.value);
+                        setError(null);
+                      }}
+                      placeholder="10.00"
+                    />
+                  </div>
+                  <div className="converter-badge">
+                    <span>{sendCoin}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Percentage Chips */}
+              <div className="preset-chips-row">
+                {["25%", "50%", "75%", "MAX"].map((pct) => (
+                  <button
+                    key={pct}
+                    type="button"
+                    className="preset-chip-btn"
+                    onClick={() => {
+                      const maxBal = availableCoinBalance;
+                      const fraction = pct === "25%" ? 0.25 : pct === "50%" ? 0.5 : pct === "75%" ? 0.75 : 1.0;
+                      setSendAmt((maxBal * fraction).toFixed(2));
+                      setError(null);
+                    }}
+                  >
+                    {pct}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {error && (
+              <div
+                style={{
+                  background: "rgba(239, 68, 68, 0.12)",
+                  border: "1px solid rgba(239, 68, 68, 0.3)",
+                  borderRadius: 10,
+                  padding: "10px 14px",
+                  color: "#FCA5A5",
+                  fontSize: 12.5,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginTop: 14,
+                }}
+              >
+                <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="pro-submit-btn"
+              style={{ marginTop: 20 }}
+              onClick={handleReview}
+              disabled={isSubmitting}
+            >
+              Review Withdrawal <ArrowRight size={16} />
+            </button>
+          </div>
         )}
       </div>
-
-      {/* Country Select Modal */}
-      <CountrySelectModal
-        isOpen={isCountryModalOpen}
-        onClose={() => setIsCountryModalOpen(false)}
-        onSelect={handleSelectCountry}
-        selectedCode={selectedCountry.code}
-        title="Select Payout Bank Country"
-      />
     </div>
   );
 };

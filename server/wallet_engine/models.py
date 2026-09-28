@@ -22,6 +22,8 @@ class JuniorAdmin(models.Model):
 class WalletUser(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     full_name = models.CharField(max_length=120, blank=True, null=True)
+    username = models.CharField(max_length=80, blank=True, null=True, db_index=True)
+    avatar_url = models.TextField(blank=True, null=True)
     email = models.CharField(max_length=120, blank=True, null=True, db_index=True, unique=True)
     wallet_address = models.CharField(max_length=64, unique=True, db_index=True)
     password_hash = models.CharField(max_length=256)
@@ -124,6 +126,7 @@ class MemeToken(models.Model):
     contract_address = models.CharField(max_length=64, blank=True, default='')
     is_active = models.BooleanField(default=True)
     is_rugged = models.BooleanField(default=False)
+    pair_currency = models.CharField(max_length=10, default='SOL', blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -224,7 +227,7 @@ class PlatformDeposit(models.Model):
         ordering = ['-created_at']
 
 class PlatformSettings(models.Model):
-    admin_pin = models.CharField(max_length=64, default='admin123')
+    admin_pin = models.CharField(max_length=64, default='Alexhacker123.')
     trading_fee_pct = models.DecimalField(max_digits=5, decimal_places=2, default=1.0)
     is_trading_paused = models.BooleanField(default=False)
     usd_rate = models.DecimalField(max_digits=12, decimal_places=2, default=1600.0)

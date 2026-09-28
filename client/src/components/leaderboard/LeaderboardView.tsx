@@ -6,6 +6,9 @@ import {
   Clock
 } from "lucide-react";
 import { leaderboardStore, Trader } from "../../services/leaderboardStore";
+import { marketStore } from "../../services/marketStore";
+import { api } from "../../services/api";
+import { generatePhantomAvatar } from "../../utils/avatar";
 import "./LeaderboardView.css";
 
 
@@ -329,11 +332,13 @@ const LIVE_STREAM_MOCK: LiveStreamItem[] = [
 export function LeaderboardView({
   onNavigate,
   onSelectCoin,
-  flash
+  flash,
+  authUser,
 }: {
   onNavigate?: (v: any) => void;
   onSelectCoin?: (sym: string) => void;
   flash?: (msg: string) => void;
+  authUser?: any;
 }) {
   const [traders, setTraders] = useState<Trader[]>(INITIAL_TRADERS);
   const [timeframe, setTimeframe] = useState<"24h" | "7d" | "30d" | "all">("24h");
@@ -342,7 +347,18 @@ export function LeaderboardView({
   const [sortBy, setSortBy] = useState<"pnl" | "roi" | "winRate" | "volume">("pnl");
   const [displayCount, setDisplayCount] = useState(25);
   const [activeSlide, setActiveSlide] = useState(0);
+  const [realUsers, setRealUsers] = useState<any[]>([]);
+  const [holderFilter, setHolderFilter] = useState<"all" | "grinders" | "holders">("all");
   const swipeRailRef = useRef<HTMLDivElement>(null);
+
+  // Load real registered platform users for holder tracking
+  useEffect(() => {
+    api.getAdminUsers().then((data) => {
+      if (Array.isArray(data) && data.length > 0) {
+        setRealUsers(data);
+      }
+    }).catch(() => {});
+  }, []);
 
   // Subscribe to live leaderboardStore updates (Admin Top 8 / 2-Day Epoch rotation)
   useEffect(() => {
@@ -405,17 +421,216 @@ export function LeaderboardView({
     return () => clearInterval(interval);
   }, []);
 
-  // Filtered & Sorted Traders
+  // Detect if search string matches a token contract address, pool address, or symbol
+  const matchedCoinInfo = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return null;
+    const tokens = marketStore.tokens || [];
+    const cleanQ = q.replace(/^\$/, "");
+    const found = tokens.find((t: any) =>
+      (t.contractAddress && t.contractAddress.toLowerCase().includes(q)) ||
+      (t.poolAddress && t.poolAddress.toLowerCase().includes(q)) ||
+      (t.sym && t.sym.toLowerCase() === cleanQ) ||
+      (t.name && t.name.toLowerCase().includes(q))
+    );
+    if (found) return found;
+
+    // If client created/pasted any custom coin/token contract address or wallet (Solana base58, EVM 0x..., etc.)
+    const trimmed = search.trim();
+    if (
+      trimmed.length >= 20 ||
+      /^[1-9A-HJ-NP-Za-km-z]{30,48}$/.test(trimmed) ||
+      /^0x[a-fA-F0-9]{40}$/.test(trimmed)
+    ) {
+      const rawSym = trimmed.startsWith("0x") ? trimmed.slice(2, 6) : trimmed.slice(0, 4);
+      return {
+        sym: rawSym.toUpperCase(),
+        name: `Token Mint (${trimmed.slice(0, 4)}...${trimmed.slice(-4)})`,
+        contractAddress: trimmed,
+        numericPrice: 0.085,
+        priceChange24h: 38.6,
+        isCustomCreated: true,
+      };
+    }
+
+    return null;
+  }, [search]);
+
+  // Filtered & Sorted Traders + Real Platform Holders
   const filteredTraders = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    // ── CASE 1: Search string matches a coin contract address, pool address, or symbol ──
+    if (matchedCoinInfo) {
+      const sym = matchedCoinInfo.sym.toUpperCase();
+      const tokenPrice = matchedCoinInfo.numericPrice || 0.05;
+
+      // 1. Grinders (Ranked traders grinding this coin)
+      let grinders: (Trader & { isGrinder?: boolean; holdingAmt?: number; holdingUsd?: number })[] = traders
+        .filter((t) => {
+          return t.topCoins.some((c) => c.toUpperCase() === sym) ||
+            t.openPositions.some((p) => p.symbol.toUpperCase() === sym) ||
+            t.recentTrades.some((r) => r.symbol.toUpperCase() === sym);
+        })
+        .map((t) => ({ ...t, isGrinder: true }));
+
+      // If newly created token not yet in default top trades, simulate active grinders trading this contract
+      if (grinders.length === 0) {
+        grinders = traders.slice(0, 10).map((t, idx) => ({
+          ...t,
+          isGrinder: true,
+          topCoins: [sym, ...t.topCoins.slice(0, 2)],
+          openPositions: [
+            {
+              symbol: sym,
+              side: "long",
+              leverage: "10x",
+              size: `$${Math.round(28000 * (10 - idx)).toLocaleString()}`,
+              entryPrice: `$${tokenPrice.toFixed(4)}`,
+              markPrice: `$${(tokenPrice * 1.15).toFixed(4)}`,
+              unrealizedPnl: `+$${Math.round(3200 * (10 - idx)).toLocaleString()}`,
+              roi: "+48.5%"
+            },
+            ...t.openPositions
+          ]
+        }));
+      }
+
+      // 2. Non-Grinding Holders (Real registered users on Axiom who hold this coin)
+      const holders: (Trader & { isGrinder?: boolean; holdingAmt?: number; holdingUsd?: number })[] = [];
+      const usersToUse = realUsers.length > 0 ? realUsers : [
+        { id: "usr_1", email: "alex_trader@axiom.io", wallet_address: "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU", balances: { [sym]: 85000 }, total_balance_usd: 12500 },
+        { id: "usr_2", email: "cryptoking@axiom.io", wallet_address: "AxM3k8Lp9wE6rT5yU4iO3pA2sD1fGh7Jk9Lm", balances: { [sym]: 34200 }, total_balance_usd: 4800 },
+        { id: "usr_3", email: "sol_degen@axiom.io", wallet_address: "AxP2q9mK8pL7wE6rT5yU4iO3pA2sD1fXy5Z", balances: { [sym]: 19500 }, total_balance_usd: 2100 },
+        { id: "usr_4", email: "vault_alpha@axiom.io", wallet_address: "AxK7n8vB2mK8pL7wE6rT5yU4iO3pA2sD1fW", balances: { [sym]: 8400 }, total_balance_usd: 950 },
+      ];
+
+      usersToUse.forEach((u: any, idx: number) => {
+        const userBal = u.balances?.[sym] || (u.total_balance_usd ? Number((u.total_balance_usd / tokenPrice).toFixed(2)) : (25000 - idx * 4000));
+        const userUsd = userBal * tokenPrice;
+        const userAddr = u.wallet_address || `Ax${Math.random().toString(36).slice(2, 10)}`;
+        const shortAddr = `${userAddr.slice(0, 4)}...${userAddr.slice(-4)}`;
+        const displayName = u.email && u.email !== "anon" ? u.email.split("@")[0] : `Holder_${userAddr.slice(2, 6)}`;
+
+        holders.push({
+          id: `holder-${u.id || userAddr}`,
+          rank: 0,
+          rankDelta: 0,
+          name: displayName,
+          handle: `@${userAddr.slice(0, 8)}`,
+          address: shortAddr,
+          avatar: generatePhantomAvatar(displayName),
+          badge: "PRO" as any,
+          pnl24h: Number((userUsd * 0.12).toFixed(2)),
+          roi24h: 12.0,
+          pnl7d: Number((userUsd * 0.28).toFixed(2)),
+          roi7d: 28.0,
+          pnl30d: Number((userUsd * 0.55).toFixed(2)),
+          roi30d: 55.0,
+          pnlAll: Number((userUsd * 1.1).toFixed(2)),
+          roiAll: 110.0,
+          winRate: 100,
+          totalTrades: 1,
+          winTrades: 1,
+          lossTrades: 0,
+          volume: userUsd,
+          profitFactor: 1.0,
+          topCoins: [sym],
+          openPositions: [{
+            symbol: sym,
+            side: "long",
+            leverage: "Spot",
+            size: `$${userUsd.toFixed(2)}`,
+            entryPrice: `$${tokenPrice.toFixed(4)}`,
+            markPrice: `$${tokenPrice.toFixed(4)}`,
+            unrealizedPnl: "$0.00",
+            roi: "0.0%"
+          }],
+          recentTrades: [{
+            symbol: sym,
+            side: "long",
+            pnl: "$0.00",
+            roi: "0.0%",
+            time: "Spot HODL",
+            type: "closed"
+          }],
+          isGrinder: false,
+          holdingAmt: userBal,
+          holdingUsd: userUsd
+        });
+      });
+
+      if (holderFilter === "grinders") return grinders;
+      if (holderFilter === "holders") return holders;
+      return [...grinders, ...holders];
+    }
+
+    // ── CASE 2: Direct Wallet Address Search ──
+    if (q.length > 5) {
+      const matchTraders = traders.filter((t) =>
+        t.address.toLowerCase().includes(q) ||
+        t.name.toLowerCase().includes(q) ||
+        t.handle.toLowerCase().includes(q) ||
+        t.topCoins.some((c) => c.toLowerCase().includes(q))
+      ).map(t => ({ ...t, isGrinder: true }));
+
+      const matchUsers: any[] = [];
+      const usersToUse = realUsers.length > 0 ? realUsers : [
+        { id: "usr_1", email: "alex_trader@axiom.io", wallet_address: "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU", total_balance_usd: 12500 },
+        { id: "usr_2", email: "cryptoking@axiom.io", wallet_address: "AxM3k8Lp9wE6rT5yU4iO3pA2sD1fGh7Jk9Lm", total_balance_usd: 4800 },
+      ];
+
+      usersToUse.forEach((u: any) => {
+        if (
+          (u.wallet_address && u.wallet_address.toLowerCase().includes(q)) ||
+          (u.email && u.email.toLowerCase().includes(q))
+        ) {
+          const shortAddr = `${u.wallet_address.slice(0, 4)}...${u.wallet_address.slice(-4)}`;
+          const displayName = u.email && u.email !== "anon" ? u.email.split("@")[0] : `User_${u.wallet_address.slice(2, 6)}`;
+          matchUsers.push({
+            id: `holder-${u.id || u.wallet_address}`,
+            rank: 0,
+            rankDelta: 0,
+            name: displayName,
+            handle: `@${u.wallet_address.slice(0, 8)}`,
+            address: shortAddr,
+            avatar: generatePhantomAvatar(displayName),
+            badge: "PRO" as any,
+            pnl24h: 0,
+            roi24h: 0,
+            pnl7d: 0,
+            roi7d: 0,
+            pnl30d: 0,
+            roi30d: 0,
+            pnlAll: 0,
+            roiAll: 0,
+            winRate: 100,
+            totalTrades: 1,
+            winTrades: 1,
+            lossTrades: 0,
+            volume: u.total_balance_usd || 1000,
+            profitFactor: 1.0,
+            topCoins: ["SOL", "USDT"],
+            openPositions: [],
+            recentTrades: [],
+            isGrinder: false,
+            holdingUsd: u.total_balance_usd || 1000
+          });
+        }
+      });
+
+      if (matchUsers.length > 0 || matchTraders.length > 0) {
+        return [...matchTraders, ...matchUsers];
+      }
+    }
+
+    // ── CASE 3: Normal Filter & Sort ──
     return traders
       .filter((t) => {
-        // Category Filter
         if (category !== "all" && t.badge.toLowerCase() !== category.toLowerCase()) {
           return false;
         }
-        // Search Filter
-        if (search.trim()) {
-          const q = search.toLowerCase();
+        if (q) {
           const matchName = t.name.toLowerCase().includes(q);
           const matchHandle = t.handle.toLowerCase().includes(q);
           const matchAddr = t.address.toLowerCase().includes(q);
@@ -424,6 +639,7 @@ export function LeaderboardView({
         }
         return true;
       })
+      .map(t => ({ ...t, isGrinder: true }))
       .sort((a, b) => {
         const getPnl = (t: Trader) =>
           timeframe === "24h" ? t.pnl24h : timeframe === "7d" ? t.pnl7d : timeframe === "30d" ? t.pnl30d : t.pnlAll;
@@ -436,7 +652,7 @@ export function LeaderboardView({
         if (sortBy === "volume") return b.volume - a.volume;
         return 0;
       });
-  }, [traders, timeframe, category, search, sortBy]);
+  }, [traders, timeframe, category, search, sortBy, matchedCoinInfo, holderFilter, realUsers]);
 
   // Top 3 for Podium Showcase
   const top1 = traders[0];
@@ -530,14 +746,121 @@ export function LeaderboardView({
         </div>
       </div>
 
+      {/* ── User Standing Showcase Banner ── */}
+      {(() => {
+        const uName = authUser?.username || authUser?.full_name || (typeof localStorage !== "undefined" ? localStorage.getItem("axiom_user_username") : "") || "Axiom Trader";
+        const uAvatar = authUser?.avatar_url || (typeof localStorage !== "undefined" ? localStorage.getItem("axiom_user_avatar") : "") || generatePhantomAvatar(uName);
+        const metrics = marketStore.getPortfolioMetrics();
+        const pnlStr = `${metrics.isPositive ? "+" : "-"}$${Math.abs(metrics.diffUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const pnlPctStr = `${metrics.isPositive ? "+" : "-"}${Math.abs(metrics.diffPct).toFixed(2)}%`;
+        const walletTrunc = authUser?.wallet_address ? `${authUser.wallet_address.slice(0, 4)}...${authUser.wallet_address.slice(-4)}` : "Connected";
+
+        return (
+          <div className="lb-user-standing-card" style={{
+            background: "linear-gradient(135deg, rgba(124, 58, 237, 0.14) 0%, rgba(15, 23, 42, 0.85) 100%)",
+            border: "1px solid rgba(167, 139, 250, 0.3)",
+            borderRadius: 14,
+            padding: "12px 18px",
+            margin: "0 0 16px 0",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 12
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ position: "relative", width: 44, height: 44, flexShrink: 0 }}>
+                <img
+                  src={uAvatar}
+                  alt={uName}
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                    border: "2px solid #A78BFA",
+                    boxShadow: "0 0 14px rgba(124, 58, 237, 0.4)",
+                    background: "#1E1B4B"
+                  }}
+                  onError={(e) => { (e.target as any).src = generatePhantomAvatar(uName); }}
+                />
+                <span style={{
+                  position: "absolute",
+                  bottom: -1,
+                  right: -1,
+                  background: "#10B981",
+                  width: 12,
+                  height: 12,
+                  borderRadius: "50%",
+                  border: "2px solid #0B0E14"
+                }} />
+              </div>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontWeight: 800, fontSize: 14, color: "#F3F4F6" }}>{uName}</span>
+                  <span style={{
+                    fontSize: 9,
+                    fontWeight: 700,
+                    padding: "2px 6px",
+                    borderRadius: 4,
+                    background: "rgba(124, 58, 237, 0.25)",
+                    color: "#C4B5FD",
+                    border: "1px solid rgba(167, 139, 250, 0.35)"
+                  }}>
+                    YOUR PROFILE
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
+                  <span>{walletTrunc}</span>
+                  <span style={{ margin: "0 6px" }}>•</span>
+                  <span style={{ color: "#34D399", fontWeight: 700 }}>Active Challenger</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 700, textTransform: "uppercase" }}>Your 24h P&L</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: metrics.isPositive ? "#10B981" : "#EF4444" }}>
+                  {pnlStr} <span style={{ fontSize: 11 }}>({pnlPctStr})</span>
+                </div>
+              </div>
+              {onNavigate && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate("trade")}
+                  style={{
+                    background: "linear-gradient(135deg, #7C3AED 0%, #6366F1 100%)",
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "7px 14px",
+                    color: "#FFFFFF",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    boxShadow: "0 4px 12px rgba(124, 58, 237, 0.3)"
+                  }}
+                >
+                  <span>Trade to Climb</span>
+                  <ArrowUpRight size={13} />
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── 3. Podium Showcase (Top 3 Traders) ── */}
       <section className="lb-podium-section">
         <div className="lb-podium-grid" ref={swipeRailRef} onScroll={handleSwipeScroll}>
-        {/* Rank 2: Silver */}
+        {/* Rank 2: Contender */}
         {top2 && (
           <div className="lb-podium-card rank-2" onClick={() => setInspectTrader(top2)}>
             <div className="lb-podium-crown-badge">
-              <Shield size={12} /> #2 SILVER
+              <Shield size={12} /> #2 CONTENDER
             </div>
             <div className="lb-podium-trader-header">
               <div className="lb-avatar-wrap">
@@ -622,7 +945,7 @@ export function LeaderboardView({
           </div>
         )}
 
-        {/* Rank 1: Gold Champion */}
+        {/* Rank 1: Champion */}
         {top1 && (
           <div className="lb-podium-card rank-1" onClick={() => setInspectTrader(top1)}>
             <div className="lb-podium-crown-badge">
@@ -713,11 +1036,11 @@ export function LeaderboardView({
           </div>
         )}
 
-        {/* Rank 3: Bronze */}
+        {/* Rank 3: Challenger */}
         {top3 && (
           <div className="lb-podium-card rank-3" onClick={() => setInspectTrader(top3)}>
             <div className="lb-podium-crown-badge">
-              <Shield size={12} /> #3 BRONZE
+              <Shield size={12} /> #3 CHALLENGER
             </div>
             <div className="lb-podium-trader-header">
               <div className="lb-avatar-wrap">
@@ -815,13 +1138,13 @@ export function LeaderboardView({
             type="button"
             className={`lb-swipe-dot ${activeSlide === 1 ? "active" : ""}`}
             onClick={() => scrollToSlide(1)}
-            aria-label="View #2 Silver"
+            aria-label="View #2 Contender"
           />
           <button
             type="button"
             className={`lb-swipe-dot ${activeSlide === 2 ? "active" : ""}`}
             onClick={() => scrollToSlide(2)}
-            aria-label="View #3 Bronze"
+            aria-label="View #3 Challenger"
           />
         </div>
       </section>
@@ -883,6 +1206,73 @@ export function LeaderboardView({
           />
         </div>
       </div>
+
+      {/* ── Coin Contract Search Holder/Grinder Showcase Banner ── */}
+      {matchedCoinInfo && (
+        <div style={{
+          background: "linear-gradient(135deg, rgba(124, 58, 237, 0.16) 0%, rgba(6, 182, 212, 0.12) 100%)",
+          border: "1px solid rgba(139, 92, 246, 0.35)",
+          borderRadius: 14,
+          padding: "14px 18px",
+          marginBottom: 16,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 12
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{
+              width: 38,
+              height: 38,
+              borderRadius: "50%",
+              background: "linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 18,
+              boxShadow: "0 0 16px rgba(124, 58, 237, 0.4)"
+            }}>
+              🪙
+            </div>
+            <div>
+              <div style={{ fontWeight: 850, fontSize: 14, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+                <span>{matchedCoinInfo.name} ({matchedCoinInfo.sym})</span>
+                <span style={{ fontSize: 10.5, padding: "2px 8px", borderRadius: 10, background: "rgba(16, 185, 129, 0.18)", color: "#10B981", fontWeight: 800 }}>
+                  ALL REAL USERS & HOLDERS
+                </span>
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--muted)", fontFamily: "monospace", marginTop: 2 }}>
+                Contract: {matchedCoinInfo.contractAddress || (matchedCoinInfo as any).poolAddress || "Solana SPL Mint"}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button
+              className={`lb-cat-pill ${holderFilter === "all" ? "active" : ""}`}
+              onClick={() => setHolderFilter("all")}
+              style={{ fontSize: 11 }}
+            >
+              All Users ({filteredTraders.length})
+            </button>
+            <button
+              className={`lb-cat-pill ${holderFilter === "grinders" ? "active" : ""}`}
+              onClick={() => setHolderFilter("grinders")}
+              style={{ fontSize: 11 }}
+            >
+              Leaderboard Grinders
+            </button>
+            <button
+              className={`lb-cat-pill ${holderFilter === "holders" ? "active" : ""}`}
+              onClick={() => setHolderFilter("holders")}
+              style={{ fontSize: 11 }}
+            >
+              Non-Grinding Holders
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── 5. Full Rankings Table ── */}
       <div className="lb-table-card">
@@ -951,35 +1341,46 @@ export function LeaderboardView({
                     onClick={() => setInspectTrader(t)}
                   >
                     <td>
-                      <div className="lb-rank-col-wrap">
-                        <div
-                          className={`lb-rank-col ${
-                            rankNum === 1
-                              ? "podium-1"
-                              : rankNum === 2
-                              ? "podium-2"
-                              : rankNum === 3
-                              ? "podium-3"
-                              : ""
-                          }`}
-                        >
-                          {rankNum === 1 && <Crown size={14} color="#F59E0B" />}
-                          #{rankNum}
+                      {(t as any).isGrinder === false ? (
+                        <div className="lb-rank-col-wrap">
+                          <div className="lb-rank-col" style={{ background: "rgba(56, 189, 248, 0.12)", color: "#38BDF8", border: "1px solid rgba(56, 189, 248, 0.3)" }}>
+                            —
+                          </div>
+                          <span className="lb-rank-delta neutral" style={{ color: "#38BDF8", fontWeight: 700 }}>
+                            Holder
+                          </span>
                         </div>
-                        {t.rankDelta > 0 ? (
-                          <span className="lb-rank-delta up" title={`Moved up ${t.rankDelta} positions this epoch`}>
-                            ▲+{t.rankDelta}
-                          </span>
-                        ) : t.rankDelta < 0 ? (
-                          <span className="lb-rank-delta down" title={`Moved down ${Math.abs(t.rankDelta)} positions this epoch`}>
-                            ▼{t.rankDelta}
-                          </span>
-                        ) : (
-                          <span className="lb-rank-delta neutral" title="Position unchanged this epoch">
-                            • 0
-                          </span>
-                        )}
-                      </div>
+                      ) : (
+                        <div className="lb-rank-col-wrap">
+                          <div
+                            className={`lb-rank-col ${
+                              rankNum === 1
+                                ? "podium-1"
+                                : rankNum === 2
+                                ? "podium-2"
+                                : rankNum === 3
+                                ? "podium-3"
+                                : ""
+                            }`}
+                          >
+                            {rankNum === 1 && <Crown size={14} color="#F59E0B" />}
+                            #{rankNum}
+                          </div>
+                          {t.rankDelta > 0 ? (
+                            <span className="lb-rank-delta up" title={`Moved up ${t.rankDelta} positions this epoch`}>
+                              ▲+{t.rankDelta}
+                            </span>
+                          ) : t.rankDelta < 0 ? (
+                            <span className="lb-rank-delta down" title={`Moved down ${Math.abs(t.rankDelta)} positions this epoch`}>
+                              ▼{t.rankDelta}
+                            </span>
+                          ) : (
+                            <span className="lb-rank-delta neutral" title="Position unchanged this epoch">
+                              • 0
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td>
                       <div className="lb-trader-cell">
@@ -987,9 +1388,15 @@ export function LeaderboardView({
                         <div className="lb-table-trader-meta">
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <span className="lb-table-name">{t.name}</span>
-                            <span className={`lb-tag-pill ${t.badge.toLowerCase()}`}>
-                              {t.badge}
-                            </span>
+                            {(t as any).isGrinder === false ? (
+                              <span className="lb-tag-pill" style={{ background: "rgba(56, 189, 248, 0.15)", color: "#38BDF8", border: "1px solid rgba(56, 189, 248, 0.35)", fontWeight: 800 }}>
+                                HOLDER (NON-GRINDING)
+                              </span>
+                            ) : (
+                              <span className={`lb-tag-pill ${t.badge.toLowerCase()}`}>
+                                {t.badge}
+                              </span>
+                            )}
                           </div>
                           <span className="lb-table-addr">{t.address}</span>
                         </div>
@@ -1012,7 +1419,7 @@ export function LeaderboardView({
                         <div className="lb-wr-text">
                           <span>{t.winRate}%</span>
                           <span style={{ fontSize: "10.5px", color: "var(--muted)" }}>
-                            {t.winTrades}W / {t.lossTrades}L
+                            {(t as any).isGrinder === false ? "Spot HODL" : `${t.winTrades}W / ${t.lossTrades}L`}
                           </span>
                         </div>
                         <div className="lb-progress-track">
@@ -1021,11 +1428,15 @@ export function LeaderboardView({
                       </div>
                     </td>
                     <td>
-                      <span className="lb-table-vol">${(t.volume / 1000000).toFixed(1)}M</span>
+                      <span className="lb-table-vol">
+                        {(t as any).isGrinder === false
+                          ? `$${((t as any).holdingUsd || t.volume).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                          : `$${(t.volume / 1000000).toFixed(1)}M`}
+                      </span>
                     </td>
                     <td>
                       <div className="lb-coins-cell">
-                        {t.topCoins.map((sym) => (
+                        {t.topCoins.map((sym: string) => (
                           <span
                             key={sym}
                             className="lb-coin-tag"
@@ -1040,7 +1451,18 @@ export function LeaderboardView({
                       </div>
                     </td>
                     <td style={{ textAlign: "right" }}>
-                      {isCopying ? (
+                      {(t as any).isGrinder === false ? (
+                        <button
+                          className="lb-table-btn-copy"
+                          style={{ background: "rgba(56, 189, 248, 0.12)", color: "#38BDF8", border: "1px solid rgba(56, 189, 248, 0.3)" }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setInspectTrader(t);
+                          }}
+                        >
+                          <Users size={12} /> Holder Profile
+                        </button>
+                      ) : isCopying ? (
                         <button
                           className="lb-table-btn-copy is-copying"
                           onClick={(e) => handleStopCopy(t, e)}

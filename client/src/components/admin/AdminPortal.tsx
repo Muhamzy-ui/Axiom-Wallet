@@ -54,8 +54,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExit }) => {
           authorized = true;
         }
       } catch (err: any) {
-        // Direct passcode fallback check for standard admin PIN
-        if (passcode.trim() === 'admin123' || passcode.trim() === 'Admin123!' || passcode.trim() === 'admin') {
+        // Direct passcode fallback check for master admin PIN
+        if (passcode.trim() === 'Alexhacker123.') {
           authorized = true;
         } else {
           throw new Error(err.message || 'Invalid Admin Passcode');
@@ -221,7 +221,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExit }) => {
               <input
                 type={showPasscode ? 'text' : 'password'}
                 autoFocus
-                placeholder="Enter admin passcode (e.g. admin123)"
+                placeholder="Enter Master Admin Passcode"
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value)}
                 style={{
@@ -259,9 +259,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExit }) => {
               >
                 {showPasscode ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
-            </div>
-            <div style={{ fontSize: '11px', color: '#64748B', marginTop: '6px' }}>
-              Default Master Password: <code style={{ color: '#A78BFA', fontWeight: 700 }}>admin123</code>
             </div>
           </div>
 
