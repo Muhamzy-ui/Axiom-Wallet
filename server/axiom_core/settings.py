@@ -79,16 +79,21 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://.*\.onrender\.com$",
+    r"^https://.*\.axiomwallets\.io$",
     r"^http://localhost:\d+$",
     r"^http://127\.0\.0\.1:\d+$",
 ]
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
+    'https://axiomwallets.io',
+    'https://www.axiomwallets.io',
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     'https://*.onrender.com',
+    'https://axiomwallets.io',
+    'https://*.axiomwallets.io',
     'http://localhost:5173',
     'http://127.0.0.1:5173',
 ]
