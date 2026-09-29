@@ -1,0 +1,30 @@
+{
+  "short_name": "Axiom",
+  "name": "Axiom Wallet — Meme Coin Trading & Swap Platform",
+  "description": "Next-generation crypto wallet and meme coin trading portal with instant execution and secure custodial ledger.",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0A0B14",
+  "theme_color": "#0A0B14",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "scope": "/"
+}

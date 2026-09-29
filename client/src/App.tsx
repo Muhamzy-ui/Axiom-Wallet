@@ -5623,16 +5623,56 @@ export default function App() {
     return (
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "center",
-        height: "100vh", background: "var(--bg)", flexDirection: "column", gap: 16
+        height: "100vh", background: "var(--bg, #0A0B14)", flexDirection: "column", gap: 18,
+        position: "fixed", inset: 0, zIndex: 99999
       }}>
+        <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{
+            position: "absolute",
+            width: 90, height: 90,
+            borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(124,58,237,0.35) 0%, rgba(6,182,212,0.15) 50%, transparent 70%)",
+            filter: "blur(8px)",
+            pointerEvents: "none"
+          }} />
+          <AxiomLogo size={64} withGlow={true} />
+        </div>
         <div style={{
-          width: 44, height: 44, borderRadius: 12,
-          background: "linear-gradient(135deg, #7C3AED, #5B21B6)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 22, fontWeight: 900, color: "#fff",
-          boxShadow: "0 0 24px rgba(124,58,237,0.4)"
-        }}>A</div>
-        <div style={{ fontSize: 13, color: "var(--text-muted)", fontFamily: "Inter, system-ui" }}>Loading Axiom Wallet...</div>
+          fontFamily: "'Outfit', 'Inter', system-ui, sans-serif",
+          fontWeight: 800,
+          fontSize: 18,
+          letterSpacing: "0.16em",
+          color: "var(--text, #FFFFFF)",
+          textTransform: "uppercase"
+        }}>
+          AXIOM WALLET
+        </div>
+        <div style={{
+          fontSize: 12,
+          color: "var(--text-muted, #94A3B8)",
+          fontFamily: "'Inter', system-ui, sans-serif",
+          letterSpacing: "0.04em"
+        }}>
+          Loading Axiom Wallet...
+        </div>
+        <div style={{
+          width: 140, height: 3,
+          background: "var(--border, rgba(255,255,255,0.08))",
+          borderRadius: 999, overflow: "hidden", position: "relative"
+        }}>
+          <div style={{
+            position: "absolute", top: 0, left: 0, height: "100%", width: "40%",
+            background: "linear-gradient(90deg, #7C3AED, #06B6D4)",
+            borderRadius: 999,
+            animation: "axiomPulseBar 1.4s ease-in-out infinite"
+          }} />
+        </div>
+        <style>{`
+          @keyframes axiomPulseBar {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(250%); }
+          }
+        `}</style>
       </div>
     );
   }
