@@ -57,6 +57,14 @@ class RootErrorBoundary extends Component<Props, State> {
             onClick={() => {
               try {
                 localStorage.removeItem("axiom_active_view");
+                const toRemove: string[] = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                  const key = localStorage.key(i);
+                  if (key && (key.includes("orders") || key.includes("trade"))) {
+                    toRemove.push(key);
+                  }
+                }
+                toRemove.forEach(k => localStorage.removeItem(k));
               } catch {}
               window.location.href = "/";
             }}

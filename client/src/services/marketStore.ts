@@ -668,7 +668,13 @@ class MarketStore {
         if (savedOrders) {
           const parsed = JSON.parse(savedOrders);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            this.userOrders = parsed;
+            this.userOrders = parsed.map((o: any) => ({
+              ...o,
+              tokenAmt: Number(o.tokenAmt) || 0,
+              amountUsd: Number(o.amountUsd) || 0,
+              price: Number(o.price) || 0,
+              timestamp: Number(o.timestamp) || Date.now()
+            }));
           }
         }
       } catch { }
@@ -1784,16 +1790,20 @@ class MarketStore {
             const orderType: any = isP2P ? "P2P Transfer" : isDeposit ? "Deposit" : "Market";
             const side = (tx.side === "SELL") ? "Sell" : "Buy";
 
+            const amtNum = Number(tx.amount) || 0;
+            const usdNum = Number(tx.usd_value ?? tx.value_usd) || (amtNum * (Number(tx.price) || 1));
+            const priceNum = Number(tx.price) || (amtNum > 0 ? (usdNum / amtNum) : 0);
+
             const newOrder: UserOrder = {
               id: tx.id,
               sym: tx.currency,
               name: tx.currency,
               side: side,
-              amountUsd: tx.usd_value || 0,
-              tokenAmt: tx.amount || 0,
-              price: tx.price || (tx.amount > 0 ? (tx.usd_value / tx.amount) : 0),
-              timestamp: tx.timestamp || Date.now(),
-              dateStr: tx.date || new Date().toLocaleString(),
+              amountUsd: usdNum,
+              tokenAmt: amtNum,
+              price: priceNum,
+              timestamp: Number(tx.timestamp) || Date.now(),
+              dateStr: tx.date_str || tx.date || new Date().toLocaleString(),
               orderType: orderType,
               triggerNote: tx.note || (isP2P ? `Received via UID Transfer` : isDeposit ? `Confirmed Deposit` : undefined),
             };

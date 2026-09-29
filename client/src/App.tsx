@@ -532,15 +532,16 @@ function DexRecentTrades({ sym, flash }: { sym: string; flash: (m: string) => vo
                   </span>
                 </td>
                 <td className={`dex-td ${numClass}`}>
-                  {t.usd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {(Number(t.usd) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
                 <td className={`dex-td ${numClass}`}>
-                  {t.tokenAmt >= 1000
-                    ? t.tokenAmt.toLocaleString(undefined, { maximumFractionDigits: 1 })
-                    : t.tokenAmt.toFixed(3)}
+                  {(() => {
+                    const amt = Number(t.tokenAmt) || 0;
+                    return amt >= 1000 ? amt.toLocaleString(undefined, { maximumFractionDigits: 1 }) : amt.toFixed(3);
+                  })()}
                 </td>
                 <td className={`dex-td ${numClass}`}>
-                  {t.solAmt.toFixed(4)}
+                  {(Number(t.solAmt) || 0).toFixed(4)}
                 </td>
                 <td className={`dex-td ${numClass}`} style={{ minWidth: 72, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
                   {t.price < 0.000001 ? `$${t.price.toFixed(8)}` : t.price < 0.001 ? `$${t.price.toFixed(6)}` : t.price < 1 ? `$${t.price.toFixed(4)}` : `$${t.price.toFixed(2)}`}
@@ -1263,13 +1264,14 @@ function UserOrdersList({
                         </span>
                       </td>
                       <td className="dex-td" style={{ fontWeight: 800, color: isBuy ? "var(--green)" : "var(--red)" }}>
-                        ${o.amountUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        ${(Number(o.amountUsd) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td className="dex-td" style={{ color: "var(--text)" }}>
-                        {o.tokenAmt >= 1000
-                          ? o.tokenAmt.toLocaleString(undefined, { maximumFractionDigits: 1 })
-                          : o.tokenAmt.toFixed(o.price < 0.001 ? 0 : 4)
-                        } {o.sym}
+                        {(() => {
+                          const amt = Number(o.tokenAmt) || 0;
+                          const p = Number(o.price) || 0;
+                          return amt >= 1000 ? amt.toLocaleString(undefined, { maximumFractionDigits: 1 }) : amt.toFixed(p < 0.001 ? 0 : 4);
+                        })()} {o.sym}
                       </td>
                       <td className="dex-td" style={{ color: "var(--muted)", fontFamily: "monospace", fontSize: 11 }}>
                         ${fmtP(o.price)}
@@ -4978,10 +4980,13 @@ function ProfileView({
                         {o.triggerNote || o.orderType}
                       </td>
                       <td className="dex-td" style={{ fontFamily: "monospace", fontSize: 11, color: "var(--text)" }}>
-                        {o.tokenAmt >= 1000 ? o.tokenAmt.toLocaleString(undefined, { maximumFractionDigits: 1 }) : o.tokenAmt.toFixed(4)}
+                        {(() => {
+                          const amt = Number(o.tokenAmt) || 0;
+                          return amt >= 1000 ? amt.toLocaleString(undefined, { maximumFractionDigits: 1 }) : amt.toFixed(4);
+                        })()}
                       </td>
                       <td className="dex-td" style={{ fontFamily: "monospace", fontSize: 11, color: "#10B981", fontWeight: 700 }}>
-                        ${o.amountUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        ${(Number(o.amountUsd) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td className="dex-td" style={{ fontSize: 10, color: "var(--muted)" }}>
                         {o.dateStr}

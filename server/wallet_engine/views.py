@@ -1127,11 +1127,16 @@ def get_portfolio(request):
     recent_transactions = []
     for d in PlatformDeposit.objects.filter(user=user, status='CONFIRMED').order_by('-verified_at', '-created_at')[:20]:
         is_p2p = 'P2P' in (d.wallet_address_used or '')
+        dep_c = d.currency.upper().lstrip('$')
+        rate = BASE_RATES_USD.get(dep_c, Decimal('1.0'))
+        usd_val = float(d.amount * rate)
         recent_transactions.append({
             'id': f"dep_{d.id}",
             'type': 'P2P_RECEIVE' if is_p2p else 'DEPOSIT',
             'currency': d.currency,
-            'amount': str(d.amount),
+            'amount': float(d.amount),
+            'usd_value': usd_val,
+            'value_usd': f"{usd_val:.2f}",
             'status': d.status,
             'tx_hash': d.tx_hash,
             'note': d.wallet_address_used or f"Deposit via {d.currency}",
@@ -1140,12 +1145,16 @@ def get_portfolio(request):
         })
 
     for tr in Trade.objects.filter(user=user).select_related('token').order_by('-created_at')[:20]:
-        val_usd = (tr.token_amount * tr.price_usd) if (tr.token_amount and tr.price_usd) else Decimal('0.0')
+        val_usd = float((tr.token_amount * tr.price_usd) if (tr.token_amount and tr.price_usd) else Decimal('0.0'))
+        amt = float(tr.token_amount) if tr.token_amount else 0.0
+        price = float(tr.price_usd) if tr.price_usd else 0.0
         recent_transactions.append({
             'id': f"tr_{tr.id}",
             'type': tr.side.upper() if tr.side else 'BUY',
             'currency': tr.token.symbol if tr.token else 'SOL',
-            'amount': str(tr.token_amount),
+            'amount': amt,
+            'price': price,
+            'usd_value': val_usd,
             'value_usd': f"{val_usd:.2f}",
             'status': 'COMPLETED',
             'tx_hash': tr.tx_hash,
