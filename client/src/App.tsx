@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import {
   ArrowDownUp, ArrowUpRight, BarChart3, Bell, Check, CheckCircle, ChevronDown, ChevronLeft, ChevronRight, ChevronUp,
   Copy, LayoutDashboard, LineChart, Menu, Plus, Search,
-  Send, Settings, Shield, ShieldCheck, Star, Wallet, X, TrendingUp, TrendingDown,
+  Send, Settings, Shield, ShieldCheck, Target, Star, Wallet, X, TrendingUp, TrendingDown,
   AlertTriangle, Coins, Users, ArrowDownToLine, ArrowUpToLine, Skull, LogOut, Sliders, Zap, Globe, Lock, ShoppingBag, RotateCcw, ExternalLink,
   Sun, Moon, CreditCard, RefreshCw, Clock, Crown, Flame, Activity, Trophy, Eye, EyeOff, Camera, Share
 } from "lucide-react";
@@ -558,7 +558,7 @@ function DexRecentTrades({ sym, flash }: { sym: string; flash: (m: string) => vo
   );
 }
 
-/* ── Bybit-Style Set Take Profit & Stop Loss Modal ─────────────────── */
+/* ── Axiom Bybit-Style Set Take Profit & Stop Loss Modal ─────────── */
 function SetTpSlModal({
   isOpen,
   onClose,
@@ -581,29 +581,87 @@ function SetTpSlModal({
 }) {
   if (!isOpen) return null;
   const existing = pos.activeTpSl;
-  const [tpPct, setTpPct] = useState<number>(existing?.tpPct || 25);
-  const [slPct, setSlPct] = useState<number>(existing?.slPct || 10);
-  const [enableTp, setEnableTp] = useState<boolean>(true);
-  const [enableSl, setEnableSl] = useState<boolean>(true);
+  const token = marketStore.getToken(sym);
+  const livePrice = curPrice > 0 ? curPrice : (token?.numericPrice || 1);
+  const entryPrice = pos.avgBuyPrice > 0 ? pos.avgBuyPrice : livePrice;
 
-  const tpPrice = curPrice * (1 + tpPct / 100);
-  const slPrice = curPrice * (1 - slPct / 100);
+  // Format helper for prices of different magnitudes
+  const fmtP = (p: number) => {
+    if (isNaN(p) || p <= 0) return "0.00";
+    if (p < 0.00001) return p.toFixed(8);
+    if (p < 0.001) return p.toFixed(6);
+    if (p < 1) return p.toFixed(4);
+    if (p < 10) return p.toFixed(3);
+    return p.toFixed(2);
+  };
 
-  const estProfit = pos.bal * (tpPrice - pos.avgBuyPrice);
-  const estLoss = pos.bal * (pos.avgBuyPrice - slPrice);
+  // Initial values
+  const initTpPrice = existing?.tpPrice || entryPrice * 1.25;
+  const initSlPrice = existing?.slPrice || entryPrice * 0.90;
+
+  const [enableTp, setEnableTp] = useState<boolean>(existing ? !!existing.tpPrice : true);
+  const [enableSl, setEnableSl] = useState<boolean>(existing ? !!existing.slPrice : true);
+  const [tpPriceInput, setTpPriceInput] = useState<string>(fmtP(initTpPrice));
+  const [slPriceInput, setSlPriceInput] = useState<string>(fmtP(initSlPrice));
+  const [selectedTpChip, setSelectedTpChip] = useState<number | null>(existing?.tpPct || 25);
+  const [selectedSlChip, setSelectedSlChip] = useState<number | null>(existing?.slPct || 10);
+
+  // Derived current values
+  const numTpPrice = parseFloat(tpPriceInput) || 0;
+  const numSlPrice = parseFloat(slPriceInput) || 0;
+
+  // Dynamic % ROI and Est profit/loss calculations
+  const calcTpPct = entryPrice > 0 && numTpPrice > 0 ? ((numTpPrice - entryPrice) / entryPrice) * 100 : 0;
+  const calcSlPct = entryPrice > 0 && numSlPrice > 0 ? ((entryPrice - numSlPrice) / entryPrice) * 100 : 0;
+
+  const estProfitUsd = pos.bal > 0 && numTpPrice > 0 ? pos.bal * (numTpPrice - entryPrice) : 0;
+  const estLossUsd = pos.bal > 0 && numSlPrice > 0 ? pos.bal * (entryPrice - numSlPrice) : 0;
+
+  const handleTpChipClick = (pct: number) => {
+    setSelectedTpChip(pct);
+    const target = entryPrice * (1 + pct / 100);
+    setTpPriceInput(fmtP(target));
+  };
+
+  const handleSlChipClick = (pct: number) => {
+    setSelectedSlChip(pct);
+    const target = entryPrice * (1 - pct / 100);
+    setSlPriceInput(fmtP(target));
+  };
+
+  const handleTpInputChange = (val: string) => {
+    setTpPriceInput(val);
+    setSelectedTpChip(null);
+  };
+
+  const handleSlInputChange = (val: string) => {
+    setSlPriceInput(val);
+    setSelectedSlChip(null);
+  };
 
   const handleConfirm = () => {
     if (!enableTp && !enableSl) {
       if (flash) flash("Enable at least Take Profit or Stop Loss");
       return;
     }
+    if (enableTp && (numTpPrice <= 0 || isNaN(numTpPrice))) {
+      if (flash) flash("Please enter a valid Take Profit target price");
+      return;
+    }
+    if (enableSl && (numSlPrice <= 0 || isNaN(numSlPrice))) {
+      if (flash) flash("Please enter a valid Stop Loss trigger price");
+      return;
+    }
+    const finalTpPct = enableTp ? Math.round(calcTpPct) : undefined;
+    const finalSlPct = enableSl ? Math.round(calcSlPct) : undefined;
+
     const res = marketStore.placeTpSlOrder({
       sym,
       amountTokens: pos.bal,
-      tpPrice: enableTp ? tpPrice : undefined,
-      slPrice: enableSl ? slPrice : undefined,
-      tpPct: enableTp ? tpPct : undefined,
-      slPct: enableSl ? slPct : undefined,
+      tpPrice: enableTp ? numTpPrice : undefined,
+      slPrice: enableSl ? numSlPrice : undefined,
+      tpPct: finalTpPct,
+      slPct: finalSlPct,
     });
     if (flash) flash(res.message);
     onClose();
@@ -617,150 +675,202 @@ function SetTpSlModal({
     onClose();
   };
 
-  const fmtP = (p: number) => (p < 0.001 ? p.toFixed(8) : p < 1 ? p.toFixed(4) : p.toFixed(2));
-
   return (
     <div className="tpsl-modal-backdrop" onClick={onClose}>
       <div className="tpsl-modal-card" onClick={e => e.stopPropagation()}>
+        {/* Header */}
         <div className="tpsl-modal-header">
           <div className="tpsl-modal-title">
-            <ShieldCheck size={18} color="var(--violet)" />
-            <span>Set TP / SL — {sym}</span>
-            <span style={{ fontSize: 9.5, padding: "2px 6px", borderRadius: 4, background: "rgba(124, 58, 237, 0.2)", color: "#C4B5FD", fontWeight: 800 }}>LONG</span>
+            <div className="tpsl-icon-badge">
+              <Target size={16} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span>Take Profit & Stop Loss</span>
+                <span className="tpsl-sym-pill">{sym}</span>
+                <span className="tpsl-long-pill">LONG</span>
+              </div>
+              <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 500 }}>
+                Bybit conditional market trigger on open position
+              </span>
+            </div>
           </div>
-          <button type="button" className="tpsl-modal-close" onClick={onClose}>
+          <button type="button" className="tpsl-modal-close" onClick={onClose} aria-label="Close">
             <X size={16} />
           </button>
         </div>
 
+        {/* Position Metrics Bar */}
         <div className="tpsl-pos-summary-bar">
           <div className="tpsl-summary-item">
             <span className="tpsl-summary-label">Position Size</span>
-            <span className="tpsl-summary-val">{pos.bal >= 1000 ? pos.bal.toLocaleString(undefined, { maximumFractionDigits: 1 }) : pos.bal.toFixed(curPrice < 0.001 ? 0 : 4)} {sym}</span>
+            <span className="tpsl-summary-val">
+              {pos.bal >= 1000 ? pos.bal.toLocaleString(undefined, { maximumFractionDigits: 1 }) : pos.bal.toFixed(livePrice < 0.001 ? 0 : 4)} {sym}
+            </span>
           </div>
           <div className="tpsl-summary-item">
             <span className="tpsl-summary-label">Avg Entry</span>
-            <span className="tpsl-summary-val">${fmtP(pos.avgBuyPrice)}</span>
+            <span className="tpsl-summary-val">${fmtP(entryPrice)}</span>
           </div>
           <div className="tpsl-summary-item">
-            <span className="tpsl-summary-label">Market Price</span>
-            <span className="tpsl-summary-val" style={{ color: "#A78BFA" }}>${fmtP(curPrice)}</span>
+            <span className="tpsl-summary-label">Last Mark Price</span>
+            <span className="tpsl-summary-val" style={{ color: "#C4B5FD" }}>${fmtP(livePrice)}</span>
+          </div>
+          <div className="tpsl-summary-item">
+            <span className="tpsl-summary-label">Position Value</span>
+            <span className="tpsl-summary-val">${pos.currentVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
         </div>
 
+        {/* Body */}
         <div className="tpsl-modal-body">
-          {/* Take Profit Section */}
-          <div className="tpsl-section">
+          {/* Take Profit Card */}
+          <div className={`tpsl-section ${enableTp ? "section-active-tp" : "section-disabled"}`}>
             <div className="tpsl-section-head">
-              <span className="tpsl-section-label" style={{ color: "var(--green)" }}>
-                <TrendingUp size={14} />
+              <span className="tpsl-section-label">
+                <Target size={14} color="#A78BFA" />
                 <span>Take Profit (TP)</span>
               </span>
-              <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, cursor: "pointer", color: "var(--muted)" }}>
-                <input type="checkbox" checked={enableTp} onChange={e => setEnableTp(e.target.checked)} style={{ accentColor: "var(--green)" }} />
-                <span>Enable</span>
-              </label>
+              <div
+                className={`tpsl-toggle-switch ${enableTp ? "on" : "off"}`}
+                onClick={() => setEnableTp(!enableTp)}
+                role="switch"
+                aria-checked={enableTp}
+              >
+                <div className="tpsl-toggle-knob" />
+              </div>
             </div>
-            {enableTp && (
+
+            {enableTp ? (
               <>
                 <div className="tpsl-input-row">
                   <div className="tpsl-input-wrap">
                     <span className="tpsl-input-prefix">$</span>
                     <input
                       className="tpsl-input"
-                      type="text"
-                      readOnly
-                      value={fmtP(tpPrice)}
+                      type="number"
+                      step="any"
+                      placeholder="Target trigger price"
+                      value={tpPriceInput}
+                      onChange={e => handleTpInputChange(e.target.value)}
                     />
                   </div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", whiteSpace: "nowrap" }}>
-                    +{tpPct}%
+                  <div className="tpsl-roi-badge tp">
+                    +{calcTpPct > 0 ? calcTpPct.toFixed(1) : "0.0"}% ROI
                   </div>
                 </div>
+
                 <div className="tpsl-chips-row">
                   {[10, 25, 50, 100, 200].map(pct => (
                     <button
                       key={pct}
                       type="button"
-                      className={`tpsl-chip ${tpPct === pct ? "active-tp" : ""}`}
-                      onClick={() => setTpPct(pct)}
+                      className={`tpsl-chip ${selectedTpChip === pct ? "active-tp" : ""}`}
+                      onClick={() => handleTpChipClick(pct)}
                     >
                       +{pct}%
                     </button>
                   ))}
                 </div>
+
                 <div className="tpsl-est-box">
-                  <span style={{ color: "var(--muted)" }}>Est. Profit:</span>
-                  <span style={{ color: "var(--green)", fontWeight: 800 }}>
-                    +${Math.max(0, estProfit).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT (+{tpPct}%)
+                  <span style={{ color: "var(--muted)" }}>Est. Profit (at trigger):</span>
+                  <span className="tpsl-est-gain">
+                    +${Math.max(0, estProfitUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT
                   </span>
                 </div>
               </>
+            ) : (
+              <div className="tpsl-disabled-hint">
+                Take Profit is disabled. Enable switch above to set an automated profit-taking trigger.
+              </div>
             )}
           </div>
 
-          {/* Stop Loss Section */}
-          <div className="tpsl-section">
+          {/* Stop Loss Card */}
+          <div className={`tpsl-section ${enableSl ? "section-active-sl" : "section-disabled"}`}>
             <div className="tpsl-section-head">
-              <span className="tpsl-section-label" style={{ color: "var(--red)" }}>
-                <ShieldCheck size={14} />
+              <span className="tpsl-section-label">
+                <ShieldCheck size={14} color="#F87171" />
                 <span>Stop Loss (SL)</span>
               </span>
-              <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, cursor: "pointer", color: "var(--muted)" }}>
-                <input type="checkbox" checked={enableSl} onChange={e => setEnableSl(e.target.checked)} style={{ accentColor: "var(--red)" }} />
-                <span>Enable</span>
-              </label>
+              <div
+                className={`tpsl-toggle-switch ${enableSl ? "on sl" : "off"}`}
+                onClick={() => setEnableSl(!enableSl)}
+                role="switch"
+                aria-checked={enableSl}
+              >
+                <div className="tpsl-toggle-knob" />
+              </div>
             </div>
-            {enableSl && (
+
+            {enableSl ? (
               <>
                 <div className="tpsl-input-row">
                   <div className="tpsl-input-wrap">
                     <span className="tpsl-input-prefix">$</span>
                     <input
                       className="tpsl-input"
-                      type="text"
-                      readOnly
-                      value={fmtP(slPrice)}
+                      type="number"
+                      step="any"
+                      placeholder="Stop trigger price"
+                      value={slPriceInput}
+                      onChange={e => handleSlInputChange(e.target.value)}
                     />
                   </div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--red)", whiteSpace: "nowrap" }}>
-                    -{slPct}%
+                  <div className="tpsl-roi-badge sl">
+                    -{calcSlPct > 0 ? calcSlPct.toFixed(1) : "0.0"}% Loss
                   </div>
                 </div>
+
                 <div className="tpsl-chips-row">
                   {[5, 10, 15, 25, 50].map(pct => (
                     <button
                       key={pct}
                       type="button"
-                      className={`tpsl-chip ${slPct === pct ? "active-sl" : ""}`}
-                      onClick={() => setSlPct(pct)}
+                      className={`tpsl-chip ${selectedSlChip === pct ? "active-sl" : ""}`}
+                      onClick={() => handleSlChipClick(pct)}
                     >
                       -{pct}%
                     </button>
                   ))}
                 </div>
+
                 <div className="tpsl-est-box">
-                  <span style={{ color: "var(--muted)" }}>Est. Loss:</span>
-                  <span style={{ color: "var(--red)", fontWeight: 800 }}>
-                    -${Math.abs(estLoss).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT (-{slPct}%)
+                  <span style={{ color: "var(--muted)" }}>Est. Loss (at trigger):</span>
+                  <span className="tpsl-est-loss">
+                    -${Math.abs(estLossUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT
                   </span>
                 </div>
               </>
+            ) : (
+              <div className="tpsl-disabled-hint">
+                Stop Loss is disabled. Enable switch above to guard this position against drawdowns.
+              </div>
             )}
+          </div>
+
+          {/* Explanatory notice */}
+          <div className="tpsl-info-banner">
+            <span style={{ color: "#A78BFA" }}>ℹ</span>
+            <span>
+              Orders execute automatically at Market Price once the Last Mark Price reaches your trigger. Tokens remain fully liquid in your wallet until executed.
+            </span>
           </div>
         </div>
 
+        {/* Footer */}
         <div className="tpsl-modal-foot">
           {existing && (
             <button type="button" className="tpsl-btn-remove" onClick={handleRemove}>
-              Remove TP/SL
+              Disarm TP/SL
             </button>
           )}
           <button type="button" className="tpsl-btn-cancel" onClick={onClose}>
             Cancel
           </button>
           <button type="button" className="tpsl-btn-confirm" onClick={handleConfirm}>
-            Confirm TP/SL
+            Confirm TP/SL Triggers
           </button>
         </div>
       </div>
@@ -952,7 +1062,7 @@ function UserOrdersList({
                           >
                             <div className="bybit-tpsl-row">
                               {tpSl.tpPrice && (
-                                <span style={{ color: "var(--green)" }}>
+                                <span style={{ color: "#34D399", fontWeight: 700 }}>
                                   🎯 TP: ${fmtP(tpSl.tpPrice)} (+{tpSl.tpPct}%)
                                 </span>
                               )}
@@ -971,7 +1081,7 @@ function UserOrdersList({
                             </div>
                             {tpSl.slPrice && (
                               <div className="bybit-tpsl-row">
-                                <span style={{ color: "var(--red)" }}>
+                                <span style={{ color: "#F87171", fontWeight: 700 }}>
                                   🛡️ SL: ${fmtP(tpSl.slPrice)} (-{tpSl.slPct}%)
                                 </span>
                               </div>
@@ -984,7 +1094,7 @@ function UserOrdersList({
                             onClick={() => setModalTarget({ sym: s, pos, curPrice: curP })}
                             title="Set Take Profit and Stop Loss triggers like Bybit"
                           >
-                            <ShieldCheck size={11} />
+                            <Target size={11} />
                             <span>+ Set TP/SL</span>
                           </button>
                         )}
@@ -1181,10 +1291,10 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
   });
   const [side, setSide] = useState<"Buy" | "Sell">("Buy");
   const [orderExpanded, setOrderExpanded] = useState(true); // Keep order panel open and ready to trade
-  const [orderType, setOrderType] = useState<"Market" | "Limit" | "TP/SL">("Market");
+  const [orderType, setOrderType] = useState<"Market" | "Limit">("Market");
   const [limitPriceInput, setLimitPriceInput] = useState<string>("");
-  const [tpPctInput, setTpPctInput] = useState<number>(25);
-  const [slPctInput, setSlPctInput] = useState<number>(10);
+  const [tpSlTarget, setTpSlTarget] = useState<{ sym: string; pos: any; curPrice: number } | null>(null);
+  const [mobilePosFilter, setMobilePosFilter] = useState<"all" | "current">("all");
   const [timeframe, setTimeframe] = useState("15m");
   const [showCandle, setShowCandle] = useState(false); // All charts start with LINE view, exactly as requested!
   const [quickPct, setQuickPct] = useState<string | null>(null);
@@ -1424,28 +1534,6 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
       return;
     }
 
-    if (orderType === "TP/SL") {
-      if (availableToken <= 0.000001) {
-        flash(`You don't own any ${m.sym} yet! Buy some ${m.sym} first to arm Take Profit / Stop Loss.`);
-        return;
-      }
-      const tpTarget = m.numericPrice * (1 + tpPctInput / 100);
-      const slTarget = m.numericPrice * (1 - slPctInput / 100);
-      const res = marketStore.placeTpSlOrder({
-        sym: m.sym,
-        amountTokens: numAmt,
-        tpPrice: tpTarget,
-        slPrice: slTarget,
-        tpPct: tpPctInput,
-        slPct: slPctInput,
-      });
-      flash(res.message);
-      if (res.success) {
-        setBelowChartTab("myOrders");
-      }
-      return;
-    }
-
     const res = marketStore.placeOrder({
       sym: m.sym,
       side,
@@ -1466,13 +1554,11 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
       : isCash
         ? `$${(numAmt * limitTargetP).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         : `${((numAmt * limitTargetP) / basePriceUsd).toFixed(4)} ${pairCurrency}`
-    : orderType === "TP/SL"
-      ? `$${(numAmt * (m.numericPrice * (1 + tpPctInput / 100))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (at TP)`
-      : side === "Buy"
-        ? buyTokensReceived.toLocaleString(undefined, { maximumFractionDigits: m.numericPrice < 0.001 ? 0 : 3 })
-        : isCash
-          ? `$${(numAmt * m.numericPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-          : `${sellPairReceived.toFixed(4)} ${pairCurrency}`;
+    : side === "Buy"
+      ? buyTokensReceived.toLocaleString(undefined, { maximumFractionDigits: m.numericPrice < 0.001 ? 0 : 3 })
+      : isCash
+        ? `$${(numAmt * m.numericPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : `${sellPairReceived.toFixed(4)} ${pairCurrency}`;
 
   // Candle data for OHLCV readout
   const candles = marketStore.getCandles(m.sym, timeframe);
@@ -2073,7 +2159,7 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
             >
               <Coins size={13} />
               <span>Position</span>
-              {marketStore.getUserPosition(m.sym).hasPosition && (
+              {Object.keys(marketStore.balances || {}).some(s => s !== "USDT" && s !== "USDC" && (marketStore.balances[s]?.bal || 0) > 0.000001) && (
                 <span className="dex-subtab-indicator-dot" />
               )}
             </button>
@@ -2129,19 +2215,12 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                   <div className="order-form-inner" style={{ padding: "12px 14px" }}>
                     <div className="order-form-top-row">
                       <div className="order-type">
-                        {(["Market", "Limit", "TP/SL"] as const).map(t => (
+                        {(["Market", "Limit"] as const).map(t => (
                           <button
                             key={t}
                             type="button"
                             className={orderType === t ? "active" : ""}
-                            onClick={() => {
-                              setOrderType(t);
-                              if (t === "TP/SL") {
-                                if (availableToken > 0) {
-                                  setAmountInput(availableToken >= 1000 ? availableToken.toFixed(0) : availableToken.toFixed(m.numericPrice < 0.001 ? 0 : 2));
-                                }
-                              }
-                            }}
+                            onClick={() => setOrderType(t)}
                           >
                             {t}
                           </button>
@@ -2197,141 +2276,247 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
             {mobileSubTab === "position" && (
               <div className="dex-mobile-tab-pane">
                 {(() => {
-                  const pos = marketStore.getUserPosition(m.sym);
-                  const isDipping = pos.pnlPct < -0.4;
+                  const allBalances = marketStore.balances || {};
+                  const allOpenPos = Object.keys(allBalances)
+                    .filter(s => {
+                      const b = allBalances[s];
+                      return b && b.bal > 0.000001 && s !== "USDT" && s !== "USDC";
+                    })
+                    .map(s => {
+                      const p = marketStore.getUserPosition(s);
+                      const t = marketStore.getToken(s);
+                      return { sym: s, pos: p, token: t, curPrice: t?.numericPrice || 0 };
+                    })
+                    .filter(({ pos }) => pos.hasPosition && pos.bal > 0.000001);
+
+                  const filteredList = mobilePosFilter === "current"
+                    ? allOpenPos.filter(item => item.sym.toUpperCase() === m.sym.toUpperCase())
+                    : allOpenPos;
+
+                  const totalPnl = allOpenPos.reduce((sum, item) => sum + item.pos.pnlUsd, 0);
+
+                  const fmtP = (p: number) => (p < 0.00001 ? p.toFixed(8) : p < 0.001 ? p.toFixed(6) : p < 1 ? p.toFixed(4) : p.toFixed(2));
+
                   return (
-                    <div className="user-position-card" style={{ margin: 0 }}>
-                      <div className="user-pos-header">
-                        <div className="user-pos-title-wrap">
-                          <Coins size={14} color="var(--violet)" />
-                          <b>Your {m.sym} Position</b>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div className="mobile-positions-container">
+                      {/* Filter & Summary Header */}
+                      <div className="mobile-pos-filter-bar">
+                        <div style={{ display: "flex", gap: 6 }}>
                           <button
                             type="button"
-                            onClick={() => onOpenProfitCard ? onOpenProfitCard(m.sym) : null}
+                            className={`mobile-pos-filter-pill ${mobilePosFilter === "all" ? "active" : ""}`}
+                            onClick={() => setMobilePosFilter("all")}
+                          >
+                            All Positions {allOpenPos.length > 0 && <span className="tab-count-badge">{allOpenPos.length}</span>}
+                          </button>
+                          <button
+                            type="button"
+                            className={`mobile-pos-filter-pill ${mobilePosFilter === "current" ? "active" : ""}`}
+                            onClick={() => setMobilePosFilter("current")}
+                          >
+                            {m.sym} Only
+                          </button>
+                        </div>
+                        {allOpenPos.length > 0 && (
+                          <div style={{ fontSize: 11, fontWeight: 700 }}>
+                            <span style={{ color: "var(--muted)", marginRight: 4 }}>Total PnL:</span>
+                            <span style={{ color: totalPnl >= -0.005 ? "#34D399" : "#F87171" }}>
+                              {totalPnl >= -0.005 ? "+" : "-"}${Math.abs(totalPnl).toFixed(2)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {filteredList.length === 0 ? (
+                        <div className="orders-empty-state" style={{ padding: "30px 16px" }}>
+                          <Coins size={26} color="var(--muted)" style={{ opacity: 0.6, marginBottom: 8 }} />
+                          <b style={{ fontSize: 13, color: "#F3F4F6" }}>
+                            {mobilePosFilter === "current" ? `No open position for ${m.sym}` : "No open positions"}
+                          </b>
+                          <p style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>
+                            {mobilePosFilter === "current"
+                              ? `You don't hold any ${m.sym}. Switch to "All Positions" or place an order below.`
+                              : "Execute a Market or Limit trade to open a position. Real holdings, live PnL, and Bybit TP/SL triggers will appear here."}
+                          </p>
+                          <button
+                            type="button"
+                            className="btn-primary"
                             style={{
+                              marginTop: 14,
+                              padding: "8px 24px",
+                              fontSize: 12,
+                              background: "linear-gradient(135deg, #7C3AED, #6366F1)",
+                              border: "none",
+                              borderRadius: 8,
+                              color: "#fff",
+                              fontWeight: 700,
+                              cursor: "pointer",
                               display: "inline-flex",
                               alignItems: "center",
-                              gap: 4,
-                              padding: "4px 8px",
-                              borderRadius: 6,
-                              background: "rgba(124, 58, 237, 0.12)",
-                              border: "1px solid rgba(124, 58, 237, 0.32)",
-                              color: "#A78BFA",
-                              fontSize: 11,
-                              fontWeight: 800,
-                              cursor: "pointer",
+                              gap: 6
                             }}
-                            title="Generate and share verified PnL card"
-                          >
-                            <Share size={12} />
-                            <span>Share PnL</span>
-                          </button>
-                          <span className={`user-pos-badge ${pos.hasPosition ? (isDipping ? "dipping" : "active") : "empty"}`}>
-                            {pos.hasPosition ? (isDipping ? `🔻 DIPPING (${pos.pnlPct.toFixed(1)}%)` : "HOLDING") : "NO POSITION"}
-                          </span>
-                        </div>
-                      </div>
-                      {pos.hasPosition && pos.bal > 0 ? (
-                        <>
-                          <div className="user-pos-body" style={{ marginTop: 8 }}>
-                            <div className="user-pos-row">
-                              <span className="user-pos-k">Coin Owned</span>
-                              <span className="user-pos-v"><b>{pos.bal.toFixed(4)} {m.sym}</b></span>
-                            </div>
-                            <div className="user-pos-row">
-                              <span className="user-pos-k">Avg Entry</span>
-                              <span className="user-pos-v highlight-spent">
-                                ${pos.avgBuyPrice < 0.001 ? pos.avgBuyPrice.toFixed(8) : pos.avgBuyPrice < 1 ? pos.avgBuyPrice.toFixed(4) : pos.avgBuyPrice.toFixed(2)}
-                              </span>
-                            </div>
-                            <div className="user-pos-row">
-                              <span className="user-pos-k">Position Value</span>
-                              <span className="user-pos-v">${pos.currentVal.toFixed(2)}</span>
-                            </div>
-                            <div className="user-pos-row">
-                              <span className="user-pos-k">Unrealized PnL</span>
-                              <span className={`user-pos-v ${pos.pnlUsd >= -0.005 ? "up" : "down"}`}>
-                                <b>{pos.pnlUsd >= -0.005 ? `+$${Math.max(0, pos.pnlUsd).toFixed(2)}` : `-$${Math.abs(pos.pnlUsd).toFixed(2)}`}</b> ({pos.pnlPct >= -0.005 ? "+" : ""}{pos.pnlPct.toFixed(2)}%)
-                              </span>
-                            </div>
-
-                            {/* TP/SL armed badge or Set button */}
-                            {pos.activeTpSl ? (
-                              <div
-                                className="pos-tpsl-armed-badge"
-                                onClick={() => setBelowChartTab("myOrders")}
-                                style={{ cursor: "pointer" }}
-                                title="Click to view and adjust in Positions table"
-                              >
-                                <ShieldCheck size={11} />
-                                <span>TP/SL Armed — see <b>Positions</b> tab</span>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                className="bybit-set-tpsl-btn"
-                                style={{ width: "100%", justifyContent: "center", padding: "6px 0", marginTop: 4 }}
-                                onClick={() => setBelowChartTab("myOrders")}
-                                title="Set Take Profit & Stop Loss in Positions table like Bybit"
-                              >
-                                <ShieldCheck size={11} />
-                                <span>+ Set TP/SL (Positions tab)</span>
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Quick Action Buttons */}
-                          <div className="user-pos-quick-actions" style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                            <button
-                              type="button"
-                              className="user-pos-quick-btn"
-                              style={{ padding: "8px 0", fontSize: 12, fontWeight: 700, borderRadius: 8 }}
-                              onClick={() => {
-                                const sellAmt = pos.bal * 0.5;
-                                const res = marketStore.placeOrder({ sym: m.sym, side: "Sell", amount: sellAmt });
-                                flash(res.message);
-                              }}
-                              title="Sell 50% of your holdings"
-                            >
-                              Sell 50%
-                            </button>
-                            <button
-                              type="button"
-                              className="user-pos-quick-btn user-pos-close-btn"
-                              style={{ padding: "8px 0", fontSize: 12, fontWeight: 700, borderRadius: 8 }}
-                              onClick={() => {
-                                const res = marketStore.placeOrder({ sym: m.sym, side: "Sell", amount: pos.bal });
-                                flash(res.message);
-                              }}
-                              title="Close full position at market price"
-                            >
-                              Close Position
-                            </button>
-                          </div>
-
-                          {/* Share PnL Card */}
-                          <button
-                            type="button"
-                            onClick={() => onOpenProfitCard && onOpenProfitCard(m.sym)}
-                            className="pos-share-pnl-btn"
-                          >
-                            <Share size={13} />
-                            <span>Share PnL Card</span>
-                          </button>
-                        </>
-                      ) : (
-                        <div style={{ textAlign: "center", padding: "20px 10px", color: "var(--muted)", fontSize: 12 }}>
-                          <div>You don't hold any {m.sym} yet.</div>
-                          <button
-                            type="button"
-                            className="btn-primary green"
-                            style={{ marginTop: 10, padding: "8px 20px", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6 }}
                             onClick={() => { setSide("Buy"); setMobileSubTab("order"); }}
                           >
                             <Zap size={13} /> Buy {m.sym} Now
                           </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                          {filteredList.map(({ sym: posSym, pos, curPrice: curP }) => {
+                            const pnlPositive = pos.pnlUsd >= -0.005;
+                            const isDipping = pos.pnlPct < -0.4;
+                            const isPumping = pos.pnlPct > 0.4;
+                            const tpSl = pos.activeTpSl;
+                            return (
+                              <div key={posSym} className="mobile-pos-card">
+                                {/* Top Header */}
+                                <div className="mobile-pos-header">
+                                  <div
+                                    style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
+                                    onClick={() => selectCoin(posSym)}
+                                    title="Click to view chart"
+                                  >
+                                    <CoinImg sym={posSym} n={24} />
+                                    <div>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                        <b style={{ color: "#F3F4F6", fontSize: 13 }}>{posSym}</b>
+                                        <span className="mobile-pos-long-tag">LONG</span>
+                                      </div>
+                                      <span style={{ fontSize: 10, color: "var(--muted)" }}>
+                                        ${fmtP(curP)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div style={{ textAlign: "right" }}>
+                                    <div style={{ fontWeight: 800, fontSize: 12, color: pnlPositive ? "#34D399" : "#F87171" }}>
+                                      {pnlPositive ? "+" : "-"}${Math.abs(pos.pnlUsd).toFixed(2)}
+                                    </div>
+                                    <div style={{ fontSize: 10, fontWeight: 700, color: pnlPositive ? "#34D399" : "#F87171" }}>
+                                      {pnlPositive ? "+" : ""}{pos.pnlPct.toFixed(2)}%
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Metrics Grid */}
+                                <div className="mobile-pos-grid">
+                                  <div className="mobile-pos-cell">
+                                    <span className="mobile-pos-k">Coin Owned</span>
+                                    <span className="mobile-pos-v">
+                                      {pos.bal >= 1000 ? pos.bal.toLocaleString(undefined, { maximumFractionDigits: 1 }) : pos.bal.toFixed(curP < 0.001 ? 0 : 4)} {posSym}
+                                    </span>
+                                  </div>
+                                  <div className="mobile-pos-cell">
+                                    <span className="mobile-pos-k">Avg Entry</span>
+                                    <span className="mobile-pos-v">${fmtP(pos.avgBuyPrice)}</span>
+                                  </div>
+                                  <div className="mobile-pos-cell">
+                                    <span className="mobile-pos-k">Position Value</span>
+                                    <span className="mobile-pos-v">${pos.currentVal.toFixed(2)}</span>
+                                  </div>
+                                  <div className="mobile-pos-cell">
+                                    <span className="mobile-pos-k">Status</span>
+                                    <span className={`mobile-pos-v ${isPumping ? "up" : isDipping ? "down" : ""}`} style={{ fontSize: 10 }}>
+                                      {isPumping ? "🔥 Pumping" : isDipping ? "🔻 Dipping" : "● Holding"}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Bybit-Style TP/SL Row */}
+                                {tpSl ? (
+                                  <div className="mobile-pos-tpsl-armed-card">
+                                    <div className="mobile-pos-tpsl-info">
+                                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                        <Target size={12} color="#A78BFA" />
+                                        <span style={{ fontSize: 11, fontWeight: 700, color: "#C4B5FD" }}>TP/SL Armed</span>
+                                      </div>
+                                      <div style={{ display: "flex", gap: 8, fontSize: 10.5, marginTop: 2, flexWrap: "wrap" }}>
+                                        {tpSl.tpPrice && (
+                                          <span style={{ color: "#34D399", fontWeight: 700 }}>
+                                            🎯 TP: ${fmtP(tpSl.tpPrice)} (+{tpSl.tpPct}%)
+                                          </span>
+                                        )}
+                                        {tpSl.slPrice && (
+                                          <span style={{ color: "#F87171", fontWeight: 700 }}>
+                                            🛡️ SL: ${fmtP(tpSl.slPrice)} (-{tpSl.slPct}%)
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                                      <button
+                                        type="button"
+                                        className="mobile-pos-tpsl-btn-edit"
+                                        onClick={() => setTpSlTarget({ sym: posSym, pos, curPrice: curP })}
+                                        title="Adjust TP/SL triggers"
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="mobile-pos-tpsl-btn-del"
+                                        onClick={() => {
+                                          const res = marketStore.cancelPendingOrder(tpSl.id);
+                                          flash(res.message);
+                                        }}
+                                        title="Disarm TP/SL"
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="mobile-pos-set-tpsl-btn"
+                                    onClick={() => setTpSlTarget({ sym: posSym, pos, curPrice: curP })}
+                                    title="Set Take Profit and Stop Loss triggers like Bybit"
+                                  >
+                                    <Target size={13} color="#C4B5FD" />
+                                    <span>+ Set Take Profit & Stop Loss (TP/SL)</span>
+                                  </button>
+                                )}
+
+                                {/* Quick Actions */}
+                                <div className="user-pos-quick-actions" style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                                  <button
+                                    type="button"
+                                    className="user-pos-quick-btn"
+                                    style={{ padding: "7px 0", fontSize: 11, fontWeight: 700, borderRadius: 7 }}
+                                    onClick={() => {
+                                      const sellAmt = pos.bal * 0.5;
+                                      const res = marketStore.placeOrder({ sym: posSym, side: "Sell", amount: sellAmt });
+                                      flash(res.message);
+                                    }}
+                                  >
+                                    Sell 50%
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="user-pos-quick-btn user-pos-close-btn"
+                                    style={{ padding: "7px 0", fontSize: 11, fontWeight: 700, borderRadius: 7 }}
+                                    onClick={() => {
+                                      const res = marketStore.placeOrder({ sym: posSym, side: "Sell", amount: pos.bal });
+                                      flash(res.message);
+                                    }}
+                                  >
+                                    Close Position
+                                  </button>
+                                </div>
+
+                                {onOpenProfitCard && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenProfitCard(posSym)}
+                                    className="pos-share-pnl-btn"
+                                    style={{ marginTop: 6, padding: "6px 0", fontSize: 11 }}
+                                  >
+                                    <Share size={12} />
+                                    <span>Share PnL Card</span>
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -2503,27 +2688,28 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                       </span>
                     </div>
 
-                    {/* TP/SL armed indicator or Set button linked to Positions tab */}
+                    {/* TP/SL armed indicator or Set button linked to Bybit modal */}
                     {pos.activeTpSl ? (
                       <div
                         className="pos-tpsl-armed-badge"
-                        onClick={() => setBelowChartTab("myOrders")}
+                        onClick={() => setTpSlTarget({ sym: m.sym, pos, curPrice: m.numericPrice })}
                         style={{ cursor: "pointer" }}
-                        title="Click to view and adjust in Positions table"
+                        title="Click to view and adjust TP/SL settings"
                       >
-                        <ShieldCheck size={11} />
-                        <span>TP/SL Armed — see <b>Positions</b> tab</span>
+                        <Target size={11} color="#A78BFA" />
+                        <span>TP/SL Armed — 🎯 {pos.activeTpSl.tpPct ? `+${pos.activeTpSl.tpPct}%` : "Off"} · 🛡️ {pos.activeTpSl.slPct ? `-${pos.activeTpSl.slPct}%` : "Off"}</span>
+                        <span style={{ marginLeft: "auto", fontSize: 9.5, color: "#C4B5FD" }}>Edit →</span>
                       </div>
                     ) : (
                       <button
                         type="button"
                         className="bybit-set-tpsl-btn"
                         style={{ width: "100%", justifyContent: "center", padding: "6px 0", marginTop: 4 }}
-                        onClick={() => setBelowChartTab("myOrders")}
-                        title="Set Take Profit & Stop Loss in Positions table like Bybit"
+                        onClick={() => setTpSlTarget({ sym: m.sym, pos, curPrice: m.numericPrice })}
+                        title="Set Take Profit & Stop Loss triggers like Bybit"
                       >
-                        <ShieldCheck size={11} />
-                        <span>+ Set TP/SL in Positions</span>
+                        <Target size={11} />
+                        <span>+ Set Take Profit & Stop Loss (TP/SL)</span>
                       </button>
                     )}
 
@@ -2604,17 +2790,12 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
               <div className="order-form-inner">
                 <div className="order-form-top-row">
                   <div className="order-type">
-                    {(["Market", "Limit", "TP/SL"] as const).map(t => (
+                    {(["Market", "Limit"] as const).map(t => (
                       <button
                         key={t}
                         className={orderType === t ? "active" : ""}
                         onClick={() => {
                           setOrderType(t);
-                          if (t === "TP/SL") {
-                            if (availableToken > 0) {
-                              setAmountInput(availableToken >= 1000 ? availableToken.toFixed(0) : availableToken.toFixed(m.numericPrice < 0.001 ? 0 : 2));
-                            }
-                          }
                           flash(`${t} order mode activated`);
                         }}
                       >
@@ -2703,110 +2884,6 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                       <Zap size={14} />Place Limit {side}
                     </button>
                   </>
-                ) : orderType === "TP/SL" ? (
-                  <>
-                    <label>
-                      Amount of {m.sym} to Protect
-                      <small>
-                        Owned: {availableToken.toLocaleString(undefined, { maximumFractionDigits: 2 })} {m.sym}
-                      </small>
-                    </label>
-                    {availableToken <= 0.000001 ? (
-                      <div style={{ padding: "12px 14px", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 10, fontSize: 11, color: "#FBBF24", marginBottom: 12 }}>
-                        <b style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12 }}>
-                          <span>⚠️</span> No {m.sym} tokens in wallet
-                        </b>
-                        <p style={{ margin: "5px 0 10px 0", color: "#E5E7EB", fontSize: 11, lineHeight: 1.4 }}>
-                          You must buy {m.sym} first using Market Buy before arming Take Profit or Stop Loss triggers.
-                        </p>
-                        <button
-                          type="button"
-                          className="btn-primary green"
-                          style={{ width: "100%", padding: "8px 0", fontSize: 12 }}
-                          onClick={() => {
-                            setOrderType("Market");
-                            setSide("Buy");
-                            flash(`Switched to Market Buy for ${m.sym}`);
-                          }}
-                        >
-                          <Zap size={12} /> Buy {m.sym} with Cash First
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="order-input">
-                          <input
-                            value={amountInput}
-                            onChange={e => setAmountInput(e.target.value)}
-                            type="number"
-                          />
-                          <span>{m.sym}</span>
-                        </div>
-                        <div className="quick-size">
-                          {["25%", "50%", "75%", "MAX"].map(v => (
-                            <button key={v} className={quickPct === v ? "active" : ""} onClick={() => {
-                              setQuickPct(v);
-                              const pct = v === "MAX" ? 100 : parseInt(v);
-                              setAmountInput((availableToken * (pct / 100)).toFixed(m.numericPrice < 0.001 ? 0 : 2));
-                            }}>{v}</button>
-                          ))}
-                        </div>
-
-                        <div className="tpsl-config-card">
-                          <div className="tpsl-row">
-                            <div className="tpsl-label">
-                              <span className="tp-tag">🎯 Take Profit</span>
-                              <b>${(m.numericPrice * (1 + tpPctInput / 100)).toFixed(m.numericPrice < 0.001 ? 8 : 4)} (+{tpPctInput}%)</b>
-                            </div>
-                            <div className="quick-size">
-                              {[10, 25, 50, 100, 200].map(pct => (
-                                <button
-                                  key={pct}
-                                  type="button"
-                                  className={tpPctInput === pct ? "active" : ""}
-                                  onClick={() => setTpPctInput(pct)}
-                                >
-                                  +{pct}%
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="tpsl-row" style={{ marginTop: 8 }}>
-                            <div className="tpsl-label">
-                              <span className="sl-tag">🛡️ Stop Loss</span>
-                              <b>${(m.numericPrice * (1 - slPctInput / 100)).toFixed(m.numericPrice < 0.001 ? 8 : 4)} (-{slPctInput}%)</b>
-                            </div>
-                            <div className="quick-size">
-                              {[5, 10, 15, 25, 50].map(pct => (
-                                <button
-                                  key={pct}
-                                  type="button"
-                                  className={slPctInput === pct ? "active" : ""}
-                                  onClick={() => setSlPctInput(pct)}
-                                >
-                                  -{pct}%
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="tpsl-summary-text">
-                            Auto-sells {amountInput || "0"} {m.sym} if price reaches <b>${(m.numericPrice * (1 + tpPctInput / 100)).toFixed(m.numericPrice < 0.001 ? 8 : 4)}</b> (+{tpPctInput}%) to lock profit, or drops to <b>${(m.numericPrice * (1 - slPctInput / 100)).toFixed(m.numericPrice < 0.001 ? 8 : 4)}</b> (-{slPctInput}%) to prevent losses.
-                          </div>
-                        </div>
-
-                        <button
-                          className="btn-primary green"
-                          style={{ width: "100%", opacity: m.is_rugged ? 0.5 : 1, cursor: m.is_rugged ? "not-allowed" : "pointer", marginTop: 10 }}
-                          onClick={handlePlaceOrder}
-                          disabled={m.is_rugged}
-                        >
-                          <Zap size={14} />Arm TP/SL Protection
-                        </button>
-                      </>
-                    )}
-                  </>
                 ) : (
                   <>
                     <label>
@@ -2863,6 +2940,18 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
           </div>
         </div>
       </aside>
+
+      {/* Axiom Bybit-Style Set Take Profit & Stop Loss Modal */}
+      {tpSlTarget && (
+        <SetTpSlModal
+          isOpen={true}
+          onClose={() => setTpSlTarget(null)}
+          sym={tpSlTarget.sym}
+          pos={tpSlTarget.pos}
+          curPrice={tpSlTarget.curPrice}
+          flash={flash}
+        />
+      )}
     </div>
   );
 }
