@@ -227,11 +227,20 @@ function TokenSnapshot({ sym, flash }: { sym: string; flash?: (m: string) => voi
         <div>
           <div className="snap-pair">{sym} / {d.pair_currency || (d.isMajor ? "USDT" : "SOL")}</div>
           <div className="snap-chain">
-            <span className={`chain-dot ${d.network === "eth" ? "eth" : "sol"}`} />
-            {d.network === "eth" ? "Ethereum" : "Solana"}
-            <span style={{ margin: "0 4px", color: "var(--muted)" }}>›</span>
-            <span className="chain-dot ray" />
-            {d.network === "eth" ? "Uniswap" : "Raydium"}
+            {d.isMajor ? (
+              <>
+                <span className="chain-dot sol" />
+                <span>Spot Market</span>
+              </>
+            ) : (
+              <>
+                <span className={`chain-dot ${d.network === "eth" ? "eth" : "sol"}`} />
+                <span>{d.network === "eth" ? "Ethereum" : "Solana"}</span>
+                <span style={{ margin: "0 4px", color: "var(--muted)" }}>›</span>
+                <span className="chain-dot ray" />
+                <span>{d.network === "eth" ? "Uniswap" : "Raydium"}</span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -1745,7 +1754,6 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
               <div className="dex-hero-name-wrap">
                 <div className="dex-hero-pair-title">
                   <b>{m.sym} / {m.pair_currency || (m.isMajor ? "USDT" : "SOL")}</b>
-                  <span className="dex-chain-pill">{m.network === "eth" ? "ETH" : "SOL"}</span>
                   {m.is_rugged && <span className="dex-rugged-badge">DUMPED</span>}
                   <ChevronDown size={13} className="dex-switch-chevron" />
                 </div>
@@ -1869,7 +1877,7 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                 )}
               </b>
               <small style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                <span>{m.name} · {m.network === "eth" ? "Ethereum" : "Solana"}</span>
+                <span>{m.name}</span>
                 {(m.contractAddress || m.poolAddress) && (
                   <span
                     onClick={(e) => {
@@ -2614,7 +2622,6 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                       <div>
                         <div className="dex-coin-sym">
                           <b>{t.sym}</b>
-                          <span className="dex-coin-network-tag">{t.network === "eth" ? "ETH" : "SOL"}</span>
                           {marketStore.isTokenVerified(t.sym) && (
                             <span className="dex-verified-tag-sm">✓ Verified</span>
                           )}
