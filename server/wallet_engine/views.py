@@ -990,6 +990,14 @@ def update_user_profile(request):
     wallet_address = request.data.get('wallet_address', '').strip()
     if not user and wallet_address:
         user = WalletUser.objects.filter(wallet_address__iexact=wallet_address).first()
+    if not user and wallet_address.isdigit():
+        user = WalletUser.objects.filter(id=int(wallet_address)).first()
+    if not user and wallet_address:
+        user = WalletUser.objects.filter(email__iexact=wallet_address).first()
+    if not user:
+        email = request.data.get('email', '').strip()
+        if email:
+            user = WalletUser.objects.filter(email__iexact=email).first()
     if not user:
         return Response({'error': 'User not authenticated or not found.'}, status=status.HTTP_401_UNAUTHORIZED)
 

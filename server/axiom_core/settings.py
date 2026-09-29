@@ -203,3 +203,7 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Upload payload limits for custom avatars and images (15MB)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 15728640
+FILE_UPLOAD_MAX_MEMORY_SIZE = 15728640

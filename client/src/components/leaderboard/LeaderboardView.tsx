@@ -350,6 +350,14 @@ export function LeaderboardView({
   const [realUsers, setRealUsers] = useState<any[]>([]);
   const [holderFilter, setHolderFilter] = useState<"all" | "grinders" | "holders">("all");
   const swipeRailRef = useRef<HTMLDivElement>(null);
+  const [, setProfileTick] = useState(0);
+
+  // Re-render standing card when user updates avatar or username
+  useEffect(() => {
+    const handleProfileUpdate = () => setProfileTick(t => t + 1);
+    window.addEventListener("axiom_profile_updated", handleProfileUpdate);
+    return () => window.removeEventListener("axiom_profile_updated", handleProfileUpdate);
+  }, []);
 
   // Load real registered platform users for holder tracking
   useEffect(() => {
@@ -748,8 +756,8 @@ export function LeaderboardView({
 
       {/* ── User Standing Showcase Banner ── */}
       {(() => {
-        const uName = authUser?.username || authUser?.full_name || (typeof localStorage !== "undefined" ? localStorage.getItem("axiom_user_username") : "") || "Axiom Trader";
-        const uAvatar = authUser?.avatar_url || (typeof localStorage !== "undefined" ? localStorage.getItem("axiom_user_avatar") : "") || generatePhantomAvatar(uName);
+        const uName = (typeof localStorage !== "undefined" ? localStorage.getItem("axiom_user_username") : null) || authUser?.username || authUser?.full_name || "Axiom Trader";
+        const uAvatar = (typeof localStorage !== "undefined" ? localStorage.getItem("axiom_user_avatar") : null) || authUser?.avatar_url || generatePhantomAvatar(uName);
         const metrics = marketStore.getPortfolioMetrics();
         const pnlStr = `${metrics.isPositive ? "+" : "-"}$${Math.abs(metrics.diffUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         const pnlPctStr = `${metrics.isPositive ? "+" : "-"}${Math.abs(metrics.diffPct).toFixed(2)}%`;
