@@ -2,8 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Trophy, TrendingUp, TrendingDown, Crown, Shield, ShieldCheck, Zap,
   Search, ArrowUpRight, Copy, Check, Filter, ExternalLink, Activity,
-  Users, Flame, Sparkles, X, ChevronRight, Sliders, DollarSign, Wallet,
-  Clock
+  Users, Flame, Sparkles, X, ChevronRight, Sliders, DollarSign, Wallet
 } from "lucide-react";
 import { leaderboardStore, Trader } from "../../services/leaderboardStore";
 import { marketStore } from "../../services/marketStore";
@@ -1156,15 +1155,6 @@ export function LeaderboardView({
           />
         </div>
       </section>
-
-      {/* ── 48h Dynamic Epoch Rotation Indicator ── */}
-      <div className="lb-epoch-ribbon">
-        <div className="lb-epoch-left">
-          <Clock size={15} color="#A78BFA" />
-          <span><b>48h Dynamic Rotation:</b> Verified on-chain ranks 9–100 rotate positions every 2 days based on DEX execution. Admin manages Top 8.</span>
-        </div>
-        <span className="lb-epoch-pill">Top 100 Live</span>
-      </div>
 
       {/* ── 4. Controls, Filters & Search ── */}
       <div className="lb-controls-bar">
