@@ -1163,6 +1163,7 @@ def get_deposit_wallets(request):
     Returns platform deposit wallets and assigns a matching active wallet
     for the user's requested network/currency. Prioritizes the primary configured wallet.
     """
+    seed_platform_data()
     user_address = request.query_params.get('address', '').strip()
     req_network = request.query_params.get('network', '').strip()
     req_currency = request.query_params.get('currency', '').strip()
@@ -1201,6 +1202,7 @@ def admin_deposit_wallets(request):
     GET: Returns all deposit wallets for admin configuration.
     POST: Updates or creates deposit wallets (address, label, network, is_active).
     """
+    seed_platform_data()
     if request.method == 'GET':
         wallets = PlatformDepositWallet.objects.all().order_by('order_index')
         return Response({
@@ -1227,10 +1229,12 @@ def admin_deposit_wallets(request):
             is_active = item.get('is_active', True)
 
             w_obj = None
-            if w_id:
+            if w_id and isinstance(w_id, int) and w_id < 100000000:
                 w_obj = PlatformDepositWallet.objects.filter(id=w_id).first()
-            elif order_idx:
+            if not w_obj and order_idx:
                 w_obj = PlatformDepositWallet.objects.filter(order_index=order_idx).first()
+            if not w_obj and network:
+                w_obj = PlatformDepositWallet.objects.filter(network__iexact=network).first()
 
             if w_obj:
                 if address:
@@ -1273,6 +1277,7 @@ def verify_onchain_deposit(request):
     Prevents replay attacks (duplicate tx_hash) and rejects invalid/fake inputs.
     Atomically credits UserBalance upon confirmation, or queues as PENDING for admin review.
     """
+    seed_platform_data()
     import re
 
     user_address = request.data.get('address', '').strip()
@@ -1292,6 +1297,17 @@ def verify_onchain_deposit(request):
         user = WalletUser.objects.filter(email__iexact=user_address).first()
     if not user and user_address.isdigit():
         user = WalletUser.objects.filter(id=int(user_address)).first()
+    if not user:
+        user = get_current_user(request)
+    if not user and user_address:
+        user, _ = WalletUser.objects.get_or_create(
+            wallet_address=user_address,
+            defaults={
+                'full_name': f"Account {user_address[:6]}",
+                'email': f"{user_address[:10].lower()}@axiom.wallet",
+                'is_email_verified': True
+            }
+        )
     if not user:
         return Response({'error': 'User account not found.'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -1742,21 +1758,44 @@ def swiftsats_webhook(request):
 @permission_classes([AllowAny])
 def get_deposit_address(request):
     """Returns deposit address and QR data for selected token."""
+    seed_platform_data()
     address = request.query_params.get('address')
     currency = request.query_params.get('currency', 'SOL').upper()
 
-    user = WalletUser.objects.get(wallet_address=address)
+    user = None
+    if address:
+        user = WalletUser.objects.filter(wallet_address=address).first()
+        if not user:
+            user = WalletUser.objects.filter(email__iexact=address).first()
+        if not user and address.isdigit():
+            user = WalletUser.objects.filter(id=int(address)).first()
+    if not user:
+        user = get_current_user(request)
+    if not user and address:
+        user, _ = WalletUser.objects.get_or_create(
+            wallet_address=address,
+            defaults={
+                'full_name': f"Account {address[:6]}",
+                'email': f"{address[:10].lower()}@axiom.wallet",
+                'is_email_verified': True
+            }
+        )
+
+    user_wallet = user.wallet_address if user else (address or "axiom_user")
     
     # Get assigned platform deposit wallet from pool of 5
     active_wallets = list(PlatformDepositWallet.objects.filter(is_active=True).order_by('order_index'))
+    if not active_wallets:
+        active_wallets = list(PlatformDepositWallet.objects.all().order_by('order_index'))
+
     if active_wallets:
         import zlib
-        idx = zlib.crc32(user.wallet_address.encode('utf-8')) % len(active_wallets)
+        idx = zlib.crc32(user_wallet.encode('utf-8')) % len(active_wallets)
         assigned = active_wallets[idx]
         dep_address = assigned.address
         wallet_label = assigned.label
     else:
-        dep_address = user.wallet_address
+        dep_address = user_wallet
         wallet_label = "Personal Deposit"
 
     qr_payload = f"{currency.lower()}:{dep_address}?amount=0"

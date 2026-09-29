@@ -1793,6 +1793,16 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
               >
                 <Copy size={13} />
               </button>
+              <button
+                type="button"
+                className="dex-action-icon-btn"
+                onClick={() => {
+                  if (onOpenProfitCard) onOpenProfitCard(m.sym);
+                }}
+                title="Share PnL Profit Card"
+              >
+                <Share size={13} />
+              </button>
             </div>
           </div>
 
@@ -3362,33 +3372,9 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
                       const isProfit = b.pnlUsd >= -0.005;
                       const pnlText = `${isProfit ? "+" : "-"}${Math.abs(b.pnlPct).toFixed(2)}%`;
                       return (
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <span className={`asset-change ${isProfit ? "up" : "down"}`} title="Position return (PnL %)">
-                            {pnlText}
-                          </span>
-                          <span
-                            role="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (onOpenProfitCard) onOpenProfitCard(b.sym);
-                              else modal("profit");
-                            }}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              padding: '2px 5px',
-                              borderRadius: 5,
-                              background: isProfit ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-                              border: `1px solid ${isProfit ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
-                              color: isProfit ? '#10B981' : '#EF4444',
-                              cursor: 'pointer',
-                            }}
-                            title={`Share ${b.sym} PnL card`}
-                          >
-                            <Share size={11} />
-                          </span>
-                        </div>
+                        <span className={`asset-change ${isProfit ? "up" : "down"}`} title="Position return (PnL %)">
+                          {pnlText}
+                        </span>
                       );
                     }
                     return (
@@ -5170,10 +5156,10 @@ function AppShell({
       const rawHash = window.location.hash.toLowerCase().replace("#", "");
       const hash = rawHash.split("?")[0];
       if (hash === "admin") return "admin";
-      if (hash === "trade" || hash === "swap" || hash === "wallet" || hash === "profile" || hash === "leaderboard") return hash as View;
+      if (hash === "trade" || hash === "swap" || hash === "wallet" || hash === "leaderboard") return hash as View;
       const saved = localStorage.getItem("axiom_active_view") as View;
       if (saved === "admin") return "admin";
-      if (saved && ["wallet", "trade", "swap", "profile", "leaderboard"].includes(saved)) return saved;
+      if (saved && ["wallet", "trade", "swap", "leaderboard"].includes(saved)) return saved;
     }
     return "wallet";
   };
@@ -5487,6 +5473,7 @@ export default function App() {
       try {
         const u = JSON.parse(raw);
         if (u && (u.wallet_address || u.user_id || u.email)) {
+          try { marketStore.setUser(u); } catch {}
           return u;
         }
       } catch {}
@@ -5556,31 +5543,38 @@ export default function App() {
 
     getMe()
       .then((user) => {
-        setAuthUser(user);
-        if (typeof localStorage !== "undefined") {
-          localStorage.setItem("axiom_unlocked_session", "true");
-          localStorage.setItem("axiom_auth_user", JSON.stringify(user));
-        }
-        try {
-          marketStore.setUser(user);
-        } catch (e) {
-          console.warn("marketStore.setUser error:", e);
-        }
-        if (user?.wallet_address) {
+        if (user) {
+          setAuthUser(user);
+          if (typeof localStorage !== "undefined") {
+            localStorage.setItem("axiom_unlocked_session", "true");
+            localStorage.setItem("axiom_auth_user", JSON.stringify(user));
+          }
           try {
-            localStorage.setItem("axiom_wallet_address", user.wallet_address);
-          } catch {}
+            marketStore.setUser(user);
+          } catch (e) {
+            console.warn("marketStore.setUser error:", e);
+          }
+          if (user?.wallet_address) {
+            try {
+              localStorage.setItem("axiom_wallet_address", user.wallet_address);
+            } catch {}
+          }
+        } else {
+          // If server didn't return user, keep local unlocked session so reload never asks for password
+          const raw = typeof localStorage !== "undefined" ? localStorage.getItem("axiom_auth_user") : null;
+          if (raw) {
+            try {
+              const u = JSON.parse(raw);
+              if (u && (u.wallet_address || u.user_id || u.email)) {
+                setAuthUser(u);
+                try { marketStore.setUser(u); } catch {}
+              }
+            } catch {}
+          }
         }
       })
       .catch((err) => {
-        console.warn("Failed checking session status:", err);
-        if (err?.message?.includes("401") || err?.status === 401) {
-          if (typeof localStorage !== "undefined") {
-            localStorage.removeItem("axiom_unlocked_session");
-            localStorage.removeItem("axiom_auth_user");
-          }
-          setAuthUser(null);
-        }
+        console.warn("Backend session check offline/error, keeping local session active:", err);
       })
       .finally(() => {
         clearTimeout(safetyTimer);
@@ -5684,6 +5678,10 @@ export default function App() {
           if (typeof localStorage !== "undefined") {
             localStorage.setItem("axiom_unlocked_session", "true");
             localStorage.setItem("axiom_auth_user", JSON.stringify(user));
+            localStorage.setItem("axiom_active_view", "wallet");
+          }
+          if (typeof window !== "undefined") {
+            window.location.hash = "wallet";
           }
           setAuthUser(user);
           marketStore.setUser(user);

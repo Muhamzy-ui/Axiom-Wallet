@@ -534,6 +534,8 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
 
       setStoredWalletAddress(resp.wallet_address);
       setStoredAddress(resp.wallet_address);
+      if (typeof localStorage !== "undefined") localStorage.setItem("axiom_active_view", "wallet");
+      if (typeof window !== "undefined") window.location.hash = "wallet";
       onAuth(user);
     } catch (err: any) {
       setError(err?.message || "Failed to restore wallet. Please check all 12 words.");
@@ -580,6 +582,8 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
       };
 
       setStoredWalletAddress(resp.wallet_address);
+      if (typeof localStorage !== "undefined") localStorage.setItem("axiom_active_view", "wallet");
+      if (typeof window !== "undefined") window.location.hash = "wallet";
       onAuth(user);
     } catch (err: any) {
       setError(err?.message || "Incorrect password. Please try again.");
@@ -1105,7 +1109,11 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
                 <button
                   type="button"
                   className="phantom-btn-primary"
-                  onClick={() => onAuth(createdUser)}
+                  onClick={() => {
+                    if (typeof localStorage !== "undefined") localStorage.setItem("axiom_active_view", "wallet");
+                    if (typeof window !== "undefined") window.location.hash = "wallet";
+                    onAuth(createdUser);
+                  }}
                 >
                   <div className="phantom-btn-inner">
                     <Sparkles size={17} />

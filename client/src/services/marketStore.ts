@@ -1156,35 +1156,38 @@ class MarketStore {
       } catch { }
     }
 
-    if (!uid) {
-      this.balances = {
-        USDT: { bal: 0.00, usdValue: 0.00, name: "Tether USD", totalInvested: 0.00, avgBuyPrice: 1.0 },
-        USDC: { bal: 0.00, usdValue: 0.00, name: "USD Coin", totalInvested: 0.00, avgBuyPrice: 1.0 },
-        SOL: { bal: 0.00, usdValue: 0.00, name: "Solana", totalInvested: 0.00, avgBuyPrice: 179.84 },
-        BTC: { bal: 0.00, usdValue: 0.00, name: "Bitcoin", totalInvested: 0.00, avgBuyPrice: 77724.00 },
-        ETH: { bal: 0.00, usdValue: 0.00, name: "Ethereum", totalInvested: 0.00, avgBuyPrice: 2650.00 },
-      };
-      this.notify();
+    if (!uid && !wallet && !user) {
+      // Only clear if explicitly null and no local keys exist
       return;
     }
 
-    const key = `axiom_user_balances_v16_${uid}`;
-    const saved = typeof window !== "undefined" ? window.localStorage.getItem(key) : null;
+    // Check multiple balance storage keys so balances are NEVER lost across ID format changes
+    let saved: string | null = null;
+    if (typeof window !== "undefined" && window.localStorage) {
+      if (wallet) saved = window.localStorage.getItem(`axiom_user_balances_v16_${wallet}`);
+      if (!saved && uid) saved = window.localStorage.getItem(`axiom_user_balances_v16_${uid}`);
+      if (!saved) saved = window.localStorage.getItem("axiom_user_balances_latest");
+    }
+
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === "object") {
-          this.balances = { ...parsed };
+          this.balances = { ...this.balances, ...parsed };
         }
       } catch { }
     } else {
-      this.balances = {
-        USDT: { bal: 0.00, usdValue: 0.00, name: "Tether USD", totalInvested: 0.00, avgBuyPrice: 1.0 },
-        USDC: { bal: 0.00, usdValue: 0.00, name: "USD Coin", totalInvested: 0.00, avgBuyPrice: 1.0 },
-        SOL: { bal: 0.00, usdValue: 0.00, name: "Solana", totalInvested: 0.00, avgBuyPrice: 179.84 },
-        BTC: { bal: 0.00, usdValue: 0.00, name: "Bitcoin", totalInvested: 0.00, avgBuyPrice: 77724.00 },
-        ETH: { bal: 0.00, usdValue: 0.00, name: "Ethereum", totalInvested: 0.00, avgBuyPrice: 2650.00 },
-      };
+      // Keep existing balances if already populated, otherwise initialize
+      const hasExistingBal = Object.values(this.balances).some(b => (b?.bal || 0) > 0);
+      if (!hasExistingBal) {
+        this.balances = {
+          USDT: { bal: 0.00, usdValue: 0.00, name: "Tether USD", totalInvested: 0.00, avgBuyPrice: 1.0 },
+          USDC: { bal: 0.00, usdValue: 0.00, name: "USD Coin", totalInvested: 0.00, avgBuyPrice: 1.0 },
+          SOL: { bal: 0.00, usdValue: 0.00, name: "Solana", totalInvested: 0.00, avgBuyPrice: 179.84 },
+          BTC: { bal: 0.00, usdValue: 0.00, name: "Bitcoin", totalInvested: 0.00, avgBuyPrice: 77724.00 },
+          ETH: { bal: 0.00, usdValue: 0.00, name: "Ethereum", totalInvested: 0.00, avgBuyPrice: 2650.00 },
+        };
+      }
       this.savePersistedStateNow();
     }
 
@@ -1324,10 +1327,14 @@ class MarketStore {
         window.localStorage.setItem("axiom_tokens_v3", JSON.stringify(this.tokens));
         window.localStorage.setItem("axiom_user_orders_v5", JSON.stringify(this.userOrders));
         window.localStorage.setItem("axiom_pending_orders_v5", JSON.stringify(this.pendingOrders));
+        window.localStorage.setItem("axiom_user_balances_latest", JSON.stringify(this.balances));
         if (this.currentUserId) {
           window.localStorage.setItem(`axiom_user_balances_v16_${this.currentUserId}`, JSON.stringify(this.balances));
           window.localStorage.setItem(`axiom_user_orders_v5_${this.currentUserId}`, JSON.stringify(this.userOrders));
           window.localStorage.setItem(`axiom_pending_orders_v5_${this.currentUserId}`, JSON.stringify(this.pendingOrders));
+        }
+        if (this.currentUserWallet) {
+          window.localStorage.setItem(`axiom_user_balances_v16_${this.currentUserWallet}`, JSON.stringify(this.balances));
         }
         window.localStorage.setItem("axiom_anchors_v2", JSON.stringify(this.priceAnchors));
         window.localStorage.setItem("axiom_selected_sym", this.activeSym);
@@ -1342,10 +1349,14 @@ class MarketStore {
       window.localStorage.setItem("axiom_tokens_v3", JSON.stringify(this.tokens));
       window.localStorage.setItem("axiom_user_orders_v5", JSON.stringify(this.userOrders));
       window.localStorage.setItem("axiom_pending_orders_v5", JSON.stringify(this.pendingOrders));
+      window.localStorage.setItem("axiom_user_balances_latest", JSON.stringify(this.balances));
       if (this.currentUserId) {
         window.localStorage.setItem(`axiom_user_balances_v16_${this.currentUserId}`, JSON.stringify(this.balances));
         window.localStorage.setItem(`axiom_user_orders_v5_${this.currentUserId}`, JSON.stringify(this.userOrders));
         window.localStorage.setItem(`axiom_pending_orders_v5_${this.currentUserId}`, JSON.stringify(this.pendingOrders));
+      }
+      if (this.currentUserWallet) {
+        window.localStorage.setItem(`axiom_user_balances_v16_${this.currentUserWallet}`, JSON.stringify(this.balances));
       }
       window.localStorage.setItem("axiom_anchors_v2", JSON.stringify(this.priceAnchors));
       window.localStorage.setItem("axiom_selected_sym", this.activeSym);
@@ -1355,6 +1366,21 @@ class MarketStore {
   private loadPersistedState() {
     if (typeof window === "undefined" || !window.localStorage) return;
     try {
+      // 1. Immediately restore latest balances so user balances never display 0.00 on home screen or reload
+      const storedWallet = window.localStorage.getItem("axiom_wallet_address");
+      const storedUid = window.localStorage.getItem("axiom_user_id");
+      const savedBal = (storedWallet ? window.localStorage.getItem(`axiom_user_balances_v16_${storedWallet}`) : null)
+        || (storedUid ? window.localStorage.getItem(`axiom_user_balances_v16_${storedUid}`) : null)
+        || window.localStorage.getItem("axiom_user_balances_latest");
+      if (savedBal) {
+        try {
+          const parsed = JSON.parse(savedBal);
+          if (parsed && typeof parsed === "object") {
+            this.balances = { ...this.balances, ...parsed };
+          }
+        } catch { }
+      }
+
       const savedTokens = window.localStorage.getItem("axiom_tokens_v3");
       if (savedTokens) {
         const parsed = JSON.parse(savedTokens);
