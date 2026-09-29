@@ -603,7 +603,7 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
       {/* Mobile Top Header (< 960px) */}
       <header className="phantom-mobile-header">
         <div className="phantom-brand-logo">
-          <div className="phantom-brand-logo-icon">A</div>
+          <AxiomLogo size={32} />
           <span className="phantom-brand-logo-text">AXIOM</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

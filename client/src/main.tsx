@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
 import { ThemeProvider } from './services/themeContext';
+import { AxiomLogo } from './components/common/AxiomLogo';
 
 interface Props {
   children: ReactNode;
@@ -42,13 +43,9 @@ class RootErrorBoundary extends Component<Props, State> {
           padding: 24,
           textAlign: "center"
         }}>
-          <div style={{
-            width: 56, height: 56, borderRadius: 16,
-            background: "linear-gradient(135deg, #7C3AED, #4C1D95)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 28, fontWeight: 900, marginBottom: 20,
-            boxShadow: "0 0 30px rgba(124, 58, 237, 0.4)"
-          }}>A</div>
+          <div style={{ marginBottom: 20 }}>
+            <AxiomLogo size={56} withGlow={true} />
+          </div>
           <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>Axiom Terminal Recovery</h2>
           <p style={{ color: "#94A3B8", fontSize: 13, maxWidth: 440, marginBottom: 20, lineHeight: 1.5 }}>
             {this.state.error?.message || "An unexpected interface error occurred during render."}
