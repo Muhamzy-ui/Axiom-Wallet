@@ -11,7 +11,10 @@ interface AdminPortalProps {
 export const AdminPortal: React.FC<AdminPortalProps> = ({ onExit }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('axiom_admin_auth') === 'true';
+      return (
+        sessionStorage.getItem('axiom_admin_auth') === 'true' ||
+        localStorage.getItem('axiom_admin_auth') === 'true'
+      );
     }
     return false;
   });
@@ -65,6 +68,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExit }) => {
 
       if (authorized) {
         sessionStorage.setItem('axiom_admin_auth', 'true');
+        localStorage.setItem('axiom_admin_auth', 'true');
         setIsAuthenticated(true);
       }
     } catch (err: any) {
@@ -76,6 +80,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExit }) => {
 
   const handleExitAdmin = () => {
     sessionStorage.removeItem('axiom_admin_auth');
+    localStorage.removeItem('axiom_admin_auth');
     setIsAuthenticated(false);
     if (onExit) {
       onExit();

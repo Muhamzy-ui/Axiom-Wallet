@@ -1793,16 +1793,6 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
               >
                 <Copy size={13} />
               </button>
-              <button
-                type="button"
-                className="dex-action-icon-btn"
-                onClick={() => {
-                  if (onOpenProfitCard) onOpenProfitCard(m.sym);
-                }}
-                title="Share PnL Profit Card"
-              >
-                <Share size={13} />
-              </button>
             </div>
           </div>
 
@@ -5156,9 +5146,14 @@ function AppShell({
       const rawHash = window.location.hash.toLowerCase().replace("#", "");
       const hash = rawHash.split("?")[0];
       if (hash === "admin") return "admin";
+      if (hash === "profile") {
+        try { window.location.hash = "wallet"; } catch {}
+        return "wallet";
+      }
       if (hash === "trade" || hash === "swap" || hash === "wallet" || hash === "leaderboard") return hash as View;
       const saved = localStorage.getItem("axiom_active_view") as View;
       if (saved === "admin") return "admin";
+      if (saved === "profile") return "wallet";
       if (saved && ["wallet", "trade", "swap", "leaderboard"].includes(saved)) return saved;
     }
     return "wallet";

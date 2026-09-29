@@ -135,12 +135,14 @@ def set_auth_cookies(response, access_token: str, refresh_token: str, remember_m
     refresh_days = django_settings.JWT_REMEMBER_ME_LIFETIME_DAYS if remember_me else django_settings.JWT_REFRESH_TOKEN_LIFETIME_DAYS
     refresh_max_age = refresh_days * 86400
 
-    is_secure = False
+    is_secure = not getattr(django_settings, 'DEBUG', True)
     if request:
         try:
-            is_secure = request.is_secure()
+            host_str = str(request.get_host()) if hasattr(request, 'get_host') else ''
+            if request.is_secure() or 'onrender.com' in host_str:
+                is_secure = True
         except Exception:
-            is_secure = False
+            pass
     samesite_mode = 'None' if is_secure else 'Lax'
 
     response.set_cookie(
@@ -613,8 +615,9 @@ def auth_login(request):
         'is_admin': user.is_admin,
         'is_email_verified': user.is_email_verified,
         'wallet_address': user.wallet_address,
+        'token': access_token,
     })
-    set_auth_cookies(resp, access_token, refresh_token, remember_me=remember_me)
+    set_auth_cookies(resp, access_token, refresh_token, remember_me=remember_me, request=request)
     return resp
 
 
@@ -911,8 +914,9 @@ def register_wallet(request):
         'wallet_address': user.wallet_address,
         'is_admin': user.is_admin,
         'is_email_verified': user.is_email_verified,
+        'token': access_token,
     })
-    set_auth_cookies(resp, access_token, refresh_token)
+    set_auth_cookies(resp, access_token, refresh_token, request=request)
     return resp
 
 @api_view(['POST'])
@@ -971,6 +975,7 @@ def unlock_wallet(request):
         'wallet_address': user.wallet_address,
         'is_admin': user.is_admin,
         'is_email_verified': user.is_email_verified,
+        'token': access_token,
     })
     set_auth_cookies(resp, access_token, refresh_token, request=request)
     return resp
@@ -1132,16 +1137,17 @@ def get_portfolio(request):
             'date_str': (d.verified_at or d.created_at).strftime("%b %d, %H:%M") if (d.verified_at or d.created_at) else "Just now",
         })
 
-    for tr in Trade.objects.filter(user=user).order_by('-created_at')[:20]:
+    for tr in Trade.objects.filter(user=user).select_related('token').order_by('-created_at')[:20]:
+        val_usd = (tr.token_amount * tr.price_usd) if (tr.token_amount and tr.price_usd) else Decimal('0.0')
         recent_transactions.append({
             'id': f"tr_{tr.id}",
-            'type': tr.side.upper(),
-            'currency': tr.token.symbol if tr.token else (tr.network or 'SOL'),
-            'amount': str(tr.amount),
-            'value_usd': str(tr.total_usd),
-            'status': tr.status,
+            'type': tr.side.upper() if tr.side else 'BUY',
+            'currency': tr.token.symbol if tr.token else 'SOL',
+            'amount': str(tr.token_amount),
+            'value_usd': f"{val_usd:.2f}",
+            'status': 'COMPLETED',
             'tx_hash': tr.tx_hash,
-            'note': f"Market {tr.side.capitalize()}",
+            'note': f"Market {tr.side.capitalize()} ({tr.base_currency})" if tr.side else "Market Trade",
             'timestamp': int(tr.created_at.timestamp() * 1000) if tr.created_at else int(time.time() * 1000),
             'date_str': tr.created_at.strftime("%b %d, %H:%M") if tr.created_at else "Just now",
         })
@@ -1328,20 +1334,10 @@ def verify_onchain_deposit(request):
 
     # 2. Anti-Replay: Prevent duplicate credit for same transaction
     existing_dep = PlatformDeposit.objects.filter(tx_hash=clean_hash).first()
-    if existing_dep:
-        if existing_dep.status == 'CONFIRMED':
-            return Response({
-                'error': 'This transaction hash has already been credited. Each transaction can only be redeemed once.'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        elif existing_dep.status == 'PENDING':
-            return Response({
-                'success': True,
-                'pending': True,
-                'status': 'PENDING',
-                'deposit_id': existing_dep.id,
-                'tx_hash': clean_hash,
-                'message': f"Transaction {clean_hash[:8]}... is currently pending verification. Digits will be released once confirmed on-chain or approved by vault admin."
-            }, status=status.HTTP_200_OK)
+    if existing_dep and existing_dep.status == 'CONFIRMED':
+        return Response({
+            'error': 'This transaction hash has already been credited. Each transaction can only be redeemed once.'
+        }, status=status.HTTP_400_BAD_REQUEST)
 
     # 3. Check matched platform deposit wallet
     matched_wallet = None
@@ -1379,6 +1375,7 @@ def verify_onchain_deposit(request):
         sol_rpc_endpoints = [
             "https://api.mainnet-beta.solana.com",
             "https://solana-rpc.publicnode.com",
+            "https://rpc.ankr.com/solana",
         ]
         for endpoint in sol_rpc_endpoints:
             try:
@@ -1435,35 +1432,50 @@ def verify_onchain_deposit(request):
             except Exception:
                 pass
         else:
-            # EVM RPC (Ethereum or BSC)
-            evm_rpc = "https://ethereum-rpc.publicnode.com" if currency in ['ETH', 'USDC'] else "https://binance.llamarpc.com"
-            try:
-                rpc_payload = json.dumps({
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "eth_getTransactionReceipt",
-                    "params": [f"0x{clean_hex}"]
-                }).encode('utf-8')
-                req = urllib.request.Request(
-                    evm_rpc,
-                    data=rpc_payload,
-                    headers={"Content-Type": "application/json", "User-Agent": "AxiomWalletEngine/1.0"}
-                )
-                with urllib.request.urlopen(req, timeout=5) as resp:
-                    res_json = json.loads(resp.read().decode('utf-8'))
-                    receipt = res_json.get('result')
-                    if receipt:
-                        if receipt.get('status') == '0x1':
-                            on_chain_verified = True
-                            tx_status_note = "Confirmed on Ethereum/BSC Block"
-                        else:
-                            return Response({
-                                'error': 'EVM transaction failed/reverted on blockchain.'
-                            }, status=status.HTTP_400_BAD_REQUEST)
-                    elif res_json.get('error') is None:
-                        tx_not_found = True
-            except Exception:
-                pass
+            # EVM RPC (Ethereum or BSC) with resilient multi-endpoint fallback
+            bsc_rpcs = [
+                "https://bsc-dataseed.binance.org",
+                "https://bsc-dataseed1.defibit.io",
+                "https://bsc-dataseed1.ninicoin.io",
+                "https://1rpc.io/bnb",
+            ]
+            eth_rpcs = [
+                "https://ethereum-rpc.publicnode.com",
+                "https://rpc.ankr.com/eth",
+                "https://cloudflare-eth.com",
+                "https://1rpc.io/eth",
+            ]
+            evm_rpcs = eth_rpcs if currency in ['ETH', 'USDC'] else bsc_rpcs
+
+            for evm_rpc in evm_rpcs:
+                try:
+                    rpc_payload = json.dumps({
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "eth_getTransactionReceipt",
+                        "params": [f"0x{clean_hex}"]
+                    }).encode('utf-8')
+                    req = urllib.request.Request(
+                        evm_rpc,
+                        data=rpc_payload,
+                        headers={"Content-Type": "application/json", "User-Agent": "AxiomWalletEngine/1.0"}
+                    )
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        res_json = json.loads(resp.read().decode('utf-8'))
+                        receipt = res_json.get('result')
+                        if receipt:
+                            if receipt.get('status') == '0x1':
+                                on_chain_verified = True
+                                tx_status_note = "Confirmed on BSC/Ethereum Block"
+                                break
+                            else:
+                                return Response({
+                                    'error': 'EVM transaction failed/reverted on blockchain.'
+                                }, status=status.HTTP_400_BAD_REQUEST)
+                        elif res_json.get('error') is None:
+                            tx_not_found = True
+                except Exception:
+                    continue
 
     # If blockchain node confirmed tx does NOT exist, reject
     if tx_not_found and not on_chain_verified:
@@ -1475,16 +1487,23 @@ def verify_onchain_deposit(request):
     if on_chain_verified:
         with transaction.atomic():
             credit_balance(user, currency, verified_amount)
-            deposit_record = PlatformDeposit.objects.create(
-                user=user,
-                currency=currency,
-                amount=verified_amount,
-                tx_hash=clean_hash,
-                status='CONFIRMED',
-                deposit_wallet=matched_wallet,
-                wallet_address_used=matched_wallet.address if matched_wallet else deposit_wallet_addr,
-                verified_at=timezone.now()
-            )
+            if existing_dep:
+                deposit_record = existing_dep
+                deposit_record.status = 'CONFIRMED'
+                deposit_record.verified_at = timezone.now()
+                deposit_record.amount = verified_amount
+                deposit_record.save()
+            else:
+                deposit_record = PlatformDeposit.objects.create(
+                    user=user,
+                    currency=currency,
+                    amount=verified_amount,
+                    tx_hash=clean_hash,
+                    status='CONFIRMED',
+                    deposit_wallet=matched_wallet,
+                    wallet_address_used=matched_wallet.address if matched_wallet else deposit_wallet_addr,
+                    verified_at=timezone.now()
+                )
             if matched_wallet:
                 matched_wallet.total_received_usd += usd_amount
                 matched_wallet.save()
@@ -1508,16 +1527,19 @@ def verify_onchain_deposit(request):
     else:
         # Queued as PENDING for admin review / background indexing
         with transaction.atomic():
-            deposit_record = PlatformDeposit.objects.create(
-                user=user,
-                currency=currency,
-                amount=verified_amount,
-                tx_hash=clean_hash,
-                status='PENDING',
-                deposit_wallet=matched_wallet,
-                wallet_address_used=matched_wallet.address if matched_wallet else deposit_wallet_addr,
-                verified_at=None
-            )
+            if existing_dep:
+                deposit_record = existing_dep
+            else:
+                deposit_record = PlatformDeposit.objects.create(
+                    user=user,
+                    currency=currency,
+                    amount=verified_amount,
+                    tx_hash=clean_hash,
+                    status='PENDING',
+                    deposit_wallet=matched_wallet,
+                    wallet_address_used=matched_wallet.address if matched_wallet else deposit_wallet_addr,
+                    verified_at=None
+                )
 
         return Response({
             'success': True,
@@ -2804,10 +2826,9 @@ def admin_users_list(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def admin_deposits_list(request):
-    """Returns confirmed and pending deposits made by Super Admin direct users (excluding Junior Admin users)."""
+    """Returns confirmed and pending deposits across the platform for Super Admin review."""
     ensure_initial_seed_data()
-    # Isolation: Super admin ONLY sees direct platform deposits
-    deposits = PlatformDeposit.objects.filter(user__junior_admin__isnull=True).order_by('-created_at')
+    deposits = PlatformDeposit.objects.all().order_by('-created_at')
     RATE_MAP = {
         'SOL': Decimal('180.0'),
         'ETH': Decimal('2700.0'),

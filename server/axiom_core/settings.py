@@ -165,6 +165,7 @@ else:
 # ─────────────────────────────────────────────
 # Cookie / Session Security
 # ─────────────────────────────────────────────
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
 SESSION_COOKIE_SECURE = not DEBUG  # True in production (HTTPS)

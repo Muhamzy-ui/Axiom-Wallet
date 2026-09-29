@@ -53,11 +53,23 @@ export interface AuthResponse {
   seed_phrase?: string;
 }
 
+export function getAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (typeof localStorage !== 'undefined') {
+    const token = localStorage.getItem('axiom_jwt_token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  }
+  return headers;
+}
+
 async function apiPost(path: string, body: Record<string, unknown>): Promise<AuthResponse> {
   try {
+    const headers = getAuthHeaders();
     const response = await fetch(`${API_BASE}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       credentials: 'include', // Send + receive httpOnly cookies
       body: JSON.stringify(body),
     });
@@ -75,6 +87,11 @@ async function apiPost(path: string, body: Record<string, unknown>): Promise<Aut
       // Normalize error shape
       return { success: false, ...data };
     }
+    if (data && data.token && typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem('axiom_jwt_token', data.token);
+      } catch {}
+    }
     return data;
   } catch (err: any) {
     return {
@@ -86,8 +103,10 @@ async function apiPost(path: string, body: Record<string, unknown>): Promise<Aut
 
 async function apiGet(path: string): Promise<AuthResponse & { authenticated?: boolean }> {
   try {
+    const headers = getAuthHeaders();
     let response = await fetch(`${API_BASE}${path}`, {
       method: 'GET',
+      headers,
       credentials: 'include',
     });
 
@@ -97,6 +116,7 @@ async function apiGet(path: string): Promise<AuthResponse & { authenticated?: bo
       if (refreshed) {
         response = await fetch(`${API_BASE}${path}`, {
           method: 'GET',
+          headers: getAuthHeaders(),
           credentials: 'include',
         });
       } else {
@@ -153,6 +173,13 @@ export async function login(params: {
 
 // ── Logout ───────────────────────────────────────────────────────────────────
 export async function logout(): Promise<void> {
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.removeItem('axiom_jwt_token');
+      localStorage.removeItem('axiom_unlocked_session');
+      localStorage.removeItem('axiom_auth_user');
+    } catch {}
+  }
   await apiPost('/auth/logout/', {});
 }
 
@@ -160,14 +187,16 @@ export async function logout(): Promise<void> {
 export async function getMe(): Promise<AuthUser | null> {
   try {
     const data = await apiGet('/auth/me/');
-    if (data.authenticated && data.user_id) {
+    if (data.authenticated && (data.user_id || data.wallet_address)) {
       return {
-        user_id: data.user_id!,
-        email: data.email!,
+        user_id: data.user_id || '',
+        email: data.email || '',
         full_name: data.full_name,
-        is_admin: data.is_admin!,
-        is_email_verified: data.is_email_verified!,
-        wallet_address: data.wallet_address!,
+        username: data.username,
+        avatar_url: data.avatar_url,
+        is_admin: !!data.is_admin,
+        is_email_verified: !!data.is_email_verified,
+        wallet_address: data.wallet_address || '',
       };
     }
     return null;

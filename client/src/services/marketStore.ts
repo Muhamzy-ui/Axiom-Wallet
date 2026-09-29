@@ -1294,8 +1294,10 @@ class MarketStore {
                 avgBuyPrice: backendAvgPrice > 0 ? backendAvgPrice : liveP,
               };
             } else {
-              this.balances[sym].bal = amt;
-              this.balances[sym].usdValue = Number((amt * liveP).toFixed(2));
+              if (amt > 0 || !this.balances[sym].bal || this.balances[sym].bal === 0) {
+                this.balances[sym].bal = amt;
+              }
+              this.balances[sym].usdValue = Number((this.balances[sym].bal * liveP).toFixed(2));
               if (backendInvested > 0 || !this.balances[sym].totalInvested) {
                 this.balances[sym].totalInvested = backendInvested;
               }
