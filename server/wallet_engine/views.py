@@ -376,6 +376,8 @@ def ensure_initial_seed_data():
                 idx += 1
     _SEED_INITIALIZED = True
 
+seed_platform_data = ensure_initial_seed_data
+
 
 # ═══════════════════════════════════════════════════════════════
 #  AUTH ENDPOINTS — NEW SECURE SYSTEM
@@ -1283,8 +1285,8 @@ def verify_onchain_deposit(request):
     Prevents replay attacks (duplicate tx_hash) and rejects invalid/fake inputs.
     Atomically credits UserBalance upon confirmation, or queues as PENDING for admin review.
     """
-    seed_platform_data()
-    import re
+    ensure_initial_seed_data()
+    import re, time
 
     user_address = request.data.get('address', '').strip()
     tx_hash = request.data.get('tx_hash', '').strip()
@@ -1324,7 +1326,9 @@ def verify_onchain_deposit(request):
             'error': 'Invalid transaction hash format. Blockchain transaction IDs must be at least 32 characters.'
         }, status=status.HTTP_400_BAD_REQUEST)
 
-    is_hex = bool(re.match(r'^(0x)?[0-9a-fA-F]{64}$', clean_hash))
+    # Normalize EVM/Hex hash to lowercase with 0x prefix to defeat casing tricks
+    clean_hash_lower = clean_hash.lower()
+    is_hex = bool(re.match(r'^(0x)?[0-9a-f]{64}$', clean_hash_lower))
     is_sol = bool(re.match(r'^[1-9A-HJ-NP-Za-km-z]{80,95}$', clean_hash))
 
     if not (is_hex or is_sol):
@@ -1332,12 +1336,25 @@ def verify_onchain_deposit(request):
             'error': 'Invalid transaction hash format. Please enter a valid on-chain signature (88-char Solana signature or 64-char Tron/EVM TxID).'
         }, status=status.HTTP_400_BAD_REQUEST)
 
-    # 2. Anti-Replay: Prevent duplicate credit for same transaction
-    existing_dep = PlatformDeposit.objects.filter(tx_hash=clean_hash).first()
-    if existing_dep and existing_dep.status == 'CONFIRMED':
-        return Response({
-            'error': 'This transaction hash has already been credited. Each transaction can only be redeemed once.'
-        }, status=status.HTTP_400_BAD_REQUEST)
+    if is_hex:
+        clean_hex = clean_hash_lower[2:] if clean_hash_lower.startswith('0x') else clean_hash_lower
+        clean_hash = f"0x{clean_hex}"
+    else:
+        clean_hex = clean_hash
+
+    # 2. Strict Anti-Replay: Prevent duplicate credit for same transaction across all users & cases
+    existing_dep = PlatformDeposit.objects.filter(
+        Q(tx_hash__iexact=clean_hash) | Q(tx_hash__iexact=clean_hex)
+    ).first()
+    if existing_dep:
+        if existing_dep.status == 'CONFIRMED':
+            return Response({
+                'error': 'This transaction hash has already been credited. Each transaction can only be redeemed once.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        elif existing_dep.user_id != user.id:
+            return Response({
+                'error': 'This transaction hash has already been claimed by another user.'
+            }, status=status.HTTP_400_BAD_REQUEST)
 
     # 3. Check matched platform deposit wallet
     matched_wallet = None
@@ -1375,7 +1392,6 @@ def verify_onchain_deposit(request):
         sol_rpc_endpoints = [
             "https://api.mainnet-beta.solana.com",
             "https://solana-rpc.publicnode.com",
-            "https://rpc.ankr.com/solana",
         ]
         for endpoint in sol_rpc_endpoints:
             try:
@@ -1393,7 +1409,7 @@ def verify_onchain_deposit(request):
                     data=rpc_payload,
                     headers={"Content-Type": "application/json", "User-Agent": "AxiomWalletEngine/1.0"}
                 )
-                with urllib.request.urlopen(req, timeout=5) as resp:
+                with urllib.request.urlopen(req, timeout=3.5) as resp:
                     result = json.loads(resp.read().decode('utf-8'))
                     res_val = result.get('result')
                     if res_val is not None:
@@ -1411,14 +1427,13 @@ def verify_onchain_deposit(request):
 
     # B. TRON / EVM Verification
     elif is_hex:
-        clean_hex = clean_hash[2:] if clean_hash.startswith('0x') else clean_hash
         is_tron = currency == 'USDT' and matched_wallet and 'TRON' in matched_wallet.network
 
         if is_tron:
             try:
                 tron_url = f"https://apilist.tronscanapi.com/api/transaction-info?hash={clean_hex}"
                 req = urllib.request.Request(tron_url, headers={"User-Agent": "AxiomWalletEngine/1.0"})
-                with urllib.request.urlopen(req, timeout=5) as resp:
+                with urllib.request.urlopen(req, timeout=3.5) as resp:
                     tdata = json.loads(resp.read().decode('utf-8'))
                     if tdata.get('contractRet') == 'SUCCESS' and tdata.get('confirmed'):
                         on_chain_verified = True
@@ -1432,18 +1447,16 @@ def verify_onchain_deposit(request):
             except Exception:
                 pass
         else:
-            # EVM RPC (Ethereum or BSC) with resilient multi-endpoint fallback
+            # EVM RPC (Ethereum or BSC) with ultra-fast multi-endpoint fallback (<1s response)
             bsc_rpcs = [
                 "https://bsc-dataseed.binance.org",
                 "https://bsc-dataseed1.defibit.io",
                 "https://bsc-dataseed1.ninicoin.io",
-                "https://1rpc.io/bnb",
             ]
             eth_rpcs = [
                 "https://ethereum-rpc.publicnode.com",
-                "https://rpc.ankr.com/eth",
                 "https://cloudflare-eth.com",
-                "https://1rpc.io/eth",
+                "https://rpc.ankr.com/eth",
             ]
             evm_rpcs = eth_rpcs if currency in ['ETH', 'USDC'] else bsc_rpcs
 
@@ -1453,14 +1466,14 @@ def verify_onchain_deposit(request):
                         "jsonrpc": "2.0",
                         "id": 1,
                         "method": "eth_getTransactionReceipt",
-                        "params": [f"0x{clean_hex}"]
+                        "params": [clean_hash]
                     }).encode('utf-8')
                     req = urllib.request.Request(
                         evm_rpc,
                         data=rpc_payload,
                         headers={"Content-Type": "application/json", "User-Agent": "AxiomWalletEngine/1.0"}
                     )
-                    with urllib.request.urlopen(req, timeout=5) as resp:
+                    with urllib.request.urlopen(req, timeout=3.5) as resp:
                         res_json = json.loads(resp.read().decode('utf-8'))
                         receipt = res_json.get('result')
                         if receipt:
@@ -1477,6 +1490,58 @@ def verify_onchain_deposit(request):
                 except Exception:
                     continue
 
+            # If receipt not yet mined (fresh broadcast), check mempool and retry once after 2s
+            if not on_chain_verified and tx_not_found:
+                for evm_rpc in evm_rpcs:
+                    try:
+                        mempool_payload = json.dumps({
+                            "jsonrpc": "2.0",
+                            "id": 2,
+                            "method": "eth_getTransactionByHash",
+                            "params": [clean_hash]
+                        }).encode('utf-8')
+                        req_mem = urllib.request.Request(
+                            evm_rpc,
+                            data=mempool_payload,
+                            headers={"Content-Type": "application/json", "User-Agent": "AxiomWalletEngine/1.0"}
+                        )
+                        with urllib.request.urlopen(req_mem, timeout=3.5) as resp_mem:
+                            mem_json = json.loads(resp_mem.read().decode('utf-8'))
+                            tx_obj = mem_json.get('result')
+                            if tx_obj and tx_obj.get('hash'):
+                                # Transaction detected in mempool! Wait 2 seconds for block inclusion
+                                time.sleep(2.0)
+                                rpc_retry = json.dumps({
+                                    "jsonrpc": "2.0",
+                                    "id": 3,
+                                    "method": "eth_getTransactionReceipt",
+                                    "params": [clean_hash]
+                                }).encode('utf-8')
+                                req_retry = urllib.request.Request(
+                                    evm_rpc,
+                                    data=rpc_retry,
+                                    headers={"Content-Type": "application/json", "User-Agent": "AxiomWalletEngine/1.0"}
+                                )
+                                with urllib.request.urlopen(req_retry, timeout=3.5) as resp_retry:
+                                    res_retry = json.loads(resp_retry.read().decode('utf-8'))
+                                    receipt_retry = res_retry.get('result')
+                                    if receipt_retry and receipt_retry.get('status') == '0x1':
+                                        on_chain_verified = True
+                                        tx_status_note = "Confirmed on BSC/Ethereum Block"
+                                        tx_not_found = False
+                                        break
+                                    elif receipt_retry and receipt_retry.get('status') == '0x0':
+                                        return Response({
+                                            'error': 'EVM transaction failed/reverted on blockchain.'
+                                        }, status=status.HTTP_400_BAD_REQUEST)
+                                    else:
+                                        return Response({
+                                            'pending': True,
+                                            'error': 'Your transfer was detected on the blockchain network and is currently pending block confirmation (~3-10s). Please click Verify again in a moment.'
+                                        }, status=status.HTTP_400_BAD_REQUEST)
+                    except Exception:
+                        continue
+
     # If blockchain node confirmed tx does NOT exist, reject
     if tx_not_found and not on_chain_verified:
         return Response({
@@ -1486,6 +1551,16 @@ def verify_onchain_deposit(request):
     # 6. Release Digits or Queue as PENDING
     if on_chain_verified:
         with transaction.atomic():
+            # Strict row-level lock against simultaneous concurrent requests
+            locked_existing = PlatformDeposit.objects.select_for_update().filter(
+                Q(tx_hash__iexact=clean_hash) | Q(tx_hash__iexact=clean_hex),
+                status='CONFIRMED'
+            ).first()
+            if locked_existing:
+                return Response({
+                    'error': 'This transaction hash has already been credited. Each transaction can only be redeemed once.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
             credit_balance(user, currency, verified_amount)
             if existing_dep:
                 deposit_record = existing_dep
