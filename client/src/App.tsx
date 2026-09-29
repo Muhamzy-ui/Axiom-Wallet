@@ -4553,7 +4553,7 @@ function ProfileView({
       {/* ── Grid: Security & Settings | Session Info ── */}
       <div className="profile-sections-grid">
         {/* ── Trader Identity & Custom Avatar Card ── */}
-        <div className="profile-card profile-identity-card" style={{ gridColumn: "1 / -1" }}>
+        <div className="profile-card profile-identity-card" style={{ gridColumn: "1 / -1", overflow: "hidden" }}>
           <div className="profile-card-title">
             <Users size={18} />
             <span>Trader Identity & Avatar</span>
@@ -4579,10 +4579,10 @@ function ProfileView({
             </div>
           )}
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, width: "100%", minWidth: 0 }}>
             {/* Top row: Avatar + Floating Edit Badge + Username input + Save */}
-            <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-              <div style={{ position: "relative", width: 80, height: 80, flexShrink: 0 }}>
+            <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap", width: "100%", minWidth: 0 }}>
+              <div style={{ position: "relative", width: 72, height: 72, flexShrink: 0 }}>
                 <div
                   style={{
                     width: "100%",
@@ -4633,11 +4633,11 @@ function ProfileView({
                 </button>
               </div>
 
-              <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ flex: "1 1 180px", minWidth: 0, maxWidth: "100%" }}>
                 <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", display: "block", marginBottom: 6 }}>
                   Trader Username
                 </label>
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", width: "100%", minWidth: 0 }}>
                   <input
                     type="text"
                     value={profileUsername}
@@ -4646,6 +4646,7 @@ function ProfileView({
                     placeholder="Enter trader username"
                     style={{
                       flex: 1,
+                      minWidth: 0,
                       background: "rgba(255, 255, 255, 0.05)",
                       border: "1px solid rgba(255, 255, 255, 0.12)",
                       borderRadius: 8,
@@ -4660,21 +4661,23 @@ function ProfileView({
                     onClick={handleSaveProfile}
                     disabled={profileSaving || !profileUsername.trim()}
                     style={{
+                      flexShrink: 0,
                       background: "linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)",
                       border: "none",
                       borderRadius: 8,
-                      padding: "8px 18px",
+                      padding: "8px 16px",
                       color: "#fff",
                       fontSize: 12,
                       fontWeight: 700,
                       cursor: profileSaving ? "wait" : "pointer",
                       display: "inline-flex",
                       alignItems: "center",
+                      justifyContent: "center",
                       gap: 6,
                       whiteSpace: "nowrap"
                     }}
                   >
-                    {profileSaving ? "Saving..." : "Save Profile"}
+                    {profileSaving ? "Saving..." : "Save"}
                   </button>
                 </div>
               </div>
