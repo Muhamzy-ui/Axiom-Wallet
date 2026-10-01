@@ -396,9 +396,46 @@ export function LeaderboardView({
   // Modals state
   const [inspectTrader, setInspectTrader] = useState<Trader | null>(null);
   const [copyModalTrader, setCopyModalTrader] = useState<Trader | null>(null);
-  const [copyingTraders, setCopyingTraders] = useState<Record<string, boolean>>({});
+  const [copyingTraders, setCopyingTraders] = useState<Record<string, boolean>>(() => leaderboardStore.getCopiedTradersMap());
   const [copyAmount, setCopyAmount] = useState("2.5");
   const [copyStopLoss, setCopyStopLoss] = useState("15");
+
+  // Helper to cleanly render SVG data-URIs, image URLs, or emoji avatars without raw markup leaks
+  const renderTraderAvatar = (avatar: string | undefined, size: number = 36) => {
+    if (!avatar) {
+      return <span style={{ fontSize: `${Math.round(size * 0.55)}px` }}>👤</span>;
+    }
+    if (avatar.startsWith("data:") || avatar.startsWith("http") || avatar.startsWith("/") || avatar.startsWith("blob:")) {
+      return (
+        <img
+          src={avatar}
+          alt="Trader Avatar"
+          style={{
+            width: "100%",
+            height: "100%",
+            maxWidth: `${size}px`,
+            maxHeight: `${size}px`,
+            borderRadius: "inherit",
+            objectFit: "cover",
+            display: "block"
+          }}
+        />
+      );
+    }
+    return (
+      <span
+        style={{
+          fontSize: `${Math.round(size * 0.55)}px`,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          lineHeight: 1
+        }}
+      >
+        {avatar}
+      </span>
+    );
+  };
 
   // Simulate real-time ticker stream updates
   useEffect(() => {
@@ -504,13 +541,35 @@ export function LeaderboardView({
       }
 
       // 2. Non-Grinding Holders (Real registered users on Axiom who hold this coin)
+      const targetHoldersCount = Math.max(
+        (matchedCoinInfo as any).user_holders_count || (matchedCoinInfo as any).holders || 25,
+        realUsers.length,
+        25
+      );
+
+      const usersToUse = [...(realUsers.length > 0 ? realUsers : [])];
+      if (usersToUse.length === 0) {
+        usersToUse.push(
+          { id: "usr_1", email: "alex_trader@axiom.io", wallet_address: "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU", balances: { [sym]: 85000 }, total_balance_usd: 12500 },
+          { id: "usr_2", email: "cryptoking@axiom.io", wallet_address: "AxM3k8Lp9wE6rT5yU4iO3pA2sD1fGh7Jk9Lm", balances: { [sym]: 34200 }, total_balance_usd: 4800 },
+          { id: "usr_3", email: "sol_degen@axiom.io", wallet_address: "AxP2q9mK8pL7wE6rT5yU4iO3pA2sD1fXy5Z", balances: { [sym]: 19500 }, total_balance_usd: 2100 },
+          { id: "usr_4", email: "vault_alpha@axiom.io", wallet_address: "AxK7n8vB2mK8pL7wE6rT5yU4iO3pA2sD1fW", balances: { [sym]: 8400 }, total_balance_usd: 950 },
+        );
+      }
+
+      while (usersToUse.length < targetHoldersCount) {
+        const idx = usersToUse.length;
+        const randHex = Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0");
+        usersToUse.push({
+          id: `usr_${idx + 1}`,
+          email: `trader_${randHex}@axiom.io`,
+          wallet_address: `Ax${randHex}${Math.random().toString(36).slice(2, 8)}`,
+          balances: { [sym]: Math.round(15000 + Math.random() * 45000) },
+          total_balance_usd: Math.round(500 + Math.random() * 3500)
+        });
+      }
+
       const holders: (Trader & { isGrinder?: boolean; holdingAmt?: number; holdingUsd?: number })[] = [];
-      const usersToUse = realUsers.length > 0 ? realUsers : [
-        { id: "usr_1", email: "alex_trader@axiom.io", wallet_address: "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU", balances: { [sym]: 85000 }, total_balance_usd: 12500 },
-        { id: "usr_2", email: "cryptoking@axiom.io", wallet_address: "AxM3k8Lp9wE6rT5yU4iO3pA2sD1fGh7Jk9Lm", balances: { [sym]: 34200 }, total_balance_usd: 4800 },
-        { id: "usr_3", email: "sol_degen@axiom.io", wallet_address: "AxP2q9mK8pL7wE6rT5yU4iO3pA2sD1fXy5Z", balances: { [sym]: 19500 }, total_balance_usd: 2100 },
-        { id: "usr_4", email: "vault_alpha@axiom.io", wallet_address: "AxK7n8vB2mK8pL7wE6rT5yU4iO3pA2sD1fW", balances: { [sym]: 8400 }, total_balance_usd: 950 },
-      ];
 
       usersToUse.forEach((u: any, idx: number) => {
         const userBal = u.balances?.[sym] || (u.total_balance_usd ? Number((u.total_balance_usd / tokenPrice).toFixed(2)) : (25000 - idx * 4000));
@@ -667,7 +726,8 @@ export function LeaderboardView({
   const top3 = traders[2];
 
   const handleStartCopy = (trader: Trader) => {
-    setCopyingTraders((prev) => ({ ...prev, [trader.id]: true }));
+    leaderboardStore.setCopiedTrader(trader.id, true, { name: trader.name, amount: copyAmount, sl: copyStopLoss });
+    setCopyingTraders(leaderboardStore.getCopiedTradersMap());
     setCopyModalTrader(null);
     if (flash) {
       flash(`🚀 Now copy trading ${trader.name}! Allocated: ${copyAmount} SOL with ${copyStopLoss}% Stop-Loss.`);
@@ -676,11 +736,8 @@ export function LeaderboardView({
 
   const handleStopCopy = (trader: Trader, e: React.MouseEvent) => {
     e.stopPropagation();
-    setCopyingTraders((prev) => {
-      const next = { ...prev };
-      delete next[trader.id];
-      return next;
-    });
+    leaderboardStore.setCopiedTrader(trader.id, false);
+    setCopyingTraders(leaderboardStore.getCopiedTradersMap());
     if (flash) {
       flash(`Stopped copy trading ${trader.name}.`);
     }
@@ -871,7 +928,7 @@ export function LeaderboardView({
             </div>
             <div className="lb-podium-trader-header">
               <div className="lb-avatar-wrap">
-                {top2.avatar}
+                {renderTraderAvatar(top2.avatar, 52)}
                 <span className="lb-rank-num-badge">2</span>
               </div>
               <div className="lb-podium-info">
@@ -960,7 +1017,7 @@ export function LeaderboardView({
             </div>
             <div className="lb-podium-trader-header">
               <div className="lb-avatar-wrap">
-                {top1.avatar}
+                {renderTraderAvatar(top1.avatar, 52)}
                 <span className="lb-rank-num-badge">1</span>
               </div>
               <div className="lb-podium-info">
@@ -1051,7 +1108,7 @@ export function LeaderboardView({
             </div>
             <div className="lb-podium-trader-header">
               <div className="lb-avatar-wrap">
-                {top3.avatar}
+                {renderTraderAvatar(top3.avatar, 52)}
                 <span className="lb-rank-num-badge">3</span>
               </div>
               <div className="lb-podium-info">
@@ -1382,7 +1439,7 @@ export function LeaderboardView({
                     </td>
                     <td>
                       <div className="lb-trader-cell">
-                        <div className="lb-table-avatar">{t.avatar}</div>
+                        <div className="lb-table-avatar">{renderTraderAvatar(t.avatar, 38)}</div>
                         <div className="lb-table-trader-meta">
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <span className="lb-table-name">{t.name}</span>
@@ -1530,7 +1587,9 @@ export function LeaderboardView({
           <div className="lb-modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "560px" }}>
             <div className="lb-modal-header">
               <div className="lb-modal-title">
-                <span style={{ fontSize: "20px" }}>{inspectTrader.avatar}</span>
+                <span style={{ display: "inline-flex", width: 36, height: 36, borderRadius: 10, overflow: "hidden", background: "#1C1D2C", alignItems: "center", justifyContent: "center" }}>
+                  {renderTraderAvatar(inspectTrader.avatar, 36)}
+                </span>
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <span>{inspectTrader.name}</span>
@@ -1688,7 +1747,9 @@ export function LeaderboardView({
 
             <div className="lb-modal-body">
               <div className="lb-target-trader-box">
-                <span style={{ fontSize: "24px" }}>{copyModalTrader.avatar}</span>
+                <span style={{ display: "inline-flex", width: 44, height: 44, borderRadius: 12, overflow: "hidden", background: "#1C1D2C", alignItems: "center", justifyContent: "center" }}>
+                  {renderTraderAvatar(copyModalTrader.avatar, 44)}
+                </span>
                 <div>
                   <div style={{ fontWeight: 850, color: "#fff", fontSize: "14px" }}>
                     Copying: {copyModalTrader.name}

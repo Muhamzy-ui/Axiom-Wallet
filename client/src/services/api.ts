@@ -680,6 +680,77 @@ export const api = {
     }
     return res.json();
   },
+
+  // Global Admin Top 8 Leaderboard Persistence
+  async getLeaderboardTop8(): Promise<any[]> {
+    try {
+      const res = await fetch(`${API_BASE}/leaderboard/top8/`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json && Array.isArray(json.top8) && json.top8.length > 0) {
+          return json.top8;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch Top 8 from backend:', e);
+    }
+    return [];
+  },
+
+  async saveLeaderboardTop8(top8: any[]): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/leaderboard/top8/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ top8 }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.warn('Failed to save Top 8 to backend:', e);
+      return false;
+    }
+  },
+
+  // Token Verified Badge & Padlock Persistence
+  async setTokenBadges(symbol: string, badges: { is_verified?: boolean; is_liquidity_locked?: boolean }): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/admin-api/tokens/${symbol}/control/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_badges', ...badges }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  // Token Holders & Buyers Control
+  async boostTokenHolders(symbol: string, count: number): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/admin-api/tokens/${symbol}/control/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'boost_holders', count }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  async setTokenHoldersBuyers(symbol: string, holders: number, buyers: number): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/admin-api/tokens/${symbol}/control/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_holders_buyers', holders, buyers }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
 };
 
 

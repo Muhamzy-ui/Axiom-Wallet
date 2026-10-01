@@ -132,12 +132,15 @@
 
 /* Institutional Card Box (Single Long Card) */
 .pro-card {
-  background: rgba(19, 20, 31, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
-  padding: 20px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
-  transition: border-color 0.2s ease;
+  position: relative;
+  background: linear-gradient(175deg, rgba(24, 21, 44, 0.94) 0%, rgba(14, 12, 24, 0.98) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.28);
+  border-radius: 26px;
+  padding: 24px;
+  box-shadow: 0 28px 70px -15px rgba(0, 0, 0, 0.75), 0 0 40px rgba(124, 58, 237, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  transition: all 0.24s cubic-bezier(0.16, 1, 0.3, 1);
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
@@ -247,22 +250,24 @@
   justify-content: center;
   gap: 5px;
   padding: 10px 4px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
+  background: rgba(20, 18, 34, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.08);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
   color: var(--text, #FFFFFF);
 }
 
 .asset-pill:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(30, 26, 52, 0.85);
+  border-color: rgba(139, 92, 246, 0.35);
+  transform: translateY(-1px);
 }
 
 .asset-pill.active {
-  background: rgba(124, 58, 237, 0.22);
-  border-color: var(--violet, #7C3AED);
-  box-shadow: 0 0 16px rgba(124, 58, 237, 0.35);
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.28) 0%, rgba(99, 102, 241, 0.18) 100%);
+  border-color: rgba(139, 92, 246, 0.65);
+  box-shadow: 0 0 20px rgba(124, 58, 237, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.15);
 }
 
 .asset-pill-sym {
@@ -351,10 +356,16 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(10, 11, 20, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 8px 12px;
+  background: rgba(20, 18, 34, 0.85);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 16px;
+  padding: 10px 14px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25);
+  transition: all 0.2s ease;
+}
+
+.address-copy-row:hover {
+  border-color: rgba(139, 92, 246, 0.45);
 }
 
 .address-monospace-text {
@@ -389,10 +400,10 @@
 
 /* Dual Fiat & Crypto Converter */
 .converter-box {
-  background: rgba(10, 11, 20, 0.85);
-  border: 1.5px solid rgba(255, 255, 255, 0.09);
-  border-radius: 14px;
-  padding: 12px 14px;
+  background: rgba(20, 18, 34, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -400,12 +411,15 @@
   max-width: 100%;
   box-sizing: border-box;
   overflow: hidden;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: all 220ms ease;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25);
 }
 
+.converter-box:hover,
 .converter-box:focus-within {
-  border-color: var(--violet, #7C3AED);
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
+  border-color: rgba(139, 92, 246, 0.45);
+  background: rgba(25, 22, 44, 0.85);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 22px rgba(124, 58, 237, 0.16);
 }
 
 .converter-input-row {

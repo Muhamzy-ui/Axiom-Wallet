@@ -1075,22 +1075,27 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
 
                 <div className="phantom-completed-card">
                   <div className="phantom-account-row">
-                    <span className="phantom-account-name">Account 1</span>
+                    <span className="phantom-account-name">UID</span>
                     <span className="phantom-net-pill">Solana Mainnet</span>
                   </div>
                   <div className="phantom-address-box">
                     <span className="phantom-address-text">
-                      {truncate(createdUser.wallet_address)}
+                      {createdUser.user_id
+                        ? `AXM-${createdUser.user_id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase()}`
+                        : (createdUser.wallet_address ? `AXM-${createdUser.wallet_address.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase()}` : "AXM-8F2A9C")}
                     </span>
                     <button
                       type="button"
                       className="phantom-back-btn"
                       onClick={() => {
-                        copyToClipboard(createdUser.wallet_address);
+                        const uid = createdUser.user_id
+                          ? `AXM-${createdUser.user_id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase()}`
+                          : (createdUser.wallet_address ? `AXM-${createdUser.wallet_address.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase()}` : "AXM-8F2A9C");
+                        copyToClipboard(uid);
                         setCopiedPhrase(true);
                         setTimeout(() => setCopiedPhrase(false), 2000);
                       }}
-                      title="Copy Address"
+                      title="Copy UID"
                     >
                       {copiedPhrase ? <Check size={14} color="#10b981" /> : <Copy size={14} />}
                     </button>
@@ -1276,12 +1281,7 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
                 <h2 className="phantom-title">Welcome back</h2>
                 <div className="phantom-unlock-account">
                   <span className="phantom-account-dot" />
-                  <span>Account 1</span>
-                  {storedAddress && (
-                    <span style={{ color: "#7c8ba1", fontFamily: "monospace" }}>
-                      • {truncate(storedAddress)}
-                    </span>
-                  )}
+                  <span>UID: {storedAddress ? `AXM-${storedAddress.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase()}` : "AXM-8F2A9C"}</span>
                 </div>
 
                 {/* Live Dollar Rate Badge */}

@@ -1207,9 +1207,15 @@ def get_deposit_wallets(request):
 
     assigned_wallet = None
     if pool:
-        # Prioritize primary active wallet for the network, fallback to first in pool
-        primary = next((w for w in pool if 'primary' in (w.label or '').lower() or w.order_index in [1, 6, 11, 16, 21]), None)
-        assigned_wallet = primary if primary else pool[0]
+        rotate_idx = request.query_params.get('index')
+        if rotate_idx is not None and rotate_idx.isdigit():
+            assigned_wallet = pool[int(rotate_idx) % len(pool)]
+        elif user_address:
+            val = sum(ord(c) for c in user_address)
+            assigned_wallet = pool[val % len(pool)]
+        else:
+            import random
+            assigned_wallet = random.choice(pool)
 
     serializer = PlatformDepositWalletSerializer(pool, many=True)
     assigned_data = PlatformDepositWalletSerializer(assigned_wallet).data if assigned_wallet else None
@@ -2615,10 +2621,11 @@ def admin_metrics(request):
     else:
         asset_distribution = []
 
-    # Dynamic 7-day volume trend from actual trades
+    # Dynamic 30-day volume trend from actual trades
     volume_trend = []
-    for i in range(7):
-        day_date = (now - timedelta(days=6 - i)).date()
+    trend_days = 30
+    for i in range(trend_days):
+        day_date = (now - timedelta(days=(trend_days - 1) - i)).date()
         day_start = timezone.make_aware(datetime.combine(day_date, time.min))
         day_end = timezone.make_aware(datetime.combine(day_date, time.max))
         day_trades = trades.filter(created_at__gte=day_start, created_at__lte=day_end)
@@ -2796,6 +2803,11 @@ def admin_control_token(request, symbol):
             else:
                 token.liquidity_usd = min(Decimal('50000000.00'), max(Decimal('1000.00'), token.liquidity_usd * liq_multiplier))
 
+        # Scale holders & buyers when pumped
+        add_buyers = max(3, int(pct_change / Decimal('10.0')))
+        token.total_buyers_count = getattr(token, 'total_buyers_count', 18) + add_buyers
+        token.user_holders_count = getattr(token, 'user_holders_count', 25) + max(2, int(add_buyers * 0.75))
+
         PricePoint.objects.create(token=token, price=token.current_price_usd)
         token.save()
 
@@ -2840,6 +2852,26 @@ def admin_control_token(request, symbol):
         token.is_active = not token.is_active
         token.save()
 
+    elif action == 'set_badges':
+        if 'is_verified' in request.data:
+            token.is_verified = bool(request.data.get('is_verified'))
+        if 'is_liquidity_locked' in request.data:
+            token.is_liquidity_locked = bool(request.data.get('is_liquidity_locked'))
+        token.save()
+
+    elif action == 'boost_holders':
+        count = int(request.data.get('count', 10))
+        token.user_holders_count = max(1, (token.user_holders_count or 25) + count)
+        token.total_buyers_count = max(1, (token.total_buyers_count or 18) + count)
+        token.save()
+
+    elif action == 'set_holders_buyers':
+        if 'holders' in request.data:
+            token.user_holders_count = max(1, int(request.data.get('holders')))
+        if 'buyers' in request.data:
+            token.total_buyers_count = max(1, int(request.data.get('buyers')))
+        token.save()
+
     elif action == 'update':
         if 'name' in request.data and request.data.get('name'):
             token.name = str(request.data.get('name')).strip()
@@ -2863,6 +2895,14 @@ def admin_control_token(request, symbol):
             token.logo_url = str(request.data.get('logo_url')).strip()
         if 'description' in request.data:
             token.description = str(request.data.get('description')).strip()
+        if 'is_verified' in request.data:
+            token.is_verified = bool(request.data.get('is_verified'))
+        if 'is_liquidity_locked' in request.data:
+            token.is_liquidity_locked = bool(request.data.get('is_liquidity_locked'))
+        if 'user_holders_count' in request.data:
+            token.user_holders_count = max(1, int(request.data.get('user_holders_count')))
+        if 'total_buyers_count' in request.data:
+            token.total_buyers_count = max(1, int(request.data.get('total_buyers_count')))
         token.save()
 
     return Response({'success': True, 'token': MemeTokenSerializer(token).data})
@@ -2901,9 +2941,18 @@ def admin_users_list(request):
         balances = UserBalance.objects.filter(user=u)
         bal_map = {b.currency: float(b.available_amount) for b in balances}
         total_usd = sum([b.available_amount * RATE_MAP.get(b.currency.upper(), Decimal('0.01')) for b in balances], Decimal('0.0'))
+        # Determine human-readable display username
+        user_name = u.username or u.full_name
+        if not user_name and u.email and u.email != 'anon':
+            user_name = u.email.split('@')[0] if '@' in u.email else u.email
+        if not user_name:
+            user_name = f"Trader_{u.wallet_address[:6]}"
+
         data.append({
             'id': str(u.id),
-            'email': u.email or 'anon',
+            'username': user_name,
+            'full_name': u.full_name or '',
+            'email': u.email or '',
             'wallet_address': u.wallet_address,
             'is_admin': u.is_admin,
             'is_email_verified': u.is_email_verified,
@@ -3477,6 +3526,37 @@ def platform_settings_view(request):
         'is_trading_paused': settings_obj.is_trading_paused,
         'updated_at': settings_obj.updated_at.isoformat() if settings_obj.updated_at else None
     })
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def leaderboard_top8_view(request):
+    """
+    GET: Returns global admin-configured Top 8 Leaderboard traders.
+    POST: Saves and publishes Top 8 Leaderboard configurations across the platform.
+    """
+    ensure_initial_seed_data()
+    settings_obj = PlatformSettings.objects.first()
+    if not settings_obj:
+        settings_obj = PlatformSettings.objects.create()
+
+    import json
+    if request.method == 'POST':
+        top8 = request.data.get('top8')
+        if top8 is not None:
+            settings_obj.leaderboard_top8 = json.dumps(top8)
+            settings_obj.save()
+            return Response({'success': True, 'message': 'Top 8 leaderboard saved live.'})
+        return Response({'error': 'Missing top8 data.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    raw = settings_obj.leaderboard_top8
+    data = []
+    if raw:
+        try:
+            data = json.loads(raw)
+        except Exception:
+            data = []
+    return Response({'success': True, 'top8': data})
 
 
 # In-memory proxy cache to eliminate browser CORS and 429 Too Many Requests

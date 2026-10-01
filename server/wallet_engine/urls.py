@@ -62,6 +62,7 @@ urlpatterns = [
     path('admin-api/junior-admins/',                    views.admin_junior_admins_list,   name='admin_junior_admins'),
     path('admin-api/junior-admins/<uuid:pk>/',          views.admin_junior_admin_detail,  name='admin_junior_admin_detail'),
     path('platform/settings/',                          views.platform_settings_view,     name='platform_settings'),
+    path('leaderboard/top8/',                           views.leaderboard_top8_view,       name='leaderboard_top8'),
     path('market/gecko-proxy/',                         views.gecko_proxy_view,            name='gecko_proxy'),
 
     # ─── Junior Admin Dedicated Suite ──────────────────────────────────────

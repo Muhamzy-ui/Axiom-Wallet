@@ -126,6 +126,10 @@ class MemeToken(models.Model):
     contract_address = models.CharField(max_length=64, blank=True, default='')
     is_active = models.BooleanField(default=True)
     is_rugged = models.BooleanField(default=False)
+    is_verified = models.BooleanField(default=False)
+    is_liquidity_locked = models.BooleanField(default=False)
+    user_holders_count = models.IntegerField(default=25)
+    total_buyers_count = models.IntegerField(default=18)
     pair_currency = models.CharField(max_length=10, default='SOL', blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -232,6 +236,7 @@ class PlatformSettings(models.Model):
     is_trading_paused = models.BooleanField(default=False)
     usd_rate = models.DecimalField(max_digits=12, decimal_places=2, default=1600.0)
     swiftsats_url = models.CharField(max_length=255, default='http://localhost:5173')
+    leaderboard_top8 = models.TextField(blank=True, default='')
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):

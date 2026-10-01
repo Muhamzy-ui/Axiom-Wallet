@@ -122,17 +122,15 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
 
   const numNetWorth = parseFloat(totalNetWorth) || 0;
 
-  const shortAddr = walletAddress
-    ? `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`
-    : 'AxEP...R5oJ';
+  const userUid = walletAddress
+    ? `AXM-${walletAddress.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase()}`
+    : 'AXM-8F2A9C';
 
   const handleCopyAddress = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (walletAddress) {
-      copyToClipboard(walletAddress);
-      setCopiedAddress(true);
-      setTimeout(() => setCopiedAddress(false), 2000);
-    }
+    copyToClipboard(userUid);
+    setCopiedAddress(true);
+    setTimeout(() => setCopiedAddress(false), 2000);
   };
 
   const handleQuickFaucet = async () => {
@@ -259,10 +257,10 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
                   fontWeight: 800,
                   color: '#FFFFFF',
                 }}>
-                  A1
+                  UID
                 </div>
                 <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#FFFFFF' }}>
-                  Account 1
+                  {userUid}
                 </span>
                 <ChevronDown size={14} color="#94A3B8" />
               </div>
@@ -282,8 +280,9 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
                     alignItems: 'center',
                     gap: '0.3rem',
                   }}
+                  title="Click to copy your Axiom UID"
                 >
-                  {copiedAddress ? <span style={{ color: '#10B981' }}>Copied!</span> : shortAddr}
+                  {copiedAddress ? <span style={{ color: '#10B981' }}>Copied!</span> : userUid}
                   {!copiedAddress && <Copy size={13} />}
                 </button>
               </div>

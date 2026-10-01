@@ -28,6 +28,7 @@ import { CountrySelectModal } from "./components/modals/CountrySelectModal";
 import { getCountryByCode, CountryInfo, syncDollarRateFromBackend } from "./constants/countries";
 import { CountryFlag } from "./components/common/CountryFlag";
 import { AxiomLogo } from "./components/common/AxiomLogo";
+import { formatCoinPrice, formatRawPrice, formatPercentage, formatUsdAmount } from "./services/formatters";
 import { generatePhantomAvatar, generatePresetAvatar, PHANTOM_AVATAR_PRESETS, type AvatarPreset } from "./utils/avatar";
 
 type View = "trade" | "wallet" | "swap" | "admin" | "profile" | "leaderboard";
@@ -119,8 +120,8 @@ function Delta({ n, size = 10 }: { n: string; size?: number }) {
   if (!n) return null;
   const isNeg = n.startsWith("-");
   const num = parseFloat(n.replace(/[+%,]/g, "")) || 0;
-  let displayStr = n;
-  if (!isNeg && num > 99999) displayStr = "+99,999%";
+  let displayStr = formatPercentage(isNeg ? -num : num);
+  if (!isNeg && num > 999999) displayStr = "+999,999%";
   else if (isNeg && num > 99.99) displayStr = "-99.99%";
   const cls = isNeg || num < 0 ? "down" : num > 0 ? "up" : "neutral";
   return (
@@ -445,16 +446,16 @@ function LiveOrderBook({ sym }: { sym: string }) {
         {ob.asks.map((a, i) => (
           <div key={`ask-${i}`} className="ob-row ask">
             <div className="ob-depth-bar ask" style={{ width: `${a.depthPct}%` }} />
-            <span>{a.price < 0.001 ? a.price.toFixed(8) : a.price < 1 ? a.price.toFixed(4) : a.price.toFixed(2)}</span>
+            <span>{formatRawPrice(a.price)}</span>
             <span>{a.amount >= 1000 ? a.amount.toLocaleString(undefined, { maximumFractionDigits: 0 }) : a.amount.toFixed(2)}</span>
-            <span>${a.total >= 1000 ? a.total.toLocaleString(undefined, { maximumFractionDigits: 0 }) : a.total.toFixed(2)}</span>
+            <span>${a.total >= 1000 ? a.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : a.total.toFixed(2)}</span>
           </div>
         ))}
       </div>
       <div className="ob-mid">
         <div className="ob-mid-price">
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: (!token.is_rugged && token.pos) ? "var(--green)" : "var(--red)", display: "inline-block" }} />
-          <span>{token.price}</span>
+          <span>{formatCoinPrice(token.price)}</span>
           <Delta n={(token.is_rugged || token.numericPrice <= 0.00000001) ? "-99.99%" : token.change} size={9} />
         </div>
         <div className="ob-spread">
@@ -465,9 +466,9 @@ function LiveOrderBook({ sym }: { sym: string }) {
         {ob.bids.map((b, i) => (
           <div key={`bid-${i}`} className="ob-row bid">
             <div className="ob-depth-bar bid" style={{ width: `${b.depthPct}%` }} />
-            <span>{b.price < 0.001 ? b.price.toFixed(8) : b.price < 1 ? b.price.toFixed(4) : b.price.toFixed(2)}</span>
+            <span>{formatRawPrice(b.price)}</span>
             <span>{b.amount >= 1000 ? b.amount.toLocaleString(undefined, { maximumFractionDigits: 0 }) : b.amount.toFixed(2)}</span>
-            <span>${b.total >= 1000 ? b.total.toLocaleString(undefined, { maximumFractionDigits: 0 }) : b.total.toFixed(2)}</span>
+            <span>${b.total >= 1000 ? b.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : b.total.toFixed(2)}</span>
           </div>
         ))}
       </div>
@@ -544,7 +545,7 @@ function DexRecentTrades({ sym, flash }: { sym: string; flash: (m: string) => vo
                   {(Number(t.solAmt) || 0).toFixed(4)}
                 </td>
                 <td className={`dex-td ${numClass}`} style={{ minWidth: 72, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
-                  {t.price < 0.000001 ? `$${t.price.toFixed(8)}` : t.price < 0.001 ? `$${t.price.toFixed(6)}` : t.price < 1 ? `$${t.price.toFixed(4)}` : `$${t.price.toFixed(2)}`}
+                  {formatCoinPrice(t.price)}
                 </td>
                 <td className="dex-td">
                   <div className="dex-trader-wrap" style={{ maxWidth: 85, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -1801,12 +1802,12 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
           {/* Hero Price + 24h delta */}
           <div className="dex-hero-price-row">
             <div className="dex-hero-price-wrap">
-              <span className="dex-hero-price">{currMode === "USD" ? m.price : m.solPrice}</span>
+              <span className="dex-hero-price">{currMode === "USD" ? formatCoinPrice(m.price) : m.solPrice}</span>
               <span className="dex-live-pulse" />
             </div>
             <div className={`dex-hero-delta-badge ${m.changeNum >= 0 ? "up" : "down"}`}>
               {m.changeNum >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
-              <span>{m.change}</span>
+              <span>{formatPercentage(m.change)}</span>
             </div>
           </div>
 
@@ -1814,19 +1815,19 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
           <div className="dex-timeframe-strip">
             <div className={`dex-tf-chip ${m.m5.up ? "up" : "down"}`}>
               <span className="dex-tf-lbl">5M</span>
-              <span className="dex-tf-val">{m.m5.val}</span>
+              <span className="dex-tf-val">{formatPercentage(m.m5.val)}</span>
             </div>
             <div className={`dex-tf-chip ${m.h1.up ? "up" : "down"}`}>
               <span className="dex-tf-lbl">1H</span>
-              <span className="dex-tf-val">{m.h1.val}</span>
+              <span className="dex-tf-val">{formatPercentage(m.h1.val)}</span>
             </div>
             <div className={`dex-tf-chip ${m.h6.up ? "up" : "down"}`}>
               <span className="dex-tf-lbl">6H</span>
-              <span className="dex-tf-val">{m.h6.val}</span>
+              <span className="dex-tf-val">{formatPercentage(m.h6.val)}</span>
             </div>
             <div className={`dex-tf-chip ${m.h24.up ? "up" : "down"}`}>
               <span className="dex-tf-lbl">24H</span>
-              <span className="dex-tf-val">{m.h24.val}</span>
+              <span className="dex-tf-val">{formatPercentage(m.h24.val)}</span>
             </div>
           </div>
 
@@ -1939,10 +1940,15 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                 onClick={() => {
                   setTimeframe(tf);
                   marketStore.setTimeframe(tf);
-                  flash(`Chart timeframe switched to ${tf}`);
+                  flash(`Chart timeframe switched to ${tf === "1s" ? "LIVE" : tf}`);
                 }}
               >
-                {tf}
+                {tf === "1s" ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10B981", boxShadow: "0 0 6px #10B981", display: "inline-block" }} />
+                    LIVE
+                  </span>
+                ) : tf}
               </button>
             ))}
           </div>
@@ -2236,7 +2242,7 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                           </button>
                         ))}
                       </div>
-                      <span className="order-rate">1 {m.sym} = <b>${m.numericPrice < 0.001 ? m.numericPrice.toFixed(8) : m.numericPrice < 1 ? m.numericPrice.toFixed(4) : m.numericPrice.toFixed(2)}</b></span>
+                      <span className="order-rate">1 {m.sym} = <b>{formatCoinPrice(m.numericPrice)}</b></span>
                     </div>
 
                     <label>
@@ -2258,6 +2264,19 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                       />
                       <span>{side === "Buy" ? pairCurrency : m.sym}</span>
                     </div>
+                    {/* Real-time USD conversion subtitle */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: "var(--muted)", margin: "4px 2px 8px" }}>
+                      <span>USD Value</span>
+                      <b style={{ color: "#E2E8F0" }}>
+                        ≈ ${(() => {
+                          const val = parseFloat(amountInput) || 0;
+                          const usdVal = side === "Buy"
+                            ? (isCash ? val : val * (pairCurrency === "SOL" ? (marketStore.getToken("SOL")?.numericPrice || 179.84) : 1))
+                            : val * m.numericPrice;
+                          return usdVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        })()} USD
+                      </b>
+                    </div>
                     <div className="quick-size">
                       {["25%", "50%", "75%", "MAX"].map(v => (
                         <button key={v} type="button" className={quickPct === v ? "active" : ""} onClick={() => handleQuickPct(v)}>{v}</button>
@@ -2268,6 +2287,18 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                     <div className="receive-input">
                       <b>{youReceiveStr}</b>
                       <span><CoinImg sym={side === "Buy" ? m.sym : pairCurrency} n={16} />{side === "Buy" ? m.sym : pairCurrency}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: "var(--muted)", margin: "4px 2px 10px" }}>
+                      <span>Equivalent Value</span>
+                      <b style={{ color: "#10B981" }}>
+                        ≈ ${(() => {
+                          const val = parseFloat(amountInput) || 0;
+                          const usdVal = side === "Buy"
+                            ? (isCash ? val : val * (pairCurrency === "SOL" ? (marketStore.getToken("SOL")?.numericPrice || 179.84) : 1))
+                            : val * m.numericPrice;
+                          return usdVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        })()} USD
+                      </b>
                     </div>
 
                     <button
@@ -2685,7 +2716,7 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                     <div className="user-pos-row">
                       <span className="user-pos-k">Avg Entry</span>
                       <span className="user-pos-v highlight-spent">
-                        ${pos.avgBuyPrice < 0.001 ? pos.avgBuyPrice.toFixed(8) : pos.avgBuyPrice < 1 ? pos.avgBuyPrice.toFixed(4) : pos.avgBuyPrice.toFixed(2)}
+                        {formatCoinPrice(pos.avgBuyPrice)}
                         <small>Invested: ${pos.invested.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</small>
                       </span>
                     </div>
@@ -2866,6 +2897,18 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                       />
                       <span>{side === "Buy" ? pairCurrency : m.sym}</span>
                     </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--muted)", margin: "3px 2px 6px" }}>
+                      <span>USD Value:</span>
+                      <b style={{ color: "#E2E8F0" }}>
+                        ≈ ${(() => {
+                          const val = parseFloat(amountInput) || 0;
+                          const usdVal = side === "Buy"
+                            ? (isCash ? val : val * (pairCurrency === "SOL" ? (marketStore.getToken("SOL")?.numericPrice || 179.84) : 1))
+                            : val * m.numericPrice;
+                          return usdVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        })()} USD
+                      </b>
+                    </div>
                     <div className="quick-size">
                       {["25%", "50%", "75%", "MAX"].map(v => (
                         <button key={v} className={quickPct === v ? "active" : ""} onClick={() => handleQuickPct(v)}>{v}</button>
@@ -2880,7 +2923,7 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
 
                     <div className="order-summary">
                       <span>Order Type<b>Limit {side}</b></span>
-                      <span>Target Price<b>${limitTargetP < 0.001 ? limitTargetP.toFixed(8) : limitTargetP < 1 ? limitTargetP.toFixed(4) : limitTargetP.toFixed(2)}</b></span>
+                      <span>Target Price<b>{formatCoinPrice(limitTargetP)}</b></span>
                       <span>Trigger<b>When market hits target</b></span>
                     </div>
 
@@ -2913,6 +2956,18 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                       />
                       <span>{side === "Buy" ? pairCurrency : m.sym}</span>
                     </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--muted)", margin: "3px 2px 6px" }}>
+                      <span>USD Value:</span>
+                      <b style={{ color: "#E2E8F0" }}>
+                        ≈ ${(() => {
+                          const val = parseFloat(amountInput) || 0;
+                          const usdVal = side === "Buy"
+                            ? (isCash ? val : val * (pairCurrency === "SOL" ? (marketStore.getToken("SOL")?.numericPrice || 179.84) : 1))
+                            : val * m.numericPrice;
+                          return usdVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        })()} USD
+                      </b>
+                    </div>
                     <div className="quick-size">
                       {["25%", "50%", "75%", "MAX"].map(v => (
                         <button key={v} className={quickPct === v ? "active" : ""} onClick={() => handleQuickPct(v)}>{v}</button>
@@ -2922,6 +2977,18 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                     <div className="receive-input">
                       <b>{youReceiveStr}</b>
                       <span><CoinImg sym={side === "Buy" ? m.sym : pairCurrency} n={16} />{side === "Buy" ? m.sym : pairCurrency}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--muted)", margin: "3px 2px 6px" }}>
+                      <span>Equivalent Value:</span>
+                      <b style={{ color: "#10B981" }}>
+                        ≈ ${(() => {
+                          const val = parseFloat(amountInput) || 0;
+                          const usdVal = side === "Buy"
+                            ? (isCash ? val : val * (pairCurrency === "SOL" ? (marketStore.getToken("SOL")?.numericPrice || 179.84) : 1))
+                            : val * m.numericPrice;
+                          return usdVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        })()} USD
+                      </b>
                     </div>
                     <div className="order-summary">
                       <span>Market price<b>{m.price}</b></span>
@@ -3051,8 +3118,9 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
       const isStable = cleanSym === "USDC" || cleanSym === "USDT";
       const b = rawBalances[token.sym] || rawBalances[cleanSym] || rawBalances[`$${cleanSym}`] || rawBalances[rawSym];
       const balNum = b?.bal || 0;
-      const effectivePrice = token.numericPrice > 0 ? token.numericPrice : (b?.avgBuyPrice || (isStable ? 1.0 : 0));
-      const userUsd = isStable ? balNum : (balNum * effectivePrice);
+      const impliedPrice = (b && b.bal > 0 && b.usdValue > 0) ? (b.usdValue / b.bal) : (b?.avgBuyPrice || 0);
+      const effectivePrice = token.numericPrice > 0 ? token.numericPrice : (impliedPrice || (isStable ? 1.0 : 0));
+      const userUsd = isStable ? balNum : (b?.usdValue !== undefined && b?.usdValue > 0 ? b.usdValue : (balNum * effectivePrice));
       const invested = b?.totalInvested !== undefined && b?.totalInvested > 0 ? b.totalInvested : (balNum * (b?.avgBuyPrice || effectivePrice));
       const pnlUsd = isStable ? 0 : (userUsd - invested);
       const pnlPct = isStable || invested <= 0 ? 0 : (pnlUsd / invested) * 100;
@@ -3063,9 +3131,9 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
         name: cleanSym === "USDC" ? "USD Coin" : cleanSym === "USDT" ? "Tether USD" : cleanSym === "SOL" ? "Solana" : (token.name || b?.name || cleanSym),
         imageUrl: token.imageUrl || (cleanSym === "USDT" ? COIN_IMGS.USDT : undefined),
         poolAddress: token.poolAddress,
-        price: token.price,
+        price: formatCoinPrice(token.price),
         numericPrice: effectivePrice,
-        chg: isStable ? "+0.00%" : token.change,
+        chg: isStable ? "+0.00%" : formatPercentage(token.change),
         pos: isStable ? true : token.pos,
         sparkline,
         balNum,
@@ -3110,8 +3178,12 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
   const totalBoughtPnlPct = totalMoneyInvestedInBought > 0 ? (totalBoughtPnl / totalMoneyInvestedInBought) * 100 : 0;
 
   const portfolioMetrics = marketStore.getPortfolioMetrics();
-  const totalPortfolioValue = portfolioMetrics.totalValue;
-  const isUp = portfolioMetrics.isPositive;
+  const stableBalanceSum = (rawBalances["USDT"]?.bal || 0) + (rawBalances["USDC"]?.bal || 0);
+  const calculatedTotalWithBuys = stableBalanceSum + totalValueOfBought;
+  const totalPortfolioValue = Math.max(portfolioMetrics.totalValue, calculatedTotalWithBuys > 0 ? calculatedTotalWithBuys : 0);
+  const effectiveDiffUsd = totalBoughtPnl > 0.005 ? (totalBoughtPnl + (marketStore.realizedProfit24h || 0)) : portfolioMetrics.diffUsd;
+  const isUp = effectiveDiffUsd >= -0.0049;
+  const effectiveDiffPct = totalMoneyInvestedInBought > 0 ? totalBoughtPnlPct : portfolioMetrics.diffPct;
 
   const [assetTab, setAssetTab] = useState<"assets" | "buys">("assets");
 
@@ -3148,9 +3220,9 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
           imageUrl: token.imageUrl,
           poolAddress: token.contractAddress || token.poolAddress,
           contractAddress: token.contractAddress || token.poolAddress,
-          price: token.price,
+          price: formatCoinPrice(token.price),
           numericPrice: token.numericPrice,
-          chg: isStable ? "+0.00%" : token.change,
+          chg: isStable ? "+0.00%" : formatPercentage(token.change),
           pos: isStable ? true : token.pos,
           sparkline,
           balNum,
@@ -3221,7 +3293,7 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
         </div>
         <div className="wallet-hero-change">
           <span style={{ color: isUp ? "var(--green)" : "var(--red)" }}>
-            {isUp ? "+" : "-"}${Math.abs(portfolioMetrics.diffUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {isUp ? "+" : "-"}${Math.abs(effectiveDiffUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
           <span style={{ color: "var(--muted)", fontSize: 12 }}>·</span>
           {isUp ? (
@@ -3230,7 +3302,7 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
             <TrendingDown size={14} color="var(--red)" />
           )}
           <span style={{ color: isUp ? "var(--green)" : "var(--red)" }}>
-            {isUp ? "+" : ""}{portfolioMetrics.diffPct.toFixed(2)}% today
+            {isUp ? "+" : ""}{effectiveDiffPct.toFixed(2)}% today
           </span>
         </div>
 
@@ -3282,9 +3354,9 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
               </div>
             </div>
             <div className="major-coin-footer">
-              <div className="major-coin-price">{c.price}</div>
+              <div className="major-coin-price">{formatCoinPrice(c.price)}</div>
               <div className={`major-coin-chg ${c.pos ? "up" : "down"}`}>
-                {c.change}
+                {formatPercentage(c.change)}
               </div>
             </div>
           </div>

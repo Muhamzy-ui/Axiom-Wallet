@@ -1,5 +1,6 @@
 // Leaderboard Store — Top 100 Traders, 2-Day Epoch Shuffling, and Admin Control
 import { marketStore } from "./marketStore";
+import { api } from "./api";
 
 export interface Trader {
   id: string;
@@ -416,9 +417,9 @@ function generateTraderRanks9to100(): Trader[] {
   return result;
 }
 
-// ── 2-Day Epoch Pseudo-Random Deterministic Shuffler ─────────────────────────
-function get2DayEpoch(): number {
-  return Math.floor(Date.now() / (2 * 86400 * 1000));
+// ── 24-Hour Daily Epoch Pseudo-Random Deterministic Shuffler ─────────────────
+function getDailyEpoch(): number {
+  return Math.floor(Date.now() / (86400 * 1000));
 }
 
 function seededShuffle<T>(arr: T[], seed: number): T[] {
@@ -435,16 +436,38 @@ function seededShuffle<T>(arr: T[], seed: number): T[] {
 class LeaderboardStore {
   private baseRanks9to100: Trader[] = generateTraderRanks9to100();
   private listeners: Set<() => void> = new Set();
+  private cachedTop8: Trader[] | null = null;
+  private liveTickerTimer: any = null;
 
   constructor() {
-    // Listen to localStorage changes across browser tabs
+    // 1. Immediately restore cached top 8 from localStorage
     if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("axiom_admin_top_8");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length === 8) {
+            this.cachedTop8 = parsed;
+          }
+        }
+      } catch {}
+
+      // Listen to localStorage changes across browser tabs
       window.addEventListener("storage", (e) => {
         if (e.key === "axiom_admin_top_8" || e.key === "axiom_admin_trade_control") {
+          if (e.key === "axiom_admin_top_8" && e.newValue) {
+            try { this.cachedTop8 = JSON.parse(e.newValue); } catch {}
+          }
           this.notify();
         }
       });
     }
+
+    // 2. Sync Top 8 with backend server so admin edits reflect for all users
+    this.syncBackendTop8();
+
+    // 3. Start live micro-movements ticker so leaderboard profits breathe and update realistically
+    this.startLiveTicker();
   }
 
   public subscribe(fn: () => void): () => void {
@@ -456,14 +479,51 @@ class LeaderboardStore {
     this.listeners.forEach((fn) => fn());
   }
 
+  public async syncBackendTop8(): Promise<void> {
+    try {
+      const remote = await api.getLeaderboardTop8();
+      if (Array.isArray(remote) && remote.length === 8) {
+        this.cachedTop8 = remote;
+        if (typeof window !== "undefined") {
+          localStorage.setItem("axiom_admin_top_8", JSON.stringify(remote));
+        }
+        this.notify();
+      }
+    } catch {}
+  }
+
+  private startLiveTicker() {
+    if (typeof window === "undefined") return;
+    if (this.liveTickerTimer) clearInterval(this.liveTickerTimer);
+
+    this.liveTickerTimer = setInterval(() => {
+      // Pick 1-2 traders from ranks 9 to 100 to make a realistic micro trade gain
+      const rIdx = Math.floor(Math.random() * this.baseRanks9to100.length);
+      const trader = this.baseRanks9to100[rIdx];
+      if (trader) {
+        const deltaUsd = Math.round(15 + Math.random() * 85);
+        trader.pnl24h += deltaUsd;
+        trader.volume += deltaUsd * 2;
+        trader.totalTrades += 1;
+        trader.winTrades += 1;
+        trader.winRate = Math.min(99.4, Number(((trader.winTrades / trader.totalTrades) * 100).toFixed(1)));
+        this.notify();
+      }
+    }, 2800);
+  }
+
   // ── Top 8 Admin Controls ──────────────────────────────────────────────────
   public getTop8(): Trader[] {
+    if (this.cachedTop8 && this.cachedTop8.length === 8) {
+      return this.cachedTop8;
+    }
     if (typeof window === "undefined") return DEFAULT_TOP_8;
     try {
       const saved = localStorage.getItem("axiom_admin_top_8");
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length === 8) {
+          this.cachedTop8 = parsed;
           return parsed;
         }
       }
@@ -473,24 +533,34 @@ class LeaderboardStore {
     return DEFAULT_TOP_8;
   }
 
-  public saveTop8(top8: Trader[]): void {
+  public async saveTop8(top8: Trader[]): Promise<void> {
+    this.cachedTop8 = top8;
     if (typeof window !== "undefined") {
       localStorage.setItem("axiom_admin_top_8", JSON.stringify(top8));
-      this.notify();
+    }
+    this.notify();
+    try {
+      await api.saveLeaderboardTop8(top8);
+    } catch (e) {
+      console.warn("Failed to persist Top 8 to backend:", e);
     }
   }
 
-  public resetTop8ToDefault(): void {
+  public async resetTop8ToDefault(): Promise<void> {
+    this.cachedTop8 = [...DEFAULT_TOP_8];
     if (typeof window !== "undefined") {
       localStorage.removeItem("axiom_admin_top_8");
-      this.notify();
     }
+    this.notify();
+    try {
+      await api.saveLeaderboardTop8(DEFAULT_TOP_8);
+    } catch {}
   }
 
-  // ── 100 Traders with 2-Day Epoch Rotation ──────────────────────────────────
+  // ── 100 Traders with 24-Hour Daily Epoch Rotation ──────────────────────────
   public getAll100Traders(): Trader[] {
     const top8 = this.getTop8();
-    const epoch = get2DayEpoch();
+    const epoch = getDailyEpoch();
     const prevEpoch = epoch - 1;
 
     // Deterministically shuffle ranks 9 to 100 for current epoch & previous epoch
@@ -516,6 +586,35 @@ class LeaderboardStore {
     });
 
     return [...top8, ...ranks9to100];
+  }
+
+  // ── Active Copy Trading System ────────────────────────────────────────────
+  public getCopiedTradersMap(): Record<string, boolean> {
+    if (typeof window === "undefined" || !window.localStorage) return {};
+    try {
+      const saved = localStorage.getItem("axiom_copied_traders_v1");
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  public setCopiedTrader(traderId: string, isCopying: boolean, config?: { name: string; amount: string; sl: string }): void {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    try {
+      const map = this.getCopiedTradersMap();
+      if (isCopying) {
+        map[traderId] = true;
+        if (config) {
+          localStorage.setItem(`axiom_copy_config_${traderId}`, JSON.stringify(config));
+        }
+      } else {
+        delete map[traderId];
+        localStorage.removeItem(`axiom_copy_config_${traderId}`);
+      }
+      localStorage.setItem("axiom_copied_traders_v1", JSON.stringify(map));
+      this.notify();
+    } catch {}
   }
 
   // ── Admin Live Buy/Sell Trade Stream Controls ─────────────────────────────

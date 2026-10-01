@@ -84,7 +84,7 @@ export const RecentTrades: React.FC<RecentTradesProps> = ({ tokenSymbol }) => {
                     {parseFloat(t.token_amount).toLocaleString(undefined, { maximumFractionDigits: 1 })} ${t.token_symbol}
                   </div>
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                    {parseFloat(t.base_amount).toFixed(3)} {t.base_currency} (≈ ${(parseFloat(t.price_usd) * parseFloat(t.token_amount)).toFixed(2)})
+                    {parseFloat(t.base_amount).toFixed(3)} {t.base_currency} (≈ ${(parseFloat(t.price_usd) * parseFloat(t.token_amount)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
                   </div>
                 </div>
               </div>

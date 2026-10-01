@@ -6,6 +6,7 @@ import {
   fetchGeckoTrades,
 } from "./geckoTerminal";
 import { api } from "./api";
+import { formatCoinPrice, formatRawPrice, formatPercentage, formatUsdAmount } from "./formatters";
 
 export interface MarketToken {
   sym: string;
@@ -48,6 +49,7 @@ export interface MarketToken {
   isMarketMakerActive?: boolean;
   customPrice?: boolean;
   user_holders_count?: number;
+  total_buyers_count?: number;
   total_user_buy_volume_usd?: number;
   user_circulating_tokens?: number;
   is_verified?: boolean;
@@ -639,10 +641,56 @@ class MarketStore {
   private momentums: Record<string, number> = {};
   private priceAnchors: Record<string, number> = {};
   private marketCycles: Record<string, { baselinePrice: number; phase: "impulse" | "pullback" | "consolidation"; phaseTicksLeft: number; totalCycleGains: number }> = {};
+  public realizedProfit24h: number = 0;
+  public cachedPortfolioMetrics: {
+    totalValue: number;
+    baseline24h: number;
+    diffUsd: number;
+    diffPct: number;
+    isPositive: boolean;
+    realizedProfit24h: number;
+    timestamp: number;
+  } | null = null;
 
   constructor() {
     this.initVerifiedTokens();
     this.initLiquidityLockedTokens();
+
+    // Synchronously restore custom tokens cache before anything else
+    if (typeof window !== "undefined" && window.localStorage) {
+      try {
+        const cachedTokensRaw = window.localStorage.getItem("axiom_custom_tokens_cache");
+        if (cachedTokensRaw) {
+          const cachedTokens = JSON.parse(cachedTokensRaw);
+          if (Array.isArray(cachedTokens)) {
+            cachedTokens.forEach((ct: MarketToken) => {
+              if (!this.tokens.some(t => t.sym.toUpperCase() === ct.sym.toUpperCase())) {
+                this.tokens.push(ct);
+              }
+            });
+          }
+        }
+      } catch {}
+
+      // Synchronously restore cached portfolio metrics and 24h realized profit
+      try {
+        const rawMetrics = window.localStorage.getItem("axiom_cached_portfolio_metrics");
+        if (rawMetrics) {
+          this.cachedPortfolioMetrics = JSON.parse(rawMetrics);
+        }
+      } catch {}
+
+      try {
+        const rawRealized = window.localStorage.getItem("axiom_realized_profit_24h");
+        if (rawRealized) {
+          const parsed = JSON.parse(rawRealized);
+          if (parsed && typeof parsed === "object" && (Date.now() - (parsed.timestamp || 0) < 86400 * 1000)) {
+            this.realizedProfit24h = parsed.amount || 0;
+          }
+        }
+      } catch {}
+    }
+
     this.tokens.forEach(t => {
       this.trades[t.sym] = generateInitialTrades(t);
       this.priceAnchors[t.sym] = t.numericPrice;
@@ -651,12 +699,25 @@ class MarketStore {
       t.is_liquidity_locked = this.isTokenLiquidityLocked(t.sym);
     });
     this.initSync();
+
     // Synchronously restore user balances from localStorage on construction to eliminate $0.00 flash
     if (typeof window !== "undefined" && window.localStorage) {
       try {
-        const savedUid = window.localStorage.getItem("axiom_user_id") || window.localStorage.getItem("axiom_wallet_address");
+        let authUserUid = "";
+        let authUserWallet = "";
+        try {
+          const authUserRaw = window.localStorage.getItem("axiom_auth_user");
+          if (authUserRaw) {
+            const au = JSON.parse(authUserRaw);
+            if (au.user_id) authUserUid = au.user_id;
+            else if (au.id) authUserUid = String(au.id);
+            if (au.wallet_address) authUserWallet = au.wallet_address;
+          }
+        } catch {}
+
+        const savedUid = window.localStorage.getItem("axiom_user_id") || window.localStorage.getItem("axiom_wallet_address") || authUserUid || authUserWallet;
         const key = savedUid ? `axiom_user_balances_v16_${savedUid}` : "axiom_last_known_balances";
-        const saved = window.localStorage.getItem(key) || window.localStorage.getItem("axiom_last_known_balances");
+        const saved = window.localStorage.getItem(key) || window.localStorage.getItem("axiom_user_balances_latest") || window.localStorage.getItem("axiom_last_known_balances");
         if (saved) {
           const parsed = JSON.parse(saved);
           if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
@@ -755,6 +816,7 @@ class MarketStore {
         console.warn("Failed to persist verified tokens:", e);
       }
     }
+    api.setTokenBadges(s, { is_verified: verified }).catch(() => {});
     this.notify();
   }
 
@@ -814,11 +876,42 @@ class MarketStore {
         console.warn("Failed to persist locked tokens:", e);
       }
     }
+    api.setTokenBadges(s, { is_liquidity_locked: locked }).catch(() => {});
     this.notify();
   }
 
   getAllLiquidityLockedTokens(): Record<string, boolean> {
     return { ...this.liquidityLockedTokens };
+  }
+
+  async boostTokenHolders(sym: string, count: number): Promise<void> {
+    const s = sym.toUpperCase();
+    const tok = this.tokens.find(t => t.sym.toUpperCase() === s);
+    if (tok) {
+      tok.user_holders_count = (tok.user_holders_count || 0) + count;
+      tok.buyers = (tok.buyers || 0) + count;
+      tok.traders = (tok.traders || 0) + count;
+      this.savePersistedStateNow();
+      this.notify();
+    }
+    try {
+      await api.boostTokenHolders(s, count);
+    } catch {}
+  }
+
+  async setTokenHoldersBuyers(sym: string, holders: number, buyers: number): Promise<void> {
+    const s = sym.toUpperCase();
+    const tok = this.tokens.find(t => t.sym.toUpperCase() === s);
+    if (tok) {
+      tok.user_holders_count = holders;
+      tok.buyers = buyers;
+      tok.traders = (tok.sellers || 0) + buyers;
+      this.savePersistedStateNow();
+      this.notify();
+    }
+    try {
+      await api.setTokenHoldersBuyers(s, holders, buyers);
+    } catch {}
   }
 
   // Guarantee 9 Majors (BTC, ETH, SOL, BNB, XRP, DOGE, ADA, AVAX, SUI) stay pinned at the top in order, others sorted descending by 24h volume
@@ -885,8 +978,8 @@ class MarketStore {
         const contractAddr = (bt.contract_address || "").trim();
         const pairCurrency = (bt.pair_currency || 'SOL').toUpperCase().trim();
 
-        const formattedPrice = numPrice < 0.001 ? `$${numPrice.toFixed(8)}` : numPrice < 1 ? `$${numPrice.toFixed(4)}` : `$${numPrice.toFixed(2)}`;
-        const changeStr = isRugged ? "-99.99%" : (numChange >= 0 ? `+${numChange.toFixed(2)}%` : `${numChange.toFixed(2)}%`);
+        const formattedPrice = formatCoinPrice(numPrice);
+        const changeStr = isRugged ? "-99.99%" : formatPercentage(numChange);
 
         const idx = this.tokens.findIndex(t => t.sym === sym);
         if (idx >= 0) {
@@ -913,9 +1006,12 @@ class MarketStore {
             pos: !isRugged && numChange >= 0,
             is_rugged: isRugged,
             sparkline: current.sparkline && current.sparkline.length > 1 ? current.sparkline : generateSparkline(effectivePrice, !isRugged && numChange >= 0),
-            user_holders_count: bt.user_holders_count || 0,
+            user_holders_count: Math.max(bt.user_holders_count || 0, current.user_holders_count || 0),
             total_user_buy_volume_usd: bt.total_user_buy_volume_usd || 0,
             user_circulating_tokens: bt.user_circulating_tokens || 0,
+            total_buyers_count: Math.max(bt.total_buyers_count || 0, current.buyers || 0),
+            is_verified: bt.is_verified !== undefined ? bt.is_verified : (current.is_verified ?? this.isTokenVerified(sym)),
+            is_liquidity_locked: bt.is_liquidity_locked !== undefined ? bt.is_liquidity_locked : (current.is_liquidity_locked ?? this.isTokenLiquidityLocked(sym)),
           };
           this.tokens[idx] = updated;
 
@@ -973,7 +1069,7 @@ class MarketStore {
             buyVol: Number((numLiq / 1e6).toFixed(2)),
             sellVol: Number(((numLiq * 0.8) / 1e6).toFixed(2)),
             traders: 1,
-            buyers: 1,
+            buyers: bt.total_buyers_count || 1,
             sellers: 0,
             network: "solana",
             poolAddress: contractAddr,
@@ -988,6 +1084,9 @@ class MarketStore {
             user_holders_count: bt.user_holders_count || 0,
             total_user_buy_volume_usd: bt.total_user_buy_volume_usd || 0,
             user_circulating_tokens: bt.user_circulating_tokens || 0,
+            total_buyers_count: bt.total_buyers_count || 0,
+            is_verified: bt.is_verified !== undefined ? bt.is_verified : this.isTokenVerified(sym),
+            is_liquidity_locked: bt.is_liquidity_locked !== undefined ? bt.is_liquidity_locked : this.isTokenLiquidityLocked(sym),
           };
 
           const majorsCount = this.tokens.filter(t => this.isMajorToken(t.sym)).length;
@@ -1010,6 +1109,13 @@ class MarketStore {
           hasUpdates = true;
         }
       });
+
+      if (typeof window !== "undefined" && window.localStorage) {
+        try {
+          const nonMajors = this.tokens.filter(t => !this.isMajorToken(t.sym));
+          window.localStorage.setItem("axiom_custom_tokens_cache", JSON.stringify(nonMajors));
+        } catch {}
+      }
 
       if (hasUpdates) {
         this.sortTokensList();
@@ -1259,7 +1365,7 @@ class MarketStore {
               const newToken: MarketToken = {
                 sym,
                 name: item.name || sym,
-                price: liveP < 0.001 ? `$${liveP.toFixed(8)}` : liveP < 1 ? `$${liveP.toFixed(4)}` : `$${liveP.toFixed(2)}`,
+                price: formatCoinPrice(liveP),
                 numericPrice: liveP,
                 solPrice: `${(liveP / 179.84).toFixed(6)} SOL`,
                 change: item.change_24h ? `${item.change_24h}%` : "+0.00%",
@@ -1354,6 +1460,41 @@ class MarketStore {
     if (typeof window === "undefined" || !window.localStorage) return;
     if (this.saveTimeout) clearTimeout(this.saveTimeout);
     try {
+      // Recalculate each balance's usdValue with current live price before saving
+      Object.entries(this.balances).forEach(([sym, b]) => {
+        if (b.bal > 0.000001) {
+          if (sym === "USDT" || sym === "USDC") {
+            b.usdValue = Number(b.bal.toFixed(2));
+          } else {
+            const tok = this.getToken(sym);
+            const p = tok && tok.numericPrice > 0 ? tok.numericPrice : (b.avgBuyPrice || 0);
+            if (p > 0) {
+              b.usdValue = Number((b.bal * p).toFixed(2));
+            }
+          }
+        }
+      });
+
+      // Cache token prices mapping synchronously for instantaneous reload
+      const priceMap: Record<string, number> = {};
+      this.tokens.forEach(t => {
+        if (t.sym && t.numericPrice > 0) {
+          priceMap[t.sym.toUpperCase().trim().replace(/^\$/, "")] = t.numericPrice;
+        }
+      });
+      window.localStorage.setItem("axiom_token_prices_cache", JSON.stringify(priceMap));
+
+      // Also cache current portfolio metrics
+      const metrics = this.getPortfolioMetrics();
+      if (metrics.totalValue > 0) {
+        this.cachedPortfolioMetrics = {
+          ...metrics,
+          realizedProfit24h: this.realizedProfit24h || 0,
+          timestamp: Date.now(),
+        };
+        window.localStorage.setItem("axiom_cached_portfolio_metrics", JSON.stringify(this.cachedPortfolioMetrics));
+      }
+
       window.localStorage.setItem("axiom_tokens_v3", JSON.stringify(this.tokens));
       window.localStorage.setItem("axiom_user_orders_v5", JSON.stringify(this.userOrders));
       window.localStorage.setItem("axiom_pending_orders_v5", JSON.stringify(this.pendingOrders));
@@ -1387,6 +1528,26 @@ class MarketStore {
             this.balances = { ...this.balances, ...parsed };
           }
         } catch { }
+      }
+
+      // Restore cached token prices synchronously
+      const savedPrices = window.localStorage.getItem("axiom_token_prices_cache");
+      if (savedPrices) {
+        try {
+          const pMap = JSON.parse(savedPrices);
+          if (pMap && typeof pMap === "object") {
+            Object.entries(pMap).forEach(([sym, price]) => {
+              const pNum = Number(price);
+              if (pNum > 0) {
+                const tok = this.tokens.find(t => t.sym.toUpperCase().trim().replace(/^\$/, "") === sym);
+                if (tok) {
+                  tok.numericPrice = pNum;
+                  tok.price = formatCoinPrice(pNum);
+                }
+              }
+            });
+          }
+        } catch {}
       }
 
       const savedTokens = window.localStorage.getItem("axiom_tokens_v3");
@@ -1943,7 +2104,11 @@ class MarketStore {
     }
 
     // Return a clean synthetic MarketToken for sym instead of misleading fallback to Bitcoin
-    const fallbackPrice = (this.balances[s]?.avgBuyPrice || this.balances[raw]?.avgBuyPrice || 0);
+    const balEntry = this.balances[s] || this.balances[raw] || this.balances[`$${s}`];
+    const impliedPrice = (balEntry && balEntry.bal > 0 && balEntry.usdValue > 0)
+      ? (balEntry.usdValue / balEntry.bal)
+      : (balEntry?.avgBuyPrice || 0);
+    const fallbackPrice = impliedPrice;
     return {
       sym: s || "TOKEN",
       name: s || "Token",
@@ -1994,12 +2159,28 @@ class MarketStore {
           total += b.bal * p;
         } else {
           const token = this.getToken(cleanSym);
-          const p = token && token.numericPrice > 0 ? token.numericPrice : (b.avgBuyPrice || 0);
+          const impliedPrice = (b.bal > 0 && b.usdValue > 0) ? (b.usdValue / b.bal) : (b.avgBuyPrice || 0);
+          const p = token && token.numericPrice > 0 ? token.numericPrice : impliedPrice;
           total += b.bal * p;
         }
       }
     });
     return total;
+  }
+
+  // Add realized profit (from profitable sales or swaps) that persists for 24 hours
+  addRealizedProfit(amount: number) {
+    if (!amount || amount <= 0 || isNaN(amount)) return;
+    this.realizedProfit24h = Number(((this.realizedProfit24h || 0) + amount).toFixed(2));
+    if (typeof window !== "undefined" && window.localStorage) {
+      try {
+        window.localStorage.setItem("axiom_realized_profit_24h", JSON.stringify({
+          amount: this.realizedProfit24h,
+          timestamp: Date.now()
+        }));
+      } catch {}
+    }
+    this.notify();
   }
 
   // Real, continuous portfolio metrics with actual 24h baseline & active trade PnL calculation
@@ -2019,9 +2200,12 @@ class MarketStore {
       if (b.bal > 0.000001) {
         if (sym !== "USDC" && sym !== "USDT") {
           const token = this.getToken(sym);
-          const p = token ? token.numericPrice : (sym === "SOL" ? 179.84 : 0);
+          const impliedPrice = (b.bal > 0 && b.usdValue > 0) ? (b.usdValue / b.bal) : (b.avgBuyPrice || (sym === "SOL" ? 179.84 : 0));
+          const p = token && token.numericPrice > 0 ? token.numericPrice : impliedPrice;
           if (p > 0) {
-            const invested = b.totalInvested || (b.bal * (b.avgBuyPrice || p));
+            const invested = (b.totalInvested !== undefined && b.totalInvested > 0)
+              ? b.totalInvested
+              : (b.bal * (b.avgBuyPrice || p));
             totalInvestedCrypto += invested;
             totalCurrentCrypto += b.bal * p;
           }
@@ -2033,15 +2217,20 @@ class MarketStore {
     let diffPct = 0;
 
     if (totalInvestedCrypto > 0) {
-      // User has active crypto positions: their 24h PnL is their real trade profit/loss!
+      // User has active crypto positions: their 24h PnL is their real trade profit/loss + realized gains!
       const holdingPnl = totalCurrentCrypto - totalInvestedCrypto;
-      diffUsd = Number(holdingPnl.toFixed(2));
-      // Tally directly against invested capital so e.g. +10% profit on position shows as +10.00%!
-      diffPct = totalInvestedCrypto > 0 ? Number(((holdingPnl / totalInvestedCrypto) * 100).toFixed(2)) : 0;
+      const netPnl = holdingPnl + (this.realizedProfit24h || 0);
+      diffUsd = Number(netPnl.toFixed(2));
+      diffPct = totalInvestedCrypto > 0 ? Number(((netPnl / totalInvestedCrypto) * 100).toFixed(2)) : 0;
       if (Math.abs(diffUsd) < 0.005) {
         diffUsd = 0;
         diffPct = 0;
       }
+    } else if (this.realizedProfit24h > 0) {
+      // User took profit and holds only cash/stablecoins: retain realized 24h gain
+      diffUsd = Number(this.realizedProfit24h.toFixed(2));
+      const baseCost = Math.max(1, totalValue - diffUsd);
+      diffPct = Number(((diffUsd / baseCost) * 100).toFixed(2));
     } else if (totalValue > 0) {
       // User only holds cash/stablecoins: reflect gentle positive market momentum (+2.4%)
       const solToken = this.getToken("SOL");
@@ -2051,15 +2240,38 @@ class MarketStore {
       diffUsd = Number(((totalValue * diffPct) / 100).toFixed(2));
     }
 
+    // Instant Hydration on Reload: If calculated total is zero or lower than cached metrics, immediately return cached metrics!
+    if (totalValue <= 0.00001 && this.cachedPortfolioMetrics && this.cachedPortfolioMetrics.totalValue > 0) {
+      return this.cachedPortfolioMetrics;
+    }
+    if (totalInvestedCrypto === 0 && this.cachedPortfolioMetrics && this.cachedPortfolioMetrics.totalValue > totalValue) {
+      return this.cachedPortfolioMetrics;
+    }
+
     const baseline24h = Math.max(0, totalValue - diffUsd);
 
-    return {
+    const metricsResult = {
       totalValue,
       baseline24h,
       diffUsd,
       diffPct,
       isPositive: diffUsd >= -0.0049,
     };
+
+    if (totalValue > 0) {
+      this.cachedPortfolioMetrics = {
+        ...metricsResult,
+        realizedProfit24h: this.realizedProfit24h,
+        timestamp: Date.now()
+      };
+      if (typeof window !== "undefined" && window.localStorage) {
+        try {
+          window.localStorage.setItem("axiom_cached_portfolio_metrics", JSON.stringify(this.cachedPortfolioMetrics));
+        } catch {}
+      }
+    }
+
+    return metricsResult;
   }
 
   // Stablecoin-denominated withdrawal flow (Minimum: $10.00)
@@ -2770,7 +2982,7 @@ class MarketStore {
       // Immediately pump 24h change & market cap (Dexscreener live impact)
       const pumpPct = Number((impactRatio * 100).toFixed(2));
       token.changeNum = Number((token.changeNum + pumpPct).toFixed(2));
-      token.change = `${token.changeNum >= 0 ? "+" : ""}${token.changeNum.toFixed(2)}%`;
+      token.change = formatPercentage(token.changeNum);
       token.pos = token.changeNum >= 0;
 
       if (token.supply && token.supply > 0) {
@@ -2825,6 +3037,11 @@ class MarketStore {
       const prevInvested = this.balances[sym].totalInvested || (prevBal * p);
       const remainingRatio = Math.max(0, (prevBal - amount) / prevBal);
       const newInvested = Number((prevInvested * remainingRatio).toFixed(2));
+      const investedForSoldPart = Math.max(0, prevInvested - newInvested);
+      const profitOnSale = grossUsdReceived - investedForSoldPart;
+      if (profitOnSale > 0) {
+        this.addRealizedProfit(profitOnSale);
+      }
 
       this.balances[sym].bal = Math.max(0, this.balances[sym].bal - amount);
       if (this.balances[sym].bal <= 0.000001) {
@@ -3298,10 +3515,10 @@ class MarketStore {
     const newPrice = token.numericPrice * factor;
 
     token.numericPrice = newPrice;
-    token.price = newPrice < 0.001 ? `$${newPrice.toFixed(8)}` : newPrice < 1 ? `$${newPrice.toFixed(4)}` : `$${newPrice.toFixed(2)}`;
+    token.price = formatCoinPrice(newPrice);
     token.solPrice = `${(newPrice / 179.84).toFixed(6)} SOL`;
     token.changeNum = Number((token.changeNum + percent).toFixed(2));
-    token.change = `${token.changeNum >= 0 ? "+" : ""}${token.changeNum.toFixed(2)}%`;
+    token.change = formatPercentage(token.changeNum);
     token.pos = token.changeNum >= 0;
     token.isMarketMakerActive = true;
     token.customPrice = true;
@@ -3326,14 +3543,18 @@ class MarketStore {
     token.buyVol = Number(((token.buyVol || 0) + (tradeVolume / 1000)).toFixed(1));
     token.txns = (token.txns || 0) + 1;
     token.buys = (token.buys || 0) + 1;
-    token.buyers = (token.buyers || 0) + 1;
-    token.traders = (token.traders || 0) + 1;
+    const addedHolders = Math.floor(Math.random() * 4 + 2);
+    const addedBuyers = Math.floor(Math.random() * 3 + 2);
+    token.user_holders_count = (token.user_holders_count || 12) + addedHolders;
+    token.total_buyers_count = (token.total_buyers_count || 10) + addedBuyers;
+    token.buyers = (token.buyers || 0) + addedBuyers;
+    token.traders = (token.sellers || 0) + token.buyers;
 
     // Timeframe momentum indicators update
     token.m5 = { val: `+${Math.min(99.9, Math.abs(percent) * 0.35).toFixed(2)}%`, up: true };
     token.h1 = { val: `+${Math.min(250, Math.abs(percent) * 0.75).toFixed(2)}%`, up: true };
     token.h6 = { val: `+${Math.abs(percent).toFixed(2)}%`, up: true };
-    token.h24 = { val: `${token.changeNum >= 0 ? "+" : ""}${token.changeNum.toFixed(2)}%`, up: token.changeNum >= 0 };
+    token.h24 = { val: formatPercentage(token.changeNum), up: token.changeNum >= 0 };
 
     // Anchor updated to new pumped price so live ticker maintains this level!
     this.priceAnchors[sym] = newPrice;
@@ -3433,7 +3654,7 @@ class MarketStore {
     const newPrice = Math.max(0.00000001, token.numericPrice * factor);
 
     token.numericPrice = newPrice;
-    token.price = newPrice < 0.001 ? `$${newPrice.toFixed(8)}` : newPrice < 1 ? `$${newPrice.toFixed(4)}` : `$${newPrice.toFixed(2)}`;
+    token.price = formatCoinPrice(newPrice);
     token.solPrice = `${(newPrice / 179.84).toFixed(6)} SOL`;
     token.changeNum = Number((token.changeNum - percent).toFixed(2));
     if (newPrice <= 0.00000001 || token.changeNum <= -99) {
@@ -3443,7 +3664,7 @@ class MarketStore {
       token.pos = false;
       token.liq = "$0.00";
     } else {
-      token.change = `${token.changeNum >= 0 ? "+" : ""}${token.changeNum.toFixed(2)}%`;
+      token.change = formatPercentage(token.changeNum);
       token.pos = token.changeNum >= 0;
     }
     token.isMarketMakerActive = true;
@@ -3476,7 +3697,7 @@ class MarketStore {
     token.m5 = { val: `-${Math.min(99.9, Math.abs(percent) * 0.35).toFixed(2)}%`, up: false };
     token.h1 = { val: `-${Math.min(250, Math.abs(percent) * 0.75).toFixed(2)}%`, up: false };
     token.h6 = { val: `-${Math.abs(percent).toFixed(2)}%`, up: false };
-    token.h24 = { val: `${token.changeNum >= 0 ? "+" : ""}${token.changeNum.toFixed(2)}%`, up: token.changeNum >= 0 };
+    token.h24 = { val: formatPercentage(token.changeNum), up: token.changeNum >= 0 };
 
     // Anchor updated to new dumped price so live ticker does NOT reverse it!
     this.priceAnchors[sym] = newPrice;
@@ -3636,7 +3857,7 @@ class MarketStore {
     if (!token) return;
     const newPrice = Math.max(0.00000001, price);
     token.numericPrice = newPrice;
-    token.price = newPrice < 0.001 ? `$${newPrice.toFixed(8)}` : newPrice < 1 ? `$${newPrice.toFixed(4)}` : `$${newPrice.toFixed(2)}`;
+    token.price = formatCoinPrice(newPrice);
     token.solPrice = `${(newPrice / 179.84).toFixed(6)} SOL`;
     if (newPrice <= 0.00000001 || (change24h !== undefined && change24h <= -99)) {
       token.is_rugged = true;
@@ -3646,7 +3867,7 @@ class MarketStore {
       token.liq = "$0.00";
     } else if (change24h !== undefined) {
       token.changeNum = Number(change24h.toFixed(2));
-      token.change = `${token.changeNum >= 0 ? "+" : ""}${token.changeNum.toFixed(2)}%`;
+      token.change = formatPercentage(token.changeNum);
       token.pos = token.changeNum >= 0;
     }
     token.isMarketMakerActive = true;
@@ -3733,7 +3954,7 @@ class MarketStore {
       sym,
       name: params.name,
       pair_currency: pairCurrency,
-      price: numPrice < 0.001 ? `$${numPrice.toFixed(8)}` : numPrice < 1 ? `$${numPrice.toFixed(4)}` : `$${numPrice.toFixed(2)}`,
+      price: formatCoinPrice(numPrice),
       numericPrice: numPrice,
       solPrice: `${(numPrice / 179.84).toFixed(6)} SOL`,
       change: "+0.00%",
@@ -3848,7 +4069,7 @@ class MarketStore {
       const numP = parseFloat(String(updates.price));
       if (!isNaN(numP) && numP > 0) {
         token.numericPrice = numP;
-        token.price = numP < 0.001 ? `$${numP.toFixed(8)}` : numP < 1 ? `$${numP.toFixed(4)}` : `$${numP.toFixed(2)}`;
+        token.price = formatCoinPrice(numP);
         token.solPrice = `${(numP / 179.84).toFixed(6)} SOL`;
         this.priceAnchors[token.sym] = numP;
       }
@@ -3937,7 +4158,21 @@ class MarketStore {
     const toPrice = (tSym === "USDT" || tSym === "USDC") ? 1.0 : (toToken?.numericPrice || 1.0);
     const usdValue = Number((fromAmt * fromPrice).toFixed(2));
 
-    // Deduct source asset
+    // Deduct source asset & track realized profit
+    const prevFromBal = this.balances[fSym].bal;
+    const prevFromInvested = this.balances[fSym].totalInvested || 0;
+    const fromAvgBuyPrice = this.balances[fSym].avgBuyPrice || fromPrice;
+
+    if (fSym !== "USDT" && fSym !== "USDC" && (tSym === "USDT" || tSym === "USDC")) {
+      const investedPortion = prevFromInvested > 0
+        ? (prevFromInvested * (fromAmt / Math.max(0.000001, prevFromBal)))
+        : (fromAmt * fromAvgBuyPrice);
+      const profitFromSwap = usdValue - investedPortion;
+      if (profitFromSwap > 0) {
+        this.addRealizedProfit(profitFromSwap);
+      }
+    }
+
     this.balances[fSym].bal = Math.max(0, Number((this.balances[fSym].bal - fromAmt).toFixed(6)));
     this.balances[fSym].usdValue = Number((this.balances[fSym].bal * fromPrice).toFixed(2));
     if (this.balances[fSym].bal <= 0.000001) {
@@ -4027,7 +4262,7 @@ class MarketStore {
     const token = this.getToken(sym);
     if (!token || token.isStablecoin) return;
     token.numericPrice = newPrice;
-    token.price = newPrice < 0.001 ? `$${newPrice.toFixed(8)}` : newPrice < 1 ? `$${newPrice.toFixed(4)}` : `$${newPrice.toFixed(2)}`;
+    token.price = formatCoinPrice(newPrice);
     token.solPrice = `${(newPrice / 179.84).toFixed(6)} SOL`;
     this.injectCandleTick(sym, newPrice, isUp);
   }
@@ -4284,7 +4519,7 @@ class MarketStore {
 
         const newP = Math.max(0.00000001, token.numericPrice * (1 + deltaPct));
         token.numericPrice = newP;
-        token.price = newP < 0.001 ? `$${newP.toFixed(8)}` : newP < 1 ? `$${newP.toFixed(4)}` : `$${newP.toFixed(2)}`;
+        token.price = formatCoinPrice(newP);
         token.solPrice = `${(newP / 179.84).toFixed(6)} SOL`;
         if (token.sparkline && token.sparkline.length > 0) {
           token.sparkline[token.sparkline.length - 1] = newP;
@@ -4303,7 +4538,7 @@ class MarketStore {
 
         // Update 24h change smoothly
         token.changeNum = Number((token.changeNum + deltaPct * 100).toFixed(2));
-        token.change = `${token.changeNum >= 0 ? "+" : ""}${token.changeNum.toFixed(2)}%`;
+        token.change = formatPercentage(token.changeNum);
         token.pos = token.changeNum >= 0;
 
         // Auto-check and trigger any pending Limit and TP/SL orders

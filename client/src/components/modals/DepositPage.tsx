@@ -97,25 +97,75 @@ export const DepositPage: React.FC<DepositPageProps> = ({
   const depositUsdNum = parseFloat(depositAmt) || 0;
   const cryptoEquivalent = depositPriceUsd > 0 ? depositUsdNum / depositPriceUsd : depositUsdNum;
 
-  // Load platform deposit wallets from backend
+const NETWORK_POOLS: Record<string, string[]> = {
+  "TRON (TRC-20)": [
+    "TYD9yZ7G8gM2tY9vK8nP7wE6rT5yU4iO3p",
+    "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+    "TUpMhErRtPqW1vYz7KbX3nMaQ8pL6sD9jF",
+    "TPY9xK8mL2nQ7wE6rT5yU4iO3pA2sD1fGh",
+    "TQn8vB2mK8pL7wE6rT5yU4iO3pA2sD1fXy",
+  ],
+  "BNB Chain (BEP-20)": [
+    "0x71C836e522F5b8Fbe40d34341A5a507E78e1215B",
+    "0x8894E0a0c962CB723c1976a4421c95949bE2D4E3",
+    "0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE",
+    "0xD551234Ae421e3BCBA99A0Da6d736074f22192FF",
+    "0x564286362092D8e7936f0549571a803B203aAceA",
+  ],
+  "Solana (SPL)": [
+    "8ZgC8Q3f8sC9b9T4vB2nK8mP7wE6rT5yU4iO3pA2sD1f",
+    "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU",
+    "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
+    "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+    "3J98t1WpEZ73CNmQvieCrnyiWrnqRhWNLy87Z1a2B",
+  ],
+  "Ethereum (ERC-20)": [
+    "0x71C836e522F5b8Fbe40d34341A5a507E78e1215B",
+    "0x28C6c06298d514Db089934071355E5743bf21d60",
+    "0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549",
+    "0xDFd5293D8e347dFe59E90eFd55b2956a13430d71",
+    "0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8",
+  ],
+  "Bitcoin (BTC)": [
+    "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+    "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+    "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
+    "3J98t1WpEZ73CNmQvieCrnyiWrnqRhWNLy",
+    "bc1qm34lsc65zpw79lxes69zkqmk6ee3ewf0j77s3h",
+  ],
+};
+
+  const [availableWallets, setAvailableWallets] = useState<PlatformDepositWallet[]>([]);
+
+  // Automatically assign 1 wallet address from the 5-wallet pool to each individual user
+  const userIdentifier =
+    authUser?.user_id ||
+    authUser?.email ||
+    authUser?.wallet_address ||
+    (typeof window !== "undefined" ? window.localStorage.getItem("axiom_user_id") : "") ||
+    "axiom_user_default";
+
   useEffect(() => {
-    const userAddr = authUser?.wallet_address || "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
     api
-      .getDepositWallets(userAddr, depositNetwork, depositCoin)
+      .getDepositWallets(userIdentifier, depositNetwork, depositCoin)
       .then((res) => {
         if (res && res.wallets && res.wallets.length > 0) {
+          setAvailableWallets(res.wallets);
           const initial = res.assigned_wallet || res.wallets[0];
           setAssignedWallet(initial);
         }
       })
       .catch(() => {});
-  }, [depositCoin, depositNetwork, authUser?.wallet_address]);
+  }, [depositCoin, depositNetwork, userIdentifier]);
 
   const getFallbackAddress = (net: string) => {
-    if (net.includes("TRON")) return "TYD9yZ7G8gM2tY9vK8nP7wE6rT5yU4iO3p";
-    if (net.includes("BNB") || net.includes("Ethereum")) return "0x71C836e522F5b8Fbe40d34341A5a507E78e1215B";
-    if (net.includes("Bitcoin")) return "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq";
-    return "8ZgC8Q3f8sC9b9T4vB2nK8mP7wE6rT5yU4iO3pA2sD1f";
+    const key = Object.keys(NETWORK_POOLS).find((k) => net.includes(k.split(" ")[0])) || "TRON (TRC-20)";
+    const pool = NETWORK_POOLS[key] || NETWORK_POOLS["TRON (TRC-20)"];
+    let hash = 0;
+    for (let i = 0; i < userIdentifier.length; i++) {
+      hash = (hash * 31 + userIdentifier.charCodeAt(i)) >>> 0;
+    }
+    return pool[hash % pool.length];
   };
 
   const activeDepositAddress = assignedWallet?.address || getFallbackAddress(depositNetwork);
@@ -479,7 +529,11 @@ export const DepositPage: React.FC<DepositPageProps> = ({
                   <div className="converter-badge">
                     <img src={COIN_METAS[depositCoin].iconUrl} width={16} height={16} alt={depositCoin} style={{ borderRadius: "50%" }} />
                     <span>
-                      ≈ {cryptoEquivalent < 1 ? cryptoEquivalent.toFixed(6) : cryptoEquivalent.toFixed(2)} {depositCoin}
+                      ≈ {cryptoEquivalent < 1
+                        ? cryptoEquivalent.toFixed(6)
+                        : (cryptoEquivalent >= 1000
+                            ? cryptoEquivalent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                            : cryptoEquivalent.toFixed(2))} {depositCoin}
                     </span>
                   </div>
                 </div>

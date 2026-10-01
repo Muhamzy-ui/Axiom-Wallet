@@ -1685,7 +1685,7 @@ function MemeCoinsPage({ search }: { search: string }) {
                   <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(16,185,129,0.08)', borderRadius: 8, border: '1px solid rgba(16,185,129,0.22)', fontSize: 11, display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ color: C.muted }}>New Price:</span>
-                      <span style={{ fontWeight: 800, color: C.text }}>${newP < 0.001 ? newP.toFixed(8) : newP < 1 ? newP.toFixed(4) : newP.toFixed(2)} <span style={{ color: C.green }}>({pct >= 0 ? '+' : ''}{pct.toFixed(1)}%)</span></span>
+                      <span style={{ fontWeight: 800, color: C.text }}>${newP < 0.001 ? newP.toFixed(8) : newP < 1 ? newP.toFixed(4) : (newP >= 1000 ? newP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : newP.toFixed(2))} <span style={{ color: C.green }}>({pct >= 0 ? '+' : ''}{pct.toFixed(1)}%)</span></span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ color: C.muted }}>Projected Liquidity:</span>
@@ -1783,7 +1783,7 @@ function MemeCoinsPage({ search }: { search: string }) {
                   <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(239,68,68,0.08)', borderRadius: 8, border: '1px solid rgba(239,68,68,0.22)', fontSize: 11, display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ color: C.muted }}>New Price:</span>
-                      <span style={{ fontWeight: 800, color: C.text }}>${newP < 0.001 ? newP.toFixed(8) : newP < 1 ? newP.toFixed(4) : newP.toFixed(2)} <span style={{ color: C.red }}>(-{pct.toFixed(1)}%)</span></span>
+                      <span style={{ fontWeight: 800, color: C.text }}>${newP < 0.001 ? newP.toFixed(8) : newP < 1 ? newP.toFixed(4) : (newP >= 1000 ? newP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : newP.toFixed(2))} <span style={{ color: C.red }}>(-{pct.toFixed(1)}%)</span></span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ color: C.muted }}>Projected Liquidity:</span>
@@ -2174,7 +2174,51 @@ function MemeCoinsPage({ search }: { search: string }) {
                   <td style={{ ...TD, color: C.muted }}>{t.liq}</td>
                   <td style={{ ...TD, color: C.muted }}>{t.cap}</td>
                   <td style={{ ...TD, fontWeight: 700, color: C.text }}>
-                    {fmtCount(t.user_holders_count || 0)}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span>{fmtCount(t.user_holders_count || 0)}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          marketStore.boostTokenHolders(t.sym, 10);
+                          toast_(`🚀 Added +10 holders/buyers to ${t.sym}!`);
+                        }}
+                        title="Add 10 verified buyers/holders"
+                        style={{
+                          padding: '2px 6px',
+                          borderRadius: 4,
+                          background: 'rgba(124,58,237,0.2)',
+                          border: '1px solid rgba(124,58,237,0.4)',
+                          color: '#A78BFA',
+                          fontSize: 10,
+                          fontWeight: 800,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        +10
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          marketStore.boostTokenHolders(t.sym, 50);
+                          toast_(`🔥 Added +50 holders/buyers to ${t.sym}!`);
+                        }}
+                        title="Add 50 verified buyers/holders"
+                        style={{
+                          padding: '2px 6px',
+                          borderRadius: 4,
+                          background: 'rgba(16,185,129,0.2)',
+                          border: '1px solid rgba(16,185,129,0.4)',
+                          color: '#10B981',
+                          fontSize: 10,
+                          fontWeight: 800,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        +50
+                      </button>
+                    </div>
                   </td>
                   <td style={{ ...TD, fontWeight: 700, color: C.green }}>
                     {fmtUSD(t.total_user_buy_volume_usd || 0)}
@@ -3233,7 +3277,72 @@ function MemeCoinsPage({ search }: { search: string }) {
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                {/* Real Holders & Buyers count boost */}
+                <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: '12px 14px', marginTop: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Holders & Buyers Count</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>Current: {marketStore.getToken(editModalToken.sym)?.user_holders_count || editModalToken.user_holders_count || 25} holders / buyers</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          marketStore.boostTokenHolders(editModalToken.sym, 10);
+                          toast_(`Added +10 holders to ${editModalToken.sym}!`);
+                        }}
+                        style={{ padding: '4px 8px', borderRadius: 6, background: 'rgba(124,58,237,0.2)', border: '1px solid rgba(124,58,237,0.4)', color: '#A78BFA', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        +10
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          marketStore.boostTokenHolders(editModalToken.sym, 50);
+                          toast_(`Added +50 holders to ${editModalToken.sym}!`);
+                        }}
+                        style={{ padding: '4px 8px', borderRadius: 6, background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.4)', color: '#10B981', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        +50
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          marketStore.boostTokenHolders(editModalToken.sym, 200);
+                          toast_(`Added +200 holders to ${editModalToken.sym}!`);
+                        }}
+                        style={{ padding: '4px 8px', borderRadius: 6, background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.4)', color: '#F59E0B', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        +200
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      placeholder="Set exact count (e.g. 500)..."
+                      id="axiom_custom_holders_input"
+                      style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 10px', color: C.text, fontSize: 12, outline: 'none' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const el = document.getElementById('axiom_custom_holders_input') as HTMLInputElement;
+                        const val = parseInt(el?.value || '0', 10);
+                        if (val > 0) {
+                          marketStore.setTokenHoldersBuyers(editModalToken.sym, val, val);
+                          toast_(`Set ${editModalToken.sym} holders count to ${val}!`);
+                          if (el) el.value = '';
+                        }
+                      }}
+                      style={{ padding: '7px 14px', borderRadius: 8, background: C.violet, border: 'none', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Set Exact
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
                   <Btn ghost onClick={() => setEditModalToken(null)}>Cancel</Btn>
                   <Btn><Save size={14} />Save Changes & Sync DEX 🚀</Btn>
                 </div>
@@ -3442,7 +3551,7 @@ function UsersPage({ metrics, loading, search }: { metrics: AdminMetrics; loadin
             </tr></thead>
             <tbody>
               {slice.length === 0 ? <tr><td colSpan={6}><EmptyState message="No users found." /></td></tr> : slice.map(u => {
-                const label = u.email || u.username || 'User';
+                const label = (u.username && u.username !== 'anon' ? u.username : '') || u.full_name || u.email || (u.wallet_address ? `${u.wallet_address.slice(0, 6)}...` : 'User');
                 const addr = u.wallet_address || u.address || '0x...';
                 const bal = u.total_balance_usd !== undefined ? fmtUSD(u.total_balance_usd) : fmtUSD(u.balance);
                 const date = u.created_at || u.joined || 'Recent';
@@ -6315,14 +6424,16 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
                   onChange={e => setWhaleSym(e.target.value)}
                   style={{ padding: '9px 14px', borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, color: C.text, fontSize: 13, fontWeight: 700 }}
                 >
-                  <option value="SOL">SOL</option>
-                  <option value="BONK">BONK</option>
-                  <option value="WIF">WIF</option>
-                  <option value="POPCAT">POPCAT</option>
-                  <option value="BTC">BTC</option>
-                  <option value="ETH">ETH</option>
-                  <option value="JUP">JUP</option>
-                  <option value="RAY">RAY</option>
+                  {(marketStore.tokens && marketStore.tokens.length > 0 ? marketStore.tokens : [
+                    { sym: "SOL", name: "Solana" },
+                    { sym: "BONK", name: "Bonk" },
+                    { sym: "WIF", name: "dogwifhat" },
+                    { sym: "POPCAT", name: "Popcat" },
+                    { sym: "BTC", name: "Bitcoin" },
+                    { sym: "ETH", name: "Ethereum" }
+                  ]).map(t => (
+                    <option key={t.sym} value={t.sym}>{t.sym} — {t.name}</option>
+                  ))}
                 </select>
               </div>
 

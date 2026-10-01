@@ -167,11 +167,6 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
           <h1>Withdraw Crypto</h1>
           <span>On-chain cryptocurrency withdrawal with direct vault routing</span>
         </div>
-
-        <div className="fullpage-status-badge">
-          <span className="pulse-dot" />
-          <span>INSTANT CRYPTO VAULT</span>
-        </div>
       </header>
 
       {/* Main Body */}
