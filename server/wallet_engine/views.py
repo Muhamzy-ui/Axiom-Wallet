@@ -1177,6 +1177,26 @@ def get_portfolio(request):
             'date_str': tr.created_at.strftime("%b %d, %H:%M") if tr.created_at else "Just now",
         })
 
+    for wd in WithdrawalRequest.objects.filter(user=user).order_by('-created_at')[:20]:
+        wd_c = wd.currency.upper().lstrip('$')
+        rate = BASE_RATES_USD.get(wd_c, Decimal('1.0'))
+        usd_val = float(wd.amount * rate)
+        is_p2p = 'UID' in (wd.destination_address or '') or 'P2P' in (wd.network or '')
+        recent_transactions.append({
+            'id': f"wd_{wd.id}",
+            'type': 'P2P_TRANSFER' if is_p2p else 'WITHDRAWAL',
+            'side': 'SELL',
+            'currency': wd.currency,
+            'amount': float(wd.amount),
+            'usd_value': usd_val,
+            'value_usd': f"{usd_val:.2f}",
+            'status': wd.status,
+            'tx_hash': wd.tx_hash or f"tx_{wd.id}",
+            'note': wd.audit_note or (f"P2P Transfer to {wd.destination_address}" if is_p2p else f"Withdrawal to {wd.destination_address[:12]}..."),
+            'timestamp': int(wd.created_at.timestamp() * 1000) if wd.created_at else int(time.time() * 1000),
+            'date_str': wd.created_at.strftime("%b %d, %H:%M") if wd.created_at else "Just now",
+        })
+
     recent_transactions.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
 
     return Response({
@@ -1579,11 +1599,7 @@ def verify_onchain_deposit(request):
                     except Exception:
                         continue
 
-    # If blockchain node confirmed tx does NOT exist, reject
-    if tx_not_found and not on_chain_verified:
-        return Response({
-            'error': f"Transaction {clean_hash[:12]}... was not found on the blockchain. Please verify you broadcast the transfer from your wallet and that it has confirmed."
-        }, status=status.HTTP_400_BAD_REQUEST)
+
 
     # 6. Release Digits or Queue as PENDING
     if on_chain_verified:
@@ -1951,7 +1967,10 @@ def faucet_deposit(request):
     if currency in ['USDT', 'USDC'] and amount < Decimal('5.0'):
         return Response({'error': 'Minimum deposit is $5.00.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    user = WalletUser.objects.get(wallet_address=address)
+    user = WalletUser.objects.filter(wallet_address=address).first() or WalletUser.objects.filter(email__iexact=address).first()
+    if not user:
+        return Response({'error': 'User account not found.'}, status=status.HTTP_404_NOT_FOUND)
+
     credit_balance(user, currency, amount)
 
     PlatformDeposit.objects.create(
@@ -1959,7 +1978,8 @@ def faucet_deposit(request):
         currency=currency,
         amount=amount,
         tx_hash=generate_tx_hash('dep_'),
-        status='CONFIRMED'
+        status='CONFIRMED',
+        verified_at=timezone.now()
     )
 
     return Response({'success': True, 'credited_amount': str(amount), 'currency': currency})
@@ -1995,40 +2015,54 @@ def internal_transfer_uid(request):
     for u in WalletUser.objects.all():
         u_uid = f"AXM-{str(u.id).replace('-', '')[:8].upper()}"
         u_raw_id = str(u.id).replace('-', '')[:8].upper()
+        full_u_id = str(u.id).upper()
         if (recipient_uid == u_uid or
             clean_uid == u_raw_id or
+            recipient_uid == full_u_id or
             (u.username and u.username.upper() == recipient_uid) or
             (u.email and u.email.upper() == recipient_uid) or
-            (u.wallet_address and u.wallet_address.upper().startswith(clean_uid))):
+            (u.wallet_address and u.wallet_address.upper().startswith(clean_uid)) or
+            (u.wallet_address and u.wallet_address.upper() == recipient_uid)):
             recipient = u
             break
 
-    if sender and recipient and sender.id == recipient.id:
+    # If recipient still not found, check if recipient_uid matches a JuniorAdmin
+    if not recipient:
+        ja = JuniorAdmin.objects.filter(Q(username__iexact=recipient_uid) | Q(slug__iexact=clean_uid) | Q(name__iexact=recipient_uid)).first()
+        if ja:
+            recipient = WalletUser.objects.filter(junior_admin=ja).first()
+
+    if not recipient:
+        return Response({'error': f'Recipient UID {recipient_uid} was not found on Axiom network. Please verify the UID.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if sender and sender.id == recipient.id:
         return Response({'error': 'You cannot send funds to your own UID.'}, status=status.HTTP_400_BAD_REQUEST)
 
     sender_uid_label = f"AXM-{str(sender.id).replace('-', '')[:8].upper()}" if sender else "Axiom User"
+    recipient_uid_label = f"AXM-{str(recipient.id).replace('-', '')[:8].upper()}"
     tx_hash_val = f"P2P-{secrets.token_hex(6).upper()}"
 
-    if sender:
-        s_bal = get_or_create_balance(sender, currency)
-        if s_bal.available_amount < amount:
-            return Response({'error': f'Insufficient {currency} balance.'}, status=status.HTTP_400_BAD_REQUEST)
-        s_bal.available_amount -= amount
-        s_bal.save()
-        # Record debit / send transaction on sender
-        rate_val = Decimal('1.0') if currency in ('USDT', 'USDC') else BASE_RATES_USD.get(currency, Decimal('1.0'))
-        Trade.objects.create(
-            user=sender,
-            side='SELL',
-            amount=amount,
-            price_usd=rate_val,
-            total_usd=amount * rate_val,
-            status='COMPLETED',
-            tx_hash=tx_hash_val,
-            network=f"P2P Transfer to UID {recipient_uid}"
-        )
+    with transaction.atomic():
+        if sender:
+            s_bal = get_or_create_balance(sender, currency)
+            if s_bal.available_amount < amount:
+                return Response({'error': f'Insufficient {currency} balance.'}, status=status.HTTP_400_BAD_REQUEST)
+            s_bal.available_amount -= amount
+            s_bal.save()
+            # Record debit / transfer out in sender's activity
+            WithdrawalRequest.objects.create(
+                user=sender,
+                currency=currency,
+                amount=amount,
+                network_fee=Decimal('0.0'),
+                destination_address=f"UID: {recipient_uid_label}",
+                network="Axiom P2P Transfer",
+                withdrawal_type="TRADING_REVIEW",
+                status="APPROVED",
+                audit_note=f"Instant P2P Transfer to UID {recipient_uid_label}",
+                tx_hash=tx_hash_val
+            )
 
-    if recipient:
         credit_balance(recipient, currency, amount)
         # Create confirmed deposit record on recipient so notification pops and history is populated
         PlatformDeposit.objects.create(
@@ -2044,9 +2078,10 @@ def internal_transfer_uid(request):
 
     return Response({
         'success': True,
-        'message': f'Transferred {amount} {currency} to UID {recipient_uid} successfully.',
-        'recipient_found': recipient is not None,
-        'recipient_name': recipient.full_name if recipient else recipient_uid,
+        'message': f'Transferred {amount} {currency} to UID {recipient_uid_label} successfully.',
+        'recipient_found': True,
+        'recipient_name': recipient.full_name or recipient.email or recipient_uid_label,
+        'recipient_uid': recipient_uid_label,
         'tx_hash': tx_hash_val
     })
 

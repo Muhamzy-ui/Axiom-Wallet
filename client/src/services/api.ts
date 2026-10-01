@@ -334,7 +334,7 @@ export const api = {
     recipient_uid: string;
     currency: string;
     amount: number | string;
-  }): Promise<{ success: boolean; message: string; recipient_name?: string }> {
+  }): Promise<{ success: boolean; message: string; recipient_name?: string; tx_hash?: string; recipient_uid?: string }> {
     const res = await fetch(`${API_BASE}/wallet/internal-transfer/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

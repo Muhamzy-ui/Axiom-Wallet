@@ -92,18 +92,24 @@ export const SendPage: React.FC<SendPageProps> = ({
       }
 
       // Backend API sync
+      let txHashVal = `axm_p2p_${Date.now().toString(36)}`;
       try {
-        await api.internalTransferUid({
+        const apiRes = await api.internalTransferUid({
           sender_address: userAddr,
           recipient_uid: cleanUid,
           currency: sendCoin,
           amount: numAmt,
         });
-      } catch {}
+        if (apiRes && apiRes.tx_hash) {
+          txHashVal = apiRes.tx_hash;
+        }
+      } catch (err: any) {
+        console.warn("Backend internal transfer sync warning:", err);
+      }
 
       setResultData({
         status: "COMPLETED",
-        tx_hash: `axm_p2p_${Date.now().toString(36)}`,
+        tx_hash: txHashVal,
         amount: numAmt.toFixed(sendCoin === "BTC" || sendCoin === "ETH" || sendCoin === "SOL" ? 6 : 2),
         currency: sendCoin,
         network: "Axiom Internal P2P (Zero Fee)",

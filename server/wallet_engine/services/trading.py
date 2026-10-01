@@ -10,6 +10,7 @@ BASE_RATES_USD = {
     'ETH': Decimal('2650.00'),
     'USDT': Decimal('1.00'),
     'USDC': Decimal('1.00'),
+    'USD': Decimal('1.00'),
     'BTC': Decimal('77724.00'),
 }
 

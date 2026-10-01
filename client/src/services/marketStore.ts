@@ -642,6 +642,7 @@ class MarketStore {
   private priceAnchors: Record<string, number> = {};
   private marketCycles: Record<string, { baselinePrice: number; phase: "impulse" | "pullback" | "consolidation"; phaseTicksLeft: number; totalCycleGains: number }> = {};
   public realizedProfit24h: number = 0;
+  public lastTradeOrSwapTime: number = 0;
   public cachedPortfolioMetrics: {
     totalValue: number;
     baseline24h: number;
@@ -1891,6 +1892,13 @@ class MarketStore {
   async syncBackendPortfolio() {
     const wallet = this.currentUserWallet;
     if (!wallet) return;
+
+    // Guard against overwriting fresh in-memory trade/swap executions before backend DB write is fully processed
+    const now = Date.now();
+    if (this.lastTradeOrSwapTime && (now - this.lastTradeOrSwapTime < 15000)) {
+      return;
+    }
+
     try {
       const portfolio = await api.getPortfolio(wallet);
       if (!portfolio) return;
@@ -1910,7 +1918,7 @@ class MarketStore {
           const itemPrice = parseFloat(item.price_usd || "0") || 0;
 
           const token = this.getToken(sym);
-          const liveP = token && token.numericPrice > 0 ? token.numericPrice : (itemPrice > 0 ? itemPrice : (backendAvgPrice > 0 ? backendAvgPrice : (sym === "USDT" || sym === "USDC" ? 1.0 : 1)));
+          const liveP = token && token.numericPrice > 0 ? token.numericPrice : (itemPrice > 0 ? itemPrice : (backendAvgPrice > 0 ? backendAvgPrice : (sym === "USDT" || sym === "USDC" || sym === "USD" ? 1.0 : 1)));
 
           const local = this.balances[sym];
           if (!local) {
@@ -1946,10 +1954,11 @@ class MarketStore {
 
         (portfolio as any).recent_transactions.forEach((tx: any) => {
           if (!existingOrderIds.has(tx.id)) {
-            const isDeposit = tx.type === "deposit";
-            const isP2P = tx.type === "p2p_receive";
+            const txType = String(tx.type || "").toLowerCase();
+            const isDeposit = txType === "deposit";
+            const isP2P = txType === "p2p_receive" || txType === "p2p" || txType === "p2p_transfer";
             const orderType: any = isP2P ? "P2P Transfer" : isDeposit ? "Deposit" : "Market";
-            const side = (tx.side === "SELL") ? "Sell" : "Buy";
+            const side = (String(tx.side || "").toUpperCase() === "SELL") ? "Sell" : "Buy";
 
             const amtNum = Number(tx.amount) || 0;
             const usdNum = Number(tx.usd_value ?? tx.value_usd) || (amtNum * (Number(tx.price) || 1));
@@ -2393,6 +2402,7 @@ class MarketStore {
       }
     });
 
+    this.lastTradeOrSwapTime = Date.now();
     this.savePersistedStateNow();
     this.notify();
 
@@ -2406,6 +2416,7 @@ class MarketStore {
   // Deposit funds
   depositFunds(sym: string, amount: number): { success: boolean; message: string } {
     if (amount <= 0 || isNaN(amount)) return { success: false, message: "Enter a valid deposit amount" };
+    this.lastTradeOrSwapTime = Date.now();
     const token = this.getToken(sym);
     const p = (sym === "USDT" || sym === "USDC")
       ? 1.0
@@ -2865,8 +2876,9 @@ class MarketStore {
     sym: string;
     side: "Buy" | "Sell";
     amount: number; // in quote/pair currency for Buy (e.g. SOL or USD), or in token units for Sell
+    pairCurrency?: string;
   }): { success: boolean; message: string; tokensExchanged?: number; usdcExchanged?: number } {
-    const { sym, side, amount } = params;
+    const { sym, side, amount, pairCurrency } = params;
     const token = this.getToken(sym);
     if (!token) return { success: false, message: "Token not found" };
     if (token.is_rugged) {
@@ -2874,7 +2886,13 @@ class MarketStore {
     }
 
     const p = token.numericPrice;
-    const pair = (token.pair_currency || "SOL").toUpperCase();
+    const cleanSym = sym.toUpperCase().replace(/^\$/, "");
+    const isMajor = token.isMajor || ["BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "AVAX", "SUI", "DOGE"].includes(cleanSym);
+
+    let pair = (pairCurrency || token.pair_currency || (isMajor ? "USDT" : "SOL")).toUpperCase();
+    if (pair === cleanSym) {
+      pair = "USDT";
+    }
     const isCash = pair === "USDT" || pair === "USDC" || pair === "USD";
     const basePriceUsd = this.getBasePriceUsd(pair);
 
@@ -3200,8 +3218,9 @@ class MarketStore {
     side: "Buy" | "Sell";
     amount: number; // Quote USD for Buy, token units for Sell
     targetPrice: number;
+    pairCurrency?: string;
   }): { success: boolean; message: string; orderId?: string } {
-    const { sym, side, amount, targetPrice } = params;
+    const { sym, side, amount, targetPrice, pairCurrency } = params;
     const token = this.getToken(sym);
     if (!token) return { success: false, message: "Token not found" };
     if (amount <= 0) return { success: false, message: "Enter an amount greater than 0" };
@@ -3217,7 +3236,7 @@ class MarketStore {
 
       // If current market price is ALREADY <= targetPrice, fill immediately!
       if (token.numericPrice <= targetPrice) {
-        const orderRes = this.placeOrder({ sym, side: "Buy", amount });
+        const orderRes = this.placeOrder({ sym, side: "Buy", amount, pairCurrency });
         if (orderRes.success) {
           // Label as Limit in userOrders
           if (this.userOrders.length > 0 && this.userOrders[0].sym === sym) {
@@ -4154,8 +4173,10 @@ class MarketStore {
 
     const fromToken = this.getToken(fSym);
     const toToken = this.getToken(tSym);
-    const fromPrice = (fSym === "USDT" || fSym === "USDC") ? 1.0 : (fromToken?.numericPrice || 1.0);
-    const toPrice = (tSym === "USDT" || tSym === "USDC") ? 1.0 : (toToken?.numericPrice || 1.0);
+    const isCashF = fSym === "USDT" || fSym === "USDC" || fSym === "USD";
+    const isCashT = tSym === "USDT" || tSym === "USDC" || tSym === "USD";
+    const fromPrice = isCashF ? 1.0 : (fromToken?.numericPrice || 1.0);
+    const toPrice = isCashT ? 1.0 : (toToken?.numericPrice || 1.0);
     const usdValue = Number((fromAmt * fromPrice).toFixed(2));
 
     // Deduct source asset & track realized profit
@@ -4163,7 +4184,7 @@ class MarketStore {
     const prevFromInvested = this.balances[fSym].totalInvested || 0;
     const fromAvgBuyPrice = this.balances[fSym].avgBuyPrice || fromPrice;
 
-    if (fSym !== "USDT" && fSym !== "USDC" && (tSym === "USDT" || tSym === "USDC")) {
+    if (!isCashF && isCashT) {
       const investedPortion = prevFromInvested > 0
         ? (prevFromInvested * (fromAmt / Math.max(0.000001, prevFromBal)))
         : (fromAmt * fromAvgBuyPrice);
@@ -4214,9 +4235,24 @@ class MarketStore {
       triggerNote: `Instant Swap: ${fromAmt} ${fSym} ➔ ${toAmt >= 1000 ? toAmt.toLocaleString(undefined, { maximumFractionDigits: 1 }) : toAmt.toFixed(4)} ${tSym}`,
     });
 
+    this.lastTradeOrSwapTime = Date.now();
+
     if (!fromRemote) {
       this.broadcast({ type: "SWAP_TOKENS", payload: { fromSym, toSym, fromAmt, toAmt } });
       this.savePersistedStateNow();
+
+      const targetWallet = this.currentUserWallet || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("axiom_wallet_address") || "" : "");
+      if (targetWallet) {
+        api.syncBalances(targetWallet, this.balances, {
+          sym: tSym,
+          type: "Swap",
+          usd: usdValue,
+          tokenAmt: toAmt,
+          price: toPrice,
+        }).catch((err) => {
+          console.warn("Failed to sync swapped balances to backend:", err);
+        });
+      }
     }
 
     this.notify();

@@ -1538,6 +1538,7 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
         side,
         amount: numAmt,
         targetPrice: targetP,
+        pairCurrency,
       });
       flash(res.message);
       if (res.success) {
@@ -1550,6 +1551,7 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
       sym: m.sym,
       side,
       amount: numAmt,
+      pairCurrency,
     });
     flash(res.message);
   };
@@ -3493,22 +3495,29 @@ function TokenSelectModal({
   // Stablecoins first
   allAvailable.push({
     sym: "USDC",
-    name: "USD Coin",
+    name: "USD Coin (USDC Dollar)",
     price: "$1.00",
     numPrice: 1.0,
     bal: balances["USDC"]?.bal || 0,
   });
   allAvailable.push({
     sym: "USDT",
-    name: "Tether USD",
+    name: "Tether USD (USDT Dollar)",
     price: "$1.00",
     numPrice: 1.0,
     bal: balances["USDT"]?.bal || 0,
   });
+  allAvailable.push({
+    sym: "USD",
+    name: "US Dollar (Fiat / Cash)",
+    price: "$1.00",
+    numPrice: 1.0,
+    bal: balances["USD"]?.bal || 0,
+  });
 
   // All tokens from marketStore
   tokens.forEach(t => {
-    if (t.sym.toUpperCase() === "USDC" || t.sym.toUpperCase() === "USDT") return;
+    if (["USDC", "USDT", "USD"].includes(t.sym.toUpperCase())) return;
     const b = balances[t.sym]?.bal || 0;
     allAvailable.push({
       sym: t.sym,
@@ -3523,8 +3532,10 @@ function TokenSelectModal({
   });
 
   const q = search.toLowerCase().trim().replace(/^\$/, "");
+  const isDollarQuery = q === "dollar" || q === "dollars" || q === "usd";
   const filtered = allAvailable.filter(t => {
     if (!q) return true;
+    if (isDollarQuery && (t.sym === "USDT" || t.sym === "USDC" || t.sym === "USD")) return true;
     return (
       (t.sym && t.sym.toLowerCase().includes(q)) ||
       (t.name && t.name.toLowerCase().includes(q)) ||
@@ -3942,10 +3953,7 @@ function SwapView({ modal, flash }: { modal: (m: Modal) => void; flash?: (msg: s
         )}
       </div>
 
-      <div className="swap-foot">
-        <ShieldCheck size={16} />
-        <span>Atomic swap executed with instant Solana SPL settlement & zero custody.</span>
-      </div>
+
 
       {/* Token Selector Modal */}
       <TokenSelectModal
