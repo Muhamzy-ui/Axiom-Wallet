@@ -3547,7 +3547,7 @@ function UsersPage({ metrics, loading, search }: { metrics: AdminMetrics; loadin
         <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
             <thead><tr style={{ borderBottom: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.02)' }}>
-              {['User Account', 'Wallet Address', 'Total Assets', 'Joined Date', 'Status', 'Actions'].map(h => <th key={h} style={TH}>{h}</th>)}
+              {['User Account', 'User ID (UID)', 'Total Assets', 'Joined Date', 'Status', 'Actions'].map(h => <th key={h} style={TH}>{h}</th>)}
             </tr></thead>
             <tbody>
               {slice.length === 0 ? <tr><td colSpan={6}><EmptyState message="No users found." /></td></tr> : slice.map(u => {
@@ -3555,6 +3555,7 @@ function UsersPage({ metrics, loading, search }: { metrics: AdminMetrics; loadin
                 const addr = u.wallet_address || u.address || '0x...';
                 const bal = u.total_balance_usd !== undefined ? fmtUSD(u.total_balance_usd) : fmtUSD(u.balance);
                 const date = u.created_at || u.joined || 'Recent';
+                const uid = u.uid || `AXM-${String(u.id || '').replace(/-/g, '').slice(0, 8).toUpperCase()}`;
                 return (
                   <tr key={u.id} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer' }} onClick={() => setSel(u)} {...TR_HOVER}>
                     <td style={TD}>
@@ -3568,8 +3569,13 @@ function UsersPage({ metrics, loading, search }: { metrics: AdminMetrics; loadin
                         </div>
                       </div>
                     </td>
-                    <td style={{ ...TD, fontSize: 12, color: C.muted, fontFamily: 'monospace' }}>
-                      {addr.length > 16 ? `${addr.slice(0, 8)}...${addr.slice(-6)}` : addr}
+                    <td style={TD}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: '#22D3EE', fontFamily: 'monospace', letterSpacing: '0.5px' }}>
+                        {uid}
+                      </div>
+                      <div style={{ fontSize: 10, color: C.muted, fontFamily: 'monospace', marginTop: 2 }}>
+                        {addr.length > 14 ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : addr}
+                      </div>
                     </td>
                     <td style={{ ...TD, fontWeight: 800, color: C.text }}>{bal}</td>
                     <td style={{ ...TD, color: C.muted, fontSize: 12 }}>{date}</td>
@@ -3613,6 +3619,7 @@ function UsersPage({ metrics, loading, search }: { metrics: AdminMetrics; loadin
               </div>
             </div>
             {[
+              ['Axiom UID', sel.uid || `AXM-${String(sel.id || '').replace(/-/g, '').slice(0, 8).toUpperCase()}`],
               ['Net Asset Value', sel.total_balance_usd !== undefined ? fmtUSD(sel.total_balance_usd) : fmtUSD(sel.balance)],
               ['Registration Date', sel.created_at || sel.joined || 'Recent'],
               ['Account Status', sel.status || 'Active']

@@ -557,6 +557,18 @@ class LeaderboardStore {
     } catch {}
   }
 
+  // ── Time helper for 24-Hour Daily Epoch countdown ────────────────────────
+  public getTimeUntilNextEpoch(): { hours: number; minutes: number; seconds: number; formatted: string } {
+    const now = Date.now();
+    const nextEpochMs = (getDailyEpoch() + 1) * 86400 * 1000;
+    const diff = Math.max(0, nextEpochMs - now);
+    const hours = Math.floor(diff / (3600 * 1000));
+    const minutes = Math.floor((diff % (3600 * 1000)) / (60 * 1000));
+    const seconds = Math.floor((diff % (60 * 1000)) / 1000);
+    const formatted = `${String(hours).padStart(2, "0")}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
+    return { hours, minutes, seconds, formatted };
+  }
+
   // ── 100 Traders with 24-Hour Daily Epoch Rotation ──────────────────────────
   public getAll100Traders(): Trader[] {
     const top8 = this.getTop8();
@@ -578,14 +590,33 @@ class LeaderboardStore {
       const prevRank = prevRankMap.get(t.id) ?? currentRank;
       const rankDelta = prevRank - currentRank; // positive = moved up in rank
 
+      // Realistic 24-hour deterministic daily performance drift so stats change every day
+      const dayHash = (epoch * 37 + (idx + 9) * 101) % 1000;
+      const pnlFactor = 0.90 + (dayHash % 22) / 100; // 0.90x to 1.11x
+      const dailyPnl = Number((t.pnl24h * pnlFactor).toFixed(2));
+      const dailyRoi = Number((t.roi24h * pnlFactor).toFixed(1));
+
       return {
         ...t,
+        pnl24h: dailyPnl,
+        roi24h: dailyRoi,
         rank: currentRank,
         rankDelta
       };
     });
 
-    return [...top8, ...ranks9to100];
+    // Subtly evolve Top 8 24h stats across epochs so daily readers see active 24h market movement
+    const evolvedTop8 = top8.map((t, idx) => {
+      const topHash = (epoch * 19 + (idx + 1) * 73) % 1000;
+      const topFactor = 0.96 + (topHash % 9) / 100; // 0.96x to 1.04x
+      return {
+        ...t,
+        pnl24h: Number((t.pnl24h * topFactor).toFixed(2)),
+        roi24h: Number((t.roi24h * topFactor).toFixed(1))
+      };
+    });
+
+    return [...evolvedTop8, ...ranks9to100];
   }
 
   // ── Active Copy Trading System ────────────────────────────────────────────

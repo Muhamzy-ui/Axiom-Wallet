@@ -5532,7 +5532,7 @@ function AppShell({
         {view === "trade" && <Trade flash={flash} onOpenProfitCard={(sym) => setProfitModalSym(sym)} />}
         {view === "wallet" && <WalletView authUser={authUser} modal={setModal} flash={flash} onNavigate={navigateTo} onSelectCoin={(sym) => { marketStore.setActiveSym(sym); navigateTo("trade"); }} onOpenProfitCard={(sym) => setProfitModalSym(sym)} />}
         {view === "swap" && <SwapView modal={setModal} flash={flash} />}
-        {view === "leaderboard" && <LeaderboardView authUser={authUser} onNavigate={navigateTo} onSelectCoin={(sym) => { marketStore.setActiveSym(sym); navigateTo("trade"); }} flash={flash} />}
+        {view === "leaderboard" && <LeaderboardView authUser={authUser} onNavigate={navigateTo} onSelectCoin={(sym) => { marketStore.setActiveSym(sym); navigateTo("trade"); }} flash={flash} modal={(m: any) => setModal(m)} onOpenDeposit={() => setModal("deposit")} />}
         {view === "profile" && <ProfileView authUser={authUser} modal={setModal} flash={flash} onNavigate={navigateTo} onLogout={onLogout} />}
       </main>
 

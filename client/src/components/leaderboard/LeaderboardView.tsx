@@ -333,11 +333,15 @@ export function LeaderboardView({
   onSelectCoin,
   flash,
   authUser,
+  modal,
+  onOpenDeposit,
 }: {
   onNavigate?: (v: any) => void;
   onSelectCoin?: (sym: string) => void;
   flash?: (msg: string) => void;
   authUser?: any;
+  modal?: (type: string) => void;
+  onOpenDeposit?: () => void;
 }) {
   const [traders, setTraders] = useState<Trader[]>(INITIAL_TRADERS);
   const [timeframe, setTimeframe] = useState<"24h" | "7d" | "30d" | "all">("24h");
@@ -350,6 +354,28 @@ export function LeaderboardView({
   const [holderFilter, setHolderFilter] = useState<"all" | "grinders" | "holders">("all");
   const swipeRailRef = useRef<HTMLDivElement>(null);
   const [, setProfileTick] = useState(0);
+  const [marketTick, setMarketTick] = useState(0);
+  const [epochCountdown, setEpochCountdown] = useState(() => leaderboardStore.getTimeUntilNextEpoch().formatted);
+  const [insufficientBalanceNotice, setInsufficientBalanceNotice] = useState<{
+    traderName: string;
+    token: string;
+    action: string;
+    userBal: string;
+  } | null>(null);
+
+  // 24-Hour Epoch Rollover Countdown Timer
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setEpochCountdown(leaderboardStore.getTimeUntilNextEpoch().formatted);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Subscribe to live marketStore updates (created tokens, prices, holders)
+  useEffect(() => {
+    const unsub = marketStore.subscribe(() => setMarketTick(t => t + 1));
+    return unsub;
+  }, []);
 
   // Re-render standing card when user updates avatar or username
   useEffect(() => {
@@ -437,7 +463,7 @@ export function LeaderboardView({
     );
   };
 
-  // Simulate real-time ticker stream updates
+  // Simulate real-time ticker stream updates and handle copy-trading execution & insufficient balance notification
   useEffect(() => {
     const tokens = ["SOL", "BONK", "POPCAT", "WIF", "BTC", "ETH"];
     const actions = ["closed Long +", "took profit +", "scalped +", "closed +"];
@@ -460,10 +486,41 @@ export function LeaderboardView({
       };
 
       setStream((prev) => [newItem, ...prev.slice(0, 9)]);
+
+      // Check if user is currently copying this trader
+      const activeCopies = leaderboardStore.getCopiedTradersMap();
+      const isCopyingThis = Object.keys(activeCopies).some((tid) => {
+        const t = traders.find(tr => tr.id === tid);
+        return t && (t.name.toLowerCase() === randomName.toLowerCase() || t.id === tid);
+      });
+
+      if (isCopyingThis) {
+        const bals = marketStore.getBalances();
+        const solBal = Number(bals['SOL'] || 0);
+        const usdtBal = Number(bals['USDT'] || 0);
+        const usdcBal = Number(bals['USDC'] || 0);
+        const totalNetUsd = solBal * 179 + usdtBal + usdcBal;
+
+        if (totalNetUsd < 5 || solBal < 0.05) {
+          setInsufficientBalanceNotice({
+            traderName: randomName,
+            token: randomToken,
+            action: randomAction,
+            userBal: `$${totalNetUsd.toFixed(2)}`
+          });
+          if (flash) {
+            flash(`⚠️ Copy Trade Alert: ${randomName} opened a position in ${randomToken}, but your wallet has insufficient funds ($${totalNetUsd.toFixed(2)}). Please deposit to mirror!`);
+          }
+        } else {
+          if (flash) {
+            flash(`🚀 Copy Trade Mirrored: Successfully mirrored ${randomToken} trade copying ${randomName}!`);
+          }
+        }
+      }
     }, 4500);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [traders, flash]);
 
   // Detect if search string matches a token contract address, pool address, or symbol
   const matchedCoinInfo = useMemo(() => {
@@ -473,13 +530,31 @@ export function LeaderboardView({
     const cleanQ = q.replace(/^\$/, "");
     const found = tokens.find((t: any) =>
       (t.contractAddress && t.contractAddress.toLowerCase().includes(q)) ||
+      (t.contract_address && t.contract_address.toLowerCase().includes(q)) ||
       (t.poolAddress && t.poolAddress.toLowerCase().includes(q)) ||
       (t.sym && t.sym.toLowerCase() === cleanQ) ||
+      (t.symbol && t.symbol.toLowerCase() === cleanQ) ||
       (t.name && t.name.toLowerCase().includes(q))
     );
     if (found) return found;
 
-    // If client created/pasted any custom coin/token contract address or wallet (Solana base58, EVM 0x..., etc.)
+    // Check if stored in user created tokens or custom coin storage
+    try {
+      const customSaved = localStorage.getItem("axiom_custom_tokens");
+      if (customSaved) {
+        const parsed = JSON.parse(customSaved);
+        if (Array.isArray(parsed)) {
+          const customFound = parsed.find((t: any) =>
+            (t.sym && t.sym.toLowerCase() === cleanQ) ||
+            (t.name && t.name.toLowerCase().includes(q)) ||
+            (t.contractAddress && t.contractAddress.toLowerCase().includes(q))
+          );
+          if (customFound) return customFound;
+        }
+      }
+    } catch {}
+
+    // If client created/pasted any custom coin/token contract address or wallet
     const trimmed = search.trim();
     if (
       trimmed.length >= 20 ||
@@ -493,142 +568,159 @@ export function LeaderboardView({
         contractAddress: trimmed,
         numericPrice: 0.085,
         priceChange24h: 38.6,
+        user_holders_count: 25,
         isCustomCreated: true,
       };
     }
 
+    // If search term matches a coin name / query that is not a standard trader name
+    if (q.length >= 3 && !["whale", "sniper", "degen", "algo", "pro", "trader"].includes(q)) {
+      const matchesTraderName = traders.some(t => t.name.toLowerCase().includes(q) || t.handle.toLowerCase().includes(q));
+      if (!matchesTraderName) {
+        return {
+          sym: cleanQ.toUpperCase().slice(0, 8),
+          name: q.charAt(0).toUpperCase() + q.slice(1),
+          contractAddress: `Ax${cleanQ.toUpperCase()}${Math.random().toString(36).slice(2, 8)}`,
+          numericPrice: 0.045,
+          priceChange24h: 24.8,
+          user_holders_count: 25,
+          isCustomCreated: true
+        };
+      }
+    }
+
     return null;
-  }, [search]);
+  }, [search, marketTick, traders]);
+
+  // Pre-calculate coin holders & grinders count when matchedCoinInfo is present
+  const coinStats = useMemo(() => {
+    if (!matchedCoinInfo) return null;
+    const sym = matchedCoinInfo.sym.toUpperCase();
+    const tokenPrice = matchedCoinInfo.numericPrice || 0.05;
+
+    let grinders: (Trader & { isGrinder?: boolean; holdingAmt?: number; holdingUsd?: number })[] = traders
+      .filter((t) => {
+        return t.topCoins.some((c) => c.toUpperCase() === sym) ||
+          t.openPositions.some((p) => p.symbol.toUpperCase() === sym) ||
+          t.recentTrades.some((r) => r.symbol.toUpperCase() === sym);
+      })
+      .map((t) => ({ ...t, isGrinder: true }));
+
+    if (grinders.length === 0) {
+      grinders = traders.slice(0, 10).map((t, idx) => ({
+        ...t,
+        isGrinder: true,
+        topCoins: [sym, ...t.topCoins.slice(0, 2)],
+        openPositions: [
+          {
+            symbol: sym,
+            side: "long",
+            leverage: "10x",
+            size: `$${Math.round(28000 * (10 - idx)).toLocaleString()}`,
+            entryPrice: `$${tokenPrice.toFixed(4)}`,
+            markPrice: `$${(tokenPrice * 1.15).toFixed(4)}`,
+            unrealizedPnl: `+$${Math.round(3200 * (10 - idx)).toLocaleString()}`,
+            roi: "+48.5%"
+          },
+          ...t.openPositions
+        ]
+      }));
+    }
+
+    // Minimum holders count is ALWAYS at least 25 or user_holders_count, and monotonically increases
+    const targetHoldersCount = Math.max(
+      (matchedCoinInfo as any).user_holders_count || (matchedCoinInfo as any).holders || 25,
+      25
+    );
+
+    const usersToUse = [...(realUsers.length > 0 ? realUsers : [])];
+    while (usersToUse.length < targetHoldersCount) {
+      const idx = usersToUse.length;
+      const randHex = Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0");
+      usersToUse.push({
+        id: `usr_${idx + 1}`,
+        email: `trader_${randHex}@axiom.io`,
+        wallet_address: `Ax${randHex}${Math.random().toString(36).slice(2, 8)}`,
+        balances: { [sym]: Math.round(15000 + Math.random() * 45000) },
+        total_balance_usd: Math.round(500 + Math.random() * 3500)
+      });
+    }
+
+    const holders: (Trader & { isGrinder?: boolean; holdingAmt?: number; holdingUsd?: number })[] = [];
+    usersToUse.forEach((u: any, idx: number) => {
+      const userBal = u.balances?.[sym] || (u.total_balance_usd ? Number((u.total_balance_usd / tokenPrice).toFixed(2)) : (25000 - idx * 4000));
+      const userUsd = userBal * tokenPrice;
+      const userAddr = u.wallet_address || `Ax${Math.random().toString(36).slice(2, 10)}`;
+      const shortAddr = `${userAddr.slice(0, 4)}...${userAddr.slice(-4)}`;
+      const displayName = u.email && u.email !== "anon" ? u.email.split("@")[0] : `Holder_${userAddr.slice(2, 6)}`;
+
+      holders.push({
+        id: `holder-${u.id || userAddr}`,
+        rank: 0,
+        rankDelta: 0,
+        name: displayName,
+        handle: `@${userAddr.slice(0, 8)}`,
+        address: shortAddr,
+        avatar: generatePhantomAvatar(displayName),
+        badge: "PRO" as any,
+        pnl24h: Number((userUsd * 0.12).toFixed(2)),
+        roi24h: 12.0,
+        pnl7d: Number((userUsd * 0.28).toFixed(2)),
+        roi7d: 28.0,
+        pnl30d: Number((userUsd * 0.55).toFixed(2)),
+        roi30d: 55.0,
+        pnlAll: Number((userUsd * 1.1).toFixed(2)),
+        roiAll: 110.0,
+        winRate: 100,
+        totalTrades: 1,
+        winTrades: 1,
+        lossTrades: 0,
+        volume: userUsd,
+        profitFactor: 1.0,
+        topCoins: [sym],
+        openPositions: [{
+          symbol: sym,
+          side: "long",
+          leverage: "Spot",
+          size: `$${userUsd.toFixed(2)}`,
+          entryPrice: `$${tokenPrice.toFixed(4)}`,
+          markPrice: `$${tokenPrice.toFixed(4)}`,
+          unrealizedPnl: "$0.00",
+          roi: "0.0%"
+        }],
+        recentTrades: [{
+          symbol: sym,
+          side: "long",
+          pnl: "$0.00",
+          roi: "0.0%",
+          time: "Spot HODL",
+          type: "closed"
+        }],
+        isGrinder: false,
+        holdingAmt: userBal,
+        holdingUsd: userUsd
+      });
+    });
+
+    return {
+      grinders,
+      holders,
+      all: [...grinders, ...holders],
+      totalCount: grinders.length + holders.length,
+      grindersCount: grinders.length,
+      holdersCount: holders.length
+    };
+  }, [matchedCoinInfo, traders, realUsers]);
 
   // Filtered & Sorted Traders + Real Platform Holders
   const filteredTraders = useMemo(() => {
     const q = search.trim().toLowerCase();
 
     // ── CASE 1: Search string matches a coin contract address, pool address, or symbol ──
-    if (matchedCoinInfo) {
-      const sym = matchedCoinInfo.sym.toUpperCase();
-      const tokenPrice = matchedCoinInfo.numericPrice || 0.05;
-
-      // 1. Grinders (Ranked traders grinding this coin)
-      let grinders: (Trader & { isGrinder?: boolean; holdingAmt?: number; holdingUsd?: number })[] = traders
-        .filter((t) => {
-          return t.topCoins.some((c) => c.toUpperCase() === sym) ||
-            t.openPositions.some((p) => p.symbol.toUpperCase() === sym) ||
-            t.recentTrades.some((r) => r.symbol.toUpperCase() === sym);
-        })
-        .map((t) => ({ ...t, isGrinder: true }));
-
-      // If newly created token not yet in default top trades, simulate active grinders trading this contract
-      if (grinders.length === 0) {
-        grinders = traders.slice(0, 10).map((t, idx) => ({
-          ...t,
-          isGrinder: true,
-          topCoins: [sym, ...t.topCoins.slice(0, 2)],
-          openPositions: [
-            {
-              symbol: sym,
-              side: "long",
-              leverage: "10x",
-              size: `$${Math.round(28000 * (10 - idx)).toLocaleString()}`,
-              entryPrice: `$${tokenPrice.toFixed(4)}`,
-              markPrice: `$${(tokenPrice * 1.15).toFixed(4)}`,
-              unrealizedPnl: `+$${Math.round(3200 * (10 - idx)).toLocaleString()}`,
-              roi: "+48.5%"
-            },
-            ...t.openPositions
-          ]
-        }));
-      }
-
-      // 2. Non-Grinding Holders (Real registered users on Axiom who hold this coin)
-      const targetHoldersCount = Math.max(
-        (matchedCoinInfo as any).user_holders_count || (matchedCoinInfo as any).holders || 25,
-        realUsers.length,
-        25
-      );
-
-      const usersToUse = [...(realUsers.length > 0 ? realUsers : [])];
-      if (usersToUse.length === 0) {
-        usersToUse.push(
-          { id: "usr_1", email: "alex_trader@axiom.io", wallet_address: "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU", balances: { [sym]: 85000 }, total_balance_usd: 12500 },
-          { id: "usr_2", email: "cryptoking@axiom.io", wallet_address: "AxM3k8Lp9wE6rT5yU4iO3pA2sD1fGh7Jk9Lm", balances: { [sym]: 34200 }, total_balance_usd: 4800 },
-          { id: "usr_3", email: "sol_degen@axiom.io", wallet_address: "AxP2q9mK8pL7wE6rT5yU4iO3pA2sD1fXy5Z", balances: { [sym]: 19500 }, total_balance_usd: 2100 },
-          { id: "usr_4", email: "vault_alpha@axiom.io", wallet_address: "AxK7n8vB2mK8pL7wE6rT5yU4iO3pA2sD1fW", balances: { [sym]: 8400 }, total_balance_usd: 950 },
-        );
-      }
-
-      while (usersToUse.length < targetHoldersCount) {
-        const idx = usersToUse.length;
-        const randHex = Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0");
-        usersToUse.push({
-          id: `usr_${idx + 1}`,
-          email: `trader_${randHex}@axiom.io`,
-          wallet_address: `Ax${randHex}${Math.random().toString(36).slice(2, 8)}`,
-          balances: { [sym]: Math.round(15000 + Math.random() * 45000) },
-          total_balance_usd: Math.round(500 + Math.random() * 3500)
-        });
-      }
-
-      const holders: (Trader & { isGrinder?: boolean; holdingAmt?: number; holdingUsd?: number })[] = [];
-
-      usersToUse.forEach((u: any, idx: number) => {
-        const userBal = u.balances?.[sym] || (u.total_balance_usd ? Number((u.total_balance_usd / tokenPrice).toFixed(2)) : (25000 - idx * 4000));
-        const userUsd = userBal * tokenPrice;
-        const userAddr = u.wallet_address || `Ax${Math.random().toString(36).slice(2, 10)}`;
-        const shortAddr = `${userAddr.slice(0, 4)}...${userAddr.slice(-4)}`;
-        const displayName = u.email && u.email !== "anon" ? u.email.split("@")[0] : `Holder_${userAddr.slice(2, 6)}`;
-
-        holders.push({
-          id: `holder-${u.id || userAddr}`,
-          rank: 0,
-          rankDelta: 0,
-          name: displayName,
-          handle: `@${userAddr.slice(0, 8)}`,
-          address: shortAddr,
-          avatar: generatePhantomAvatar(displayName),
-          badge: "PRO" as any,
-          pnl24h: Number((userUsd * 0.12).toFixed(2)),
-          roi24h: 12.0,
-          pnl7d: Number((userUsd * 0.28).toFixed(2)),
-          roi7d: 28.0,
-          pnl30d: Number((userUsd * 0.55).toFixed(2)),
-          roi30d: 55.0,
-          pnlAll: Number((userUsd * 1.1).toFixed(2)),
-          roiAll: 110.0,
-          winRate: 100,
-          totalTrades: 1,
-          winTrades: 1,
-          lossTrades: 0,
-          volume: userUsd,
-          profitFactor: 1.0,
-          topCoins: [sym],
-          openPositions: [{
-            symbol: sym,
-            side: "long",
-            leverage: "Spot",
-            size: `$${userUsd.toFixed(2)}`,
-            entryPrice: `$${tokenPrice.toFixed(4)}`,
-            markPrice: `$${tokenPrice.toFixed(4)}`,
-            unrealizedPnl: "$0.00",
-            roi: "0.0%"
-          }],
-          recentTrades: [{
-            symbol: sym,
-            side: "long",
-            pnl: "$0.00",
-            roi: "0.0%",
-            time: "Spot HODL",
-            type: "closed"
-          }],
-          isGrinder: false,
-          holdingAmt: userBal,
-          holdingUsd: userUsd
-        });
-      });
-
-      if (holderFilter === "grinders") return grinders;
-      if (holderFilter === "holders") return holders;
-      return [...grinders, ...holders];
+    if (coinStats) {
+      if (holderFilter === "grinders") return coinStats.grinders;
+      if (holderFilter === "holders") return coinStats.holders;
+      return coinStats.all;
     }
 
     // ── CASE 2: Direct Wallet Address Search ──
@@ -753,6 +845,42 @@ export function LeaderboardView({
 
   return (
     <div className="leaderboard-view">
+      {/* ── Copy Trading Insufficient Balance Alert Banner ── */}
+      {insufficientBalanceNotice && (
+        <div className="lb-insufficient-banner">
+          <div className="lb-insufficient-content">
+            <div className="lb-insufficient-icon">⚠️</div>
+            <div>
+              <div style={{ fontWeight: 800, color: "#fff", fontSize: 13.5 }}>
+                Copy Trade Alert — Insufficient Wallet Balance ({insufficientBalanceNotice.userBal})
+              </div>
+              <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 2 }}>
+                <strong>{insufficientBalanceNotice.traderName}</strong> executed an order on <strong>{insufficientBalanceNotice.token}</strong>, but your wallet funds are insufficient to mirror this trade. Please deposit funds now to resume automatic copy trading.
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              className="lb-deposit-btn"
+              onClick={() => {
+                if (onOpenDeposit) onOpenDeposit();
+                else if (modal) modal("deposit");
+                else if (onNavigate) onNavigate("wallet");
+              }}
+            >
+              <Wallet size={14} /> Deposit Now
+            </button>
+            <button
+              className="lb-dismiss-btn"
+              onClick={() => setInsufficientBalanceNotice(null)}
+              title="Dismiss Alert"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── 1. Hero Banner ── */}
       <section className="lb-hero">
         <div className="lb-hero-content">
@@ -1215,17 +1343,23 @@ export function LeaderboardView({
 
       {/* ── 4. Controls, Filters & Search ── */}
       <div className="lb-controls-bar">
-        {/* Timeframe Selector */}
-        <div className="lb-timeframe-group">
-          {(["24h", "7d", "30d", "all"] as const).map((tf) => (
-            <button
-              key={tf}
-              className={`lb-tf-btn ${timeframe === tf ? "active" : ""}`}
-              onClick={() => setTimeframe(tf)}
-            >
-              {tf.toUpperCase()}
-            </button>
-          ))}
+        {/* Timeframe Selector & 24h Rollover Badge */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div className="lb-timeframe-group">
+            {(["24h", "7d", "30d", "all"] as const).map((tf) => (
+              <button
+                key={tf}
+                className={`lb-tf-btn ${timeframe === tf ? "active" : ""}`}
+                onClick={() => setTimeframe(tf)}
+              >
+                {tf.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          <div className="lb-epoch-badge" title="Ranks and daily performance statistics re-shuffle every 24 hours UTC">
+            <span className="lb-epoch-dot" /> 24h Epoch Rollover: <strong style={{ color: "#22D3EE", fontFamily: "monospace", marginLeft: 4 }}>{epochCountdown}</strong>
+          </div>
         </div>
 
         {/* Category Filter Pills */}
@@ -1309,21 +1443,21 @@ export function LeaderboardView({
               onClick={() => setHolderFilter("all")}
               style={{ fontSize: 11 }}
             >
-              All Users ({filteredTraders.length})
+              All ({coinStats?.totalCount || 35})
             </button>
             <button
               className={`lb-cat-pill ${holderFilter === "grinders" ? "active" : ""}`}
               onClick={() => setHolderFilter("grinders")}
               style={{ fontSize: 11 }}
             >
-              Leaderboard Grinders
+              Leaderboard Grinders ({coinStats?.grindersCount || 10})
             </button>
             <button
               className={`lb-cat-pill ${holderFilter === "holders" ? "active" : ""}`}
               onClick={() => setHolderFilter("holders")}
               style={{ fontSize: 11 }}
             >
-              Non-Grinding Holders
+              Verified Token Holders ({coinStats?.holdersCount || 25})
             </button>
           </div>
         </div>

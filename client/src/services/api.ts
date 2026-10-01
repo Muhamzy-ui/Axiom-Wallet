@@ -7,6 +7,7 @@ const API_BASE = (import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL
 
 let _tokensCache: { time: number; data: MemeToken[] } | null = null;
 let _tokensInFlight: Promise<MemeToken[]> | null = null;
+let _depositWalletsCache: { [key: string]: { time: number; data: DepositWalletsResponse } } = {};
 
 export const api = {
   // Auth
@@ -61,9 +62,16 @@ export const api = {
     if (network) params.append('network', network);
     if (currency) params.append('currency', currency);
     const qs = params.toString();
+    const cacheKey = qs || 'all';
+    const now = Date.now();
+    if (_depositWalletsCache[cacheKey] && (now - _depositWalletsCache[cacheKey].time) < 10000) {
+      return _depositWalletsCache[cacheKey].data;
+    }
     const url = qs ? `${API_BASE}/wallet/deposit-wallets/?${qs}` : `${API_BASE}/wallet/deposit-wallets/`;
     const res = await fetch(url);
-    return res.json();
+    const data = await res.json();
+    _depositWalletsCache[cacheKey] = { time: Date.now(), data };
+    return data;
   },
 
   async verifyOnChainDeposit(
@@ -123,6 +131,7 @@ export const api = {
       const err = await res.json();
       throw new Error(err.error || 'Failed to update deposit wallets');
     }
+    _depositWalletsCache = {};
     return res.json();
   },
 

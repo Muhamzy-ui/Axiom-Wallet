@@ -21,21 +21,29 @@ class JuniorAdminSerializer(serializers.ModelSerializer):
         ]
 
     def get_users_count(self, obj):
+        if hasattr(obj, '_precomputed_users_count'):
+            return obj._precomputed_users_count
         return obj.users.count()
 
     def get_total_volume_usd(self, obj):
+        if hasattr(obj, '_precomputed_total_volume_usd'):
+            return obj._precomputed_total_volume_usd
         user_ids = obj.users.values_list('id', flat=True)
         trades = Trade.objects.filter(user_id__in=user_ids)
         total = sum([t.price_usd * t.token_amount for t in trades], Decimal('0.0'))
         return float(round(total, 2))
 
     def get_total_deposits_usd(self, obj):
+        if hasattr(obj, '_precomputed_total_deposits_usd'):
+            return obj._precomputed_total_deposits_usd
         user_ids = obj.users.values_list('id', flat=True)
         deposits = PlatformDeposit.objects.filter(user_id__in=user_ids, status='CONFIRMED')
         total = sum([d.amount for d in deposits], Decimal('0.0'))
         return float(round(total, 2))
 
     def get_pending_withdrawals_count(self, obj):
+        if hasattr(obj, '_precomputed_pending_withdrawals_count'):
+            return obj._precomputed_pending_withdrawals_count
         user_ids = obj.users.values_list('id', flat=True)
         return WithdrawalRequest.objects.filter(user_id__in=user_ids, status='PENDING').count()
 
@@ -68,6 +76,29 @@ class PricePointSerializer(serializers.ModelSerializer):
         model = PricePoint
         fields = ['price', 'timestamp', 'timeframe']
 
+class MemeTokenListSerializer(serializers.ModelSerializer):
+    """Ultra-lightweight serializer for high-frequency token listings (zero N+1 queries, minimal payload)."""
+    user_holders_count = serializers.IntegerField(read_only=True)
+    total_buyers_count = serializers.IntegerField(read_only=True)
+    total_user_buy_volume_usd = serializers.SerializerMethodField()
+    user_circulating_tokens = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MemeToken
+        fields = [
+            'id', 'name', 'symbol', 'logo_url', 'description',
+            'total_supply', 'current_price_usd', 'market_cap_usd',
+            'liquidity_usd', 'change_24h', 'contract_address', 'is_active', 'is_rugged', 'pair_currency',
+            'is_verified', 'is_liquidity_locked', 'total_buyers_count',
+            'created_at', 'user_holders_count', 'total_user_buy_volume_usd', 'user_circulating_tokens'
+        ]
+
+    def get_total_user_buy_volume_usd(self, obj):
+        return 0.0
+
+    def get_user_circulating_tokens(self, obj):
+        return 0.0
+
 class MemeTokenSerializer(serializers.ModelSerializer):
     price_points = PricePointSerializer(many=True, read_only=True)
     user_holders_count = serializers.SerializerMethodField()
@@ -86,21 +117,13 @@ class MemeTokenSerializer(serializers.ModelSerializer):
         ]
 
     def get_user_holders_count(self, obj):
-        holders_from_bal = list(UserBalance.objects.filter(currency=obj.symbol, available_amount__gt=0).values_list('user_id', flat=True))
-        buyers = list(Trade.objects.filter(token=obj, side='BUY').values_list('user_id', flat=True))
-        real_count = len(set(holders_from_bal + buyers))
-        base_count = getattr(obj, 'user_holders_count', 25) or 25
-        return max(base_count, real_count)
+        return getattr(obj, 'user_holders_count', 25) or 25
 
     def get_total_user_buy_volume_usd(self, obj):
-        trades = Trade.objects.filter(token=obj, side='BUY')
-        total = sum([t.price_usd * t.token_amount for t in trades], Decimal('0.0'))
-        return float(round(total, 2))
+        return 0.0
 
     def get_user_circulating_tokens(self, obj):
-        balances = UserBalance.objects.filter(currency=obj.symbol, available_amount__gt=0)
-        total = sum([b.available_amount for b in balances], Decimal('0.0'))
-        return float(total)
+        return 0.0
 
 class TradeSerializer(serializers.ModelSerializer):
     user_address = serializers.CharField(source='user.wallet_address', read_only=True)

@@ -154,6 +154,7 @@ if DATABASE_URL:
             'PASSWORD': db_url.password,
             'HOST': db_url.hostname,
             'PORT': db_url.port or 5432,
+            'CONN_MAX_AGE': 600,
             'OPTIONS': {
                 'sslmode': 'require',
             } if db_url.hostname and ('render.com' in db_url.hostname or 'dpg-' in db_url.hostname) else {},
@@ -164,8 +165,21 @@ else:
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME': BASE_DIR / 'db.sqlite3',
+            'CONN_MAX_AGE': 600,
         }
     }
+
+# High-performance in-memory cache
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'axiom_memory_cache',
+        'TIMEOUT': 300,
+        'OPTIONS': {
+            'MAX_ENTRIES': 2000,
+        }
+    }
+}
 
 # ─────────────────────────────────────────────
 # Cookie / Session Security

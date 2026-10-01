@@ -876,7 +876,7 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
                   <thead>
                     <tr style={{ borderBottom: `1px solid ${C.border}`, color: C.textDim, fontSize: '11px', textTransform: 'uppercase' }}>
                       <th style={{ paddingBottom: '12px' }}>User / Email</th>
-                      <th style={{ paddingBottom: '12px' }}>Wallet Address</th>
+                      <th style={{ paddingBottom: '12px' }}>User ID (UID)</th>
                       <th style={{ paddingBottom: '12px' }}>Link Slug</th>
                       <th style={{ paddingBottom: '12px' }}>Portfolio USD</th>
                       <th style={{ paddingBottom: '12px' }}>Registered At</th>
@@ -889,8 +889,13 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
                           <div style={{ fontWeight: 700, color: '#fff' }}>{u.email || 'Anonymous'}</div>
                           {u.full_name && <div style={{ fontSize: '11px', color: C.textDim }}>{u.full_name}</div>}
                         </td>
-                        <td style={{ padding: '14px 0', fontFamily: 'monospace', color: C.cyan, fontSize: '11px' }}>
-                          {u.wallet_address?.slice(0, 12)}...{u.wallet_address?.slice(-8)}
+                        <td style={{ padding: '14px 0' }}>
+                          <div style={{ fontFamily: 'monospace', color: C.cyan, fontWeight: 800, fontSize: '12px', letterSpacing: '0.5px' }}>
+                            {u.uid || `AXM-${String(u.id || '').replace(/-/g, '').slice(0, 8).toUpperCase()}`}
+                          </div>
+                          <div style={{ fontSize: '10px', color: C.textDim, fontFamily: 'monospace', marginTop: 2 }}>
+                            {u.wallet_address ? `${u.wallet_address.slice(0, 6)}...${u.wallet_address.slice(-4)}` : ''}
+                          </div>
                         </td>
                         <td style={{ padding: '14px 0' }}>
                           <span style={{ fontSize: '11px', fontFamily: 'monospace', color: C.cyan, background: C.cyanBg, border: `1px solid ${C.borderCyan}`, padding: '2px 8px', borderRadius: '6px' }}>
