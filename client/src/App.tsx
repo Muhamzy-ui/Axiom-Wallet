@@ -4,7 +4,7 @@ import {
   Copy, LayoutDashboard, LineChart, Menu, Plus, Search,
   Send, Settings, Shield, ShieldCheck, Target, Star, Wallet, X, TrendingUp, TrendingDown,
   AlertTriangle, Coins, Users, ArrowDownToLine, ArrowUpToLine, Skull, LogOut, Sliders, Zap, Globe, Lock, ShoppingBag, RotateCcw, ExternalLink,
-  Sun, Moon, CreditCard, RefreshCw, Clock, Crown, Flame, Activity, Trophy, Eye, EyeOff, Camera, Share
+  Sun, Moon, CreditCard, RefreshCw, Clock, Crown, Flame, Activity, Trophy, Eye, EyeOff, Camera, Share, Download, Smartphone
 } from "lucide-react";
 import "./index.css";
 import { AdminDashboard } from "./components/admin/AdminDashboard";
@@ -25,6 +25,8 @@ import { WithdrawPage } from "./components/modals/WithdrawPage";
 import { SendPage } from "./components/modals/SendPage";
 import { ProfitShareModal } from "./components/modals/ProfitShareModal";
 import { CountrySelectModal } from "./components/modals/CountrySelectModal";
+import { AddToHomeScreenModal } from "./components/modals/AddToHomeScreenModal";
+import { pwaService, getIsStandalone, getIsIOS, getIsAndroid } from "./services/pwaService";
 import { getCountryByCode, CountryInfo, syncDollarRateFromBackend } from "./constants/countries";
 import { CountryFlag } from "./components/common/CountryFlag";
 import { AxiomLogo } from "./components/common/AxiomLogo";
@@ -32,7 +34,7 @@ import { formatCoinPrice, formatRawPrice, formatPercentage, formatUsdAmount } fr
 import { generatePhantomAvatar, generatePresetAvatar, PHANTOM_AVATAR_PRESETS, type AvatarPreset } from "./utils/avatar";
 
 type View = "trade" | "wallet" | "swap" | "admin" | "profile" | "leaderboard";
-type Modal = "deposit" | "send" | "confirm" | "create" | "buy" | "withdraw" | "profit" | "";
+type Modal = "deposit" | "send" | "confirm" | "create" | "buy" | "withdraw" | "profit" | "install" | "";
 
 const COIN_IMGS: Record<string, string> = {
   BTC: "https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png",
@@ -3054,6 +3056,24 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
   const [tick, setTick] = useState(0);
   const [isWalletSyncing, setIsWalletSyncing] = useState(false);
 
+  const isStandalone = getIsStandalone();
+  const isIOS = getIsIOS();
+  const isAndroid = getIsAndroid();
+  const [installDismissed, setInstallDismissed] = useState(() => {
+    try {
+      return localStorage.getItem("axiom_install_banner_dismissed") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const handleDismissInstall = () => {
+    setInstallDismissed(true);
+    try {
+      localStorage.setItem("axiom_install_banner_dismissed", "true");
+    } catch {}
+  };
+
   useEffect(() => {
     marketStore.syncBackendPortfolio(true);
     return marketStore.subscribe(() => setTick(t => t + 1));
@@ -3367,6 +3387,45 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
           )}
         </div>
       </div>
+
+      {/* Add to Home Screen Banner for Mobile & Desktop (Android & iOS) */}
+      {!isStandalone && !installDismissed && (
+        <div className="pwa-install-banner">
+          <div className="pwa-install-banner-left">
+            <div className="pwa-install-banner-icon">
+              <Smartphone size={18} />
+            </div>
+            <div className="pwa-install-banner-info">
+              <div className="pwa-install-banner-title">Add Axiom to Home Screen</div>
+              <div className="pwa-install-banner-desc">
+                {isIOS
+                  ? "Install on iPhone for full-screen trading & fast access"
+                  : isAndroid
+                  ? "Install on Android for 1-tap launch & instant sync"
+                  : "Install Axiom on your home screen for full-screen trading"}
+              </div>
+            </div>
+          </div>
+          <div className="pwa-install-banner-right">
+            <button
+              type="button"
+              className="pwa-install-cta-btn"
+              onClick={() => modal("install")}
+            >
+              <Download size={13} />
+              <span>Install App</span>
+            </button>
+            <button
+              type="button"
+              className="pwa-install-close-btn"
+              onClick={handleDismissInstall}
+              title="Dismiss banner"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Trust Wallet Hero: Cleanly centered on mobile with evenly distributed buttons */}
       <div className="wallet-hero trust-wallet-hero">
@@ -4190,6 +4249,16 @@ function ModalBox({
         isOpen={true}
         onClose={close}
         authUser={authUser}
+        flash={flash}
+      />
+    );
+  }
+
+  if (type === "install") {
+    return (
+      <AddToHomeScreenModal
+        isOpen={true}
+        onClose={close}
         flash={flash}
       />
     );
@@ -5093,6 +5162,66 @@ function ProfileView({
           </form>
         </div>
 
+        {/* ── Add to Home Screen / Mobile App Card ── */}
+        <div className="profile-card profile-install-card">
+          <div className="profile-card-title">
+            <Smartphone size={18} />
+            <span>Add to Home Screen / Mobile App</span>
+            {getIsStandalone() ? (
+              <span style={{ fontSize: 10, background: "rgba(16, 185, 129, 0.18)", color: "#6EE7B7", padding: "2px 8px", borderRadius: 10, fontWeight: 700, marginLeft: "auto" }}>
+                ✓ INSTALLED
+              </span>
+            ) : (
+              <span style={{ fontSize: 10, background: "rgba(124, 58, 237, 0.18)", color: "#C4B5FD", padding: "2px 8px", borderRadius: 10, fontWeight: 700, marginLeft: "auto" }}>
+                IPHONE & ANDROID
+              </span>
+            )}
+          </div>
+          <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 14px 0" }}>
+            {getIsStandalone()
+              ? "Axiom Wallet is installed on this device. You are enjoying the native standalone app experience."
+              : "Install Axiom directly to your iPhone or Android home screen for instant 1-tap access, full-screen trading without browser address bars, and instant data persistence."}
+          </p>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", background: "rgba(255, 255, 255, 0.03)", padding: "12px 14px", borderRadius: 12, border: "1px solid rgba(255, 255, 255, 0.08)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(124, 58, 237, 0.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "#C4B5FD", flexShrink: 0 }}>
+                <Download size={18} />
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
+                  {getIsStandalone() ? "Installed Standalone App" : "Install Axiom Mobile App"}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                  {getIsStandalone() ? "Running in standalone mode" : getIsIOS() ? "Optimized for iOS Safari" : getIsAndroid() ? "Optimized for Android Chrome" : "Universal Web App"}
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => modal("install")}
+              style={{
+                background: "linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)",
+                border: "none",
+                color: "#FFFFFF",
+                borderRadius: 10,
+                padding: "9px 16px",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                boxShadow: "0 2px 10px rgba(124, 58, 237, 0.3)"
+              }}
+            >
+              <Download size={14} />
+              <span>{getIsStandalone() ? "View App Details" : "Add to Home Screen"}</span>
+            </button>
+          </div>
+        </div>
+
         {/* Account Session Card */}
         <div className="profile-card">
           <div className="profile-card-title">
@@ -5452,6 +5581,13 @@ function AppShell({
   const [islandToast, setIslandToast] = useState<{ id: number; message: string } | null>(null);
   const islandTimerRef = useRef<any>(null);
 
+  const [isAppStandalone, setIsAppStandalone] = useState(() => pwaService.isStandalone);
+  useEffect(() => {
+    return pwaService.subscribe(() => {
+      setIsAppStandalone(pwaService.isStandalone);
+    });
+  }, []);
+
   const flash = (msg: string) => {
     if (!msg) return;
     if (islandTimerRef.current) clearTimeout(islandTimerRef.current);
@@ -5687,6 +5823,18 @@ function AppShell({
             <span className="network-dot" />Solana<ChevronDown size={12} />
           </div>
 
+          {/* Add to Home Screen / Install Button (Android & iPhone) */}
+          <button
+            type="button"
+            className={`header-icon-btn install-pwa-btn ${isAppStandalone ? "installed" : ""}`}
+            onClick={() => setModal("install")}
+            title={isAppStandalone ? "Axiom App Installed (Tap for status)" : "Add Axiom to Home Screen (iPhone & Android)"}
+            aria-label="Add to Home Screen"
+          >
+            {isAppStandalone ? <CheckCircle size={15} color="#34D399" /> : <Download size={15} />}
+            <span className="install-btn-text">{isAppStandalone ? "Installed" : "Install App"}</span>
+          </button>
+
           {/* Quick Refresh / Reload Button (Crucial for iOS Home Screen standalone PWA) */}
           <button
             type="button"
@@ -5744,6 +5892,21 @@ function AppShell({
             <Icon size={16} />{label}
           </button>
         ))}
+        <button
+          onClick={() => { setModal("install"); setMenu(false); }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            color: isAppStandalone ? "#34D399" : "#C4B5FD",
+            borderTop: "1px solid var(--border)",
+            marginTop: 4,
+            paddingTop: 8,
+          }}
+        >
+          {isAppStandalone ? <CheckCircle size={16} /> : <Smartphone size={16} />}
+          <span>{isAppStandalone ? "App Installed ✓" : "Add to Home Screen"}</span>
+        </button>
         <button onClick={() => { toggleTheme(); setMenu(false); }} style={{ borderTop: "1px solid var(--border)", marginTop: 4, paddingTop: 8 }}>
           {isLight ? <Moon size={16} /> : <Sun size={16} />}
           {isLight ? "Dark Mode" : "Light Mode"}

@@ -39,6 +39,17 @@
           document.documentElement.setAttribute('data-theme', t);
           document.documentElement.style.colorScheme = t;
         } catch(e) {}
+
+        // Register Service Worker for PWA installability & offline support
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', function() {
+            navigator.serviceWorker.register('/sw.js').then(function(reg) {
+              console.log('[Axiom PWA] Service Worker registered with scope:', reg.scope);
+            }).catch(function(err) {
+              console.log('[Axiom PWA] Service Worker registration skipped:', err);
+            });
+          });
+        }
       })();
     </script>
   </head>
