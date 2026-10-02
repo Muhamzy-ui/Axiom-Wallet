@@ -47,7 +47,13 @@ export const api = {
 
   // Portfolio
   async getPortfolio(address: string): Promise<PortfolioData> {
-    const res = await fetch(`${API_BASE}/wallet/portfolio/?address=${encodeURIComponent(address)}`);
+    const res = await fetch(`${API_BASE}/wallet/portfolio/?address=${encodeURIComponent(address)}&_t=${Date.now()}`, {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
+      cache: 'no-store',
+    });
     return res.json();
   },
 
@@ -379,6 +385,18 @@ export const api = {
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.error || 'Failed to reject withdrawal');
+    }
+    return res.json();
+  },
+
+  async uploadTokenImage(imageData: string, prefix = 'coin'): Promise<{ success: boolean; url: string }> {
+    const res = await fetch(`${API_BASE}/admin-api/tokens/upload-image/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_data: imageData, prefix }),
+    });
+    if (!res.ok) {
+      throw new Error('Failed to upload image to server');
     }
     return res.json();
   },

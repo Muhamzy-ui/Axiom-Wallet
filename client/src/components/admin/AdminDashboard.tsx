@@ -880,6 +880,59 @@ const BANNER_PRESETS = [
 const generateSolanaAddress = () =>
   Array.from({ length: 44 }, () => "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"[Math.floor(Math.random() * 58)]).join("");
 
+// Canvas-based image compressor for mobile devices (downscales 10MB phone camera shots to lightweight ~20KB crisp images)
+const compressImageFile = (file: File, maxDim = 300, quality = 0.85): Promise<string> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const src = ev.target?.result as string;
+      if (!src) {
+        resolve('');
+        return;
+      }
+      const img = new window.Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, width);
+        canvas.height = Math.max(1, height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(src);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        try {
+          const webp = canvas.toDataURL('image/webp', quality);
+          if (webp && webp.startsWith('data:image/webp')) {
+            resolve(webp);
+            return;
+          }
+        } catch {}
+        try {
+          const jpeg = canvas.toDataURL('image/jpeg', quality);
+          resolve(jpeg);
+        } catch {
+          resolve(src);
+        }
+      };
+      img.onerror = () => resolve(src);
+      img.src = src;
+    };
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(file);
+  });
+};
+
 /* ══════════════════════ PAGE 2: COIN LAUNCHER & MARKET MAKER ═════════ */
 function MemeCoinsPage({ search }: { search: string }) {
   const [, setTick] = useState(0);
@@ -892,6 +945,14 @@ function MemeCoinsPage({ search }: { search: string }) {
   const [rugModal, setRugModal] = useState<string | null>(null);
   const [deleteModalToken, setDeleteModalToken] = useState<string | null>(null);
   
+  // Mobile-safe file input refs
+  const deployLogoInputRef = useRef<HTMLInputElement>(null);
+  const deployBannerInputRef = useRef<HTMLInputElement>(null);
+  const editLogoInputRef = useRef<HTMLInputElement>(null);
+  const editBannerInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+
   // Control modes: dollars ($ USD) vs percent (%) vs target ($ direct target)
   const [controlMode, setControlMode] = useState<'dollars' | 'percent' | 'target'>('dollars');
   const [customPump, setCustomPump] = useState("15");
@@ -939,6 +1000,68 @@ function MemeCoinsPage({ search }: { search: string }) {
 
   const [toast, setToast] = useState<string | null>(null);
   const toast_ = (m: string) => { setToast(m); setTimeout(() => setToast(null), 3500); };
+
+  const handleLogoUpload = async (file: File, isEdit = false) => {
+    if (!file) return;
+    setUploadingLogo(true);
+    toast_('Processing logo image...');
+    try {
+      const compressed = await compressImageFile(file, 256, 0.85);
+      if (!compressed) throw new Error('Could not read image file');
+      if (isEdit) {
+        setEditForm(prev => ({ ...prev, logo_url: compressed }));
+      } else {
+        setForm(prev => ({ ...prev, logo_url: compressed }));
+      }
+      try {
+        const sym = isEdit ? (editForm.symbol || editModalToken?.sym || 'coin') : (form.symbol || 'coin');
+        const res = await api.uploadTokenImage(compressed, sym);
+        if (res?.url) {
+          if (isEdit) {
+            setEditForm(prev => ({ ...prev, logo_url: res.url }));
+          } else {
+            setForm(prev => ({ ...prev, logo_url: res.url }));
+          }
+        }
+      } catch {}
+      toast_('✓ Logo picture uploaded successfully!');
+    } catch (err: any) {
+      toast_(`Upload failed: ${err?.message || 'Error processing image'}`);
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleBannerUpload = async (file: File, isEdit = false) => {
+    if (!file) return;
+    setUploadingBanner(true);
+    toast_('Processing banner image...');
+    try {
+      const compressed = await compressImageFile(file, 800, 0.85);
+      if (!compressed) throw new Error('Could not read image file');
+      if (isEdit) {
+        setEditForm(prev => ({ ...prev, banner_url: compressed }));
+      } else {
+        setForm(prev => ({ ...prev, banner_url: compressed }));
+      }
+      try {
+        const sym = isEdit ? (editForm.symbol || editModalToken?.sym || 'banner') : (form.symbol || 'banner');
+        const res = await api.uploadTokenImage(compressed, `${sym}_banner`);
+        if (res?.url) {
+          if (isEdit) {
+            setEditForm(prev => ({ ...prev, banner_url: res.url }));
+          } else {
+            setForm(prev => ({ ...prev, banner_url: res.url }));
+          }
+        }
+      } catch {}
+      toast_('✓ Banner picture uploaded successfully!');
+    } catch (err: any) {
+      toast_(`Upload failed: ${err?.message || 'Error processing image'}`);
+    } finally {
+      setUploadingBanner(false);
+    }
+  };
 
   const tokens = marketStore.tokens;
   const effectiveSearch = (localSearch || search || "").trim().toLowerCase();
@@ -1395,11 +1518,18 @@ function MemeCoinsPage({ search }: { search: string }) {
           {/* User Holder & Volume Calculations */}
           <div style={{ background: 'rgba(16, 185, 129, 0.08)', padding: '10px 14px', borderRadius: 10, border: '1px solid rgba(16, 185, 129, 0.25)' }}>
             <div style={{ fontSize: 11, color: C.green, fontWeight: 700 }}>REAL BUYERS</div>
-            <div style={{ fontSize: 16, fontWeight: 900, color: C.text, marginTop: 2 }}>{fmtCount(activeToken.user_holders_count || 0)} Users</div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: C.text, marginTop: 2 }}>{fmtCount(activeToken.real_buyers_count ?? 0)} Users</div>
+            <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>Verified Accounts</div>
           </div>
           <div style={{ background: 'rgba(124, 58, 237, 0.08)', padding: '10px 14px', borderRadius: 10, border: '1px solid rgba(124, 58, 237, 0.25)' }}>
             <div style={{ fontSize: 11, color: '#A78BFA', fontWeight: 700 }}>USER BUY VOL</div>
             <div style={{ fontSize: 16, fontWeight: 900, color: C.text, marginTop: 2 }}>{fmtUSD(activeToken.total_user_buy_volume_usd || 0)}</div>
+            <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>Real User Volume</div>
+          </div>
+          <div style={{ background: C.surface2, padding: '10px 14px', borderRadius: 10, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 11, color: '#60A5FA', fontWeight: 700 }}>POOL HOLDERS</div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: C.text, marginTop: 2 }}>{fmtCount(activeToken.user_holders_count || 0)} Holders</div>
+            <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>DEX Liquidity Pool</div>
           </div>
 
           <div style={{ background: C.surface2, padding: '10px 14px', borderRadius: 10, border: `1px solid ${C.border}` }}>
@@ -2146,10 +2276,10 @@ function MemeCoinsPage({ search }: { search: string }) {
           <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
               <thead><tr style={{ borderBottom: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.02)' }}>
-                {['Token', 'Price', '24h Change', 'Liquidity', 'Mkt Cap', 'Real Buyers', 'User Volume', 'Verified', 'Contract', 'Status', 'Quick Actions'].map(h => <th key={h} style={TH}>{h}</th>)}
+                {['Token', 'Price', '24h Change', 'Liquidity', 'Mkt Cap', 'Real Buyers', 'User Volume', 'Pool Holders', 'Verified', 'Contract', 'Status', 'Quick Actions'].map(h => <th key={h} style={TH}>{h}</th>)}
               </tr></thead>
             <tbody>
-              {filtered.length === 0 ? <tr><td colSpan={11}><EmptyState message="No tokens found." /></td></tr> : filtered.map(t => (
+              {filtered.length === 0 ? <tr><td colSpan={12}><EmptyState message="No tokens found." /></td></tr> : filtered.map(t => (
                 <tr key={t.sym} style={{ borderBottom: `1px solid ${C.border}` }} {...TR_HOVER}>
                   <td style={TD}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -2173,6 +2303,15 @@ function MemeCoinsPage({ search }: { search: string }) {
                   <td style={{ ...TD, fontWeight: 700, color: t.pos ? C.green : C.red }}>{t.change}</td>
                   <td style={{ ...TD, color: C.muted }}>{t.liq}</td>
                   <td style={{ ...TD, color: C.muted }}>{t.cap}</td>
+                  <td style={{ ...TD, fontWeight: 800, color: (t.real_buyers_count && t.real_buyers_count > 0) ? C.green : C.muted }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <Users size={12} />
+                      {fmtCount(t.real_buyers_count || 0)}
+                    </span>
+                  </td>
+                  <td style={{ ...TD, fontWeight: 700, color: (t.total_user_buy_volume_usd && t.total_user_buy_volume_usd > 0) ? '#A78BFA' : C.muted }}>
+                    {fmtUSD(t.total_user_buy_volume_usd || 0)}
+                  </td>
                   <td style={{ ...TD, fontWeight: 700, color: C.text }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span>{fmtCount(t.user_holders_count || 0)}</span>
@@ -2181,9 +2320,9 @@ function MemeCoinsPage({ search }: { search: string }) {
                         onClick={(e) => {
                           e.stopPropagation();
                           marketStore.boostTokenHolders(t.sym, 10);
-                          toast_(`🚀 Added +10 holders/buyers to ${t.sym}!`);
+                          toast_(`🚀 Added +10 pool holders to ${t.sym}!`);
                         }}
-                        title="Add 10 verified buyers/holders"
+                        title="Add 10 DEX pool liquidity holders"
                         style={{
                           padding: '2px 6px',
                           borderRadius: 4,
@@ -2202,9 +2341,9 @@ function MemeCoinsPage({ search }: { search: string }) {
                         onClick={(e) => {
                           e.stopPropagation();
                           marketStore.boostTokenHolders(t.sym, 50);
-                          toast_(`🔥 Added +50 holders/buyers to ${t.sym}!`);
+                          toast_(`🔥 Added +50 pool holders to ${t.sym}!`);
                         }}
-                        title="Add 50 verified buyers/holders"
+                        title="Add 50 DEX pool liquidity holders"
                         style={{
                           padding: '2px 6px',
                           borderRadius: 4,
@@ -2219,9 +2358,6 @@ function MemeCoinsPage({ search }: { search: string }) {
                         +50
                       </button>
                     </div>
-                  </td>
-                  <td style={{ ...TD, fontWeight: 700, color: C.green }}>
-                    {fmtUSD(t.total_user_buy_volume_usd || 0)}
                   </td>
                   <td style={TD}>
                     <button
@@ -2352,7 +2488,7 @@ function MemeCoinsPage({ search }: { search: string }) {
         const supplyNum = parseFloat(form.supply) || 0;
         const liquidityNum = parseFloat(form.liquidity) || 0;
         const mktCapVal = parseFloat(form.marketCap) || (priceNum * supplyNum);
-        const solVal = priceNum / 179.84;
+        const solVal = priceNum / 121.69;
         const formatMcap = (v: number) => {
           if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
           if (v >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
@@ -2524,8 +2660,10 @@ function MemeCoinsPage({ search }: { search: string }) {
                     <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase' }}>
                       Coin Picture / Logo (Preset, URL or Device Upload) *
                     </label>
-                    <label
-                      htmlFor="deploy-logo-upload"
+                    <button
+                      type="button"
+                      onClick={() => deployLogoInputRef.current?.click()}
+                      disabled={uploadingLogo}
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -2541,23 +2679,17 @@ function MemeCoinsPage({ search }: { search: string }) {
                       }}
                       title="Upload coin logo from device"
                     >
-                      <Upload size={11} /> Upload Picture
-                    </label>
+                      <Upload size={11} /> {uploadingLogo ? 'Processing...' : 'Upload Picture'}
+                    </button>
                     <input
-                      id="deploy-logo-upload"
+                      ref={deployLogoInputRef}
                       type="file"
                       accept="image/*"
-                      style={{ display: 'none' }}
+                      style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
                       onChange={e => {
                         const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onload = ev => {
-                            const res = ev.target?.result as string;
-                            if (res) setForm(prev => ({ ...prev, logo_url: res }));
-                          };
-                          reader.readAsDataURL(file);
-                        }
+                        if (file) handleLogoUpload(file, false);
+                        e.target.value = '';
                       }}
                     />
                   </div>
@@ -2617,8 +2749,10 @@ function MemeCoinsPage({ search }: { search: string }) {
                     <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase' }}>
                       Coin Background Banner Image (Header Wallpaper)
                     </label>
-                    <label
-                      htmlFor="deploy-banner-upload"
+                    <button
+                      type="button"
+                      onClick={() => deployBannerInputRef.current?.click()}
+                      disabled={uploadingBanner}
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -2634,23 +2768,17 @@ function MemeCoinsPage({ search }: { search: string }) {
                       }}
                       title="Upload background banner from device"
                     >
-                      <Image size={11} /> Upload Banner
-                    </label>
+                      <Image size={11} /> {uploadingBanner ? 'Processing...' : 'Upload Banner'}
+                    </button>
                     <input
-                      id="deploy-banner-upload"
+                      ref={deployBannerInputRef}
                       type="file"
                       accept="image/*"
-                      style={{ display: 'none' }}
+                      style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
                       onChange={e => {
                         const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onload = ev => {
-                            const res = ev.target?.result as string;
-                            if (res) setForm(prev => ({ ...prev, banner_url: res }));
-                          };
-                          reader.readAsDataURL(file);
-                        }
+                        if (file) handleBannerUpload(file, false);
+                        e.target.value = '';
                       }}
                     />
                   </div>
@@ -2835,7 +2963,7 @@ function MemeCoinsPage({ search }: { search: string }) {
         const supplyNum = parseFloat(editForm.supply) || 0;
         const liquidityNum = parseFloat(editForm.liquidity) || 0;
         const mktCapVal = parseFloat(editForm.marketCap) || (priceNum * supplyNum);
-        const solVal = priceNum / 179.84;
+        const solVal = priceNum / 121.69;
         const formatMcap = (v: number) => {
           if (v >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
           if (v >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
@@ -2981,8 +3109,10 @@ function MemeCoinsPage({ search }: { search: string }) {
                     <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase' }}>
                       Coin Picture / Logo (Preset, URL or Device Upload) *
                     </label>
-                    <label
-                      htmlFor="edit-logo-upload"
+                    <button
+                      type="button"
+                      onClick={() => editLogoInputRef.current?.click()}
+                      disabled={uploadingLogo}
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -2998,23 +3128,17 @@ function MemeCoinsPage({ search }: { search: string }) {
                       }}
                       title="Upload coin logo from device"
                     >
-                      <Upload size={11} /> Upload Picture
-                    </label>
+                      <Upload size={11} /> {uploadingLogo ? 'Processing...' : 'Upload Picture'}
+                    </button>
                     <input
-                      id="edit-logo-upload"
+                      ref={editLogoInputRef}
                       type="file"
                       accept="image/*"
-                      style={{ display: 'none' }}
+                      style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
                       onChange={e => {
                         const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onload = ev => {
-                            const res = ev.target?.result as string;
-                            if (res) setEditForm(prev => ({ ...prev, logo_url: res }));
-                          };
-                          reader.readAsDataURL(file);
-                        }
+                        if (file) handleLogoUpload(file, true);
+                        e.target.value = '';
                       }}
                     />
                   </div>
@@ -3073,8 +3197,10 @@ function MemeCoinsPage({ search }: { search: string }) {
                     <label style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase' }}>
                       Coin Background Banner Image (Header Wallpaper)
                     </label>
-                    <label
-                      htmlFor="edit-banner-upload"
+                    <button
+                      type="button"
+                      onClick={() => editBannerInputRef.current?.click()}
+                      disabled={uploadingBanner}
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -3090,23 +3216,17 @@ function MemeCoinsPage({ search }: { search: string }) {
                       }}
                       title="Upload background banner from device"
                     >
-                      <Image size={11} /> Upload Banner
-                    </label>
+                      <Image size={11} /> {uploadingBanner ? 'Processing...' : 'Upload Banner'}
+                    </button>
                     <input
-                      id="edit-banner-upload"
+                      ref={editBannerInputRef}
                       type="file"
                       accept="image/*"
-                      style={{ display: 'none' }}
+                      style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
                       onChange={e => {
                         const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onload = ev => {
-                            const res = ev.target?.result as string;
-                            if (res) setEditForm(prev => ({ ...prev, banner_url: res }));
-                          };
-                          reader.readAsDataURL(file);
-                        }
+                        if (file) handleBannerUpload(file, true);
+                        e.target.value = '';
                       }}
                     />
                   </div>
@@ -5938,10 +6058,16 @@ function JuniorAdminsPage({ loading: globalLoading, search = '' }: { loading: bo
 function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
   const [top8, setTop8] = useState<Trader[]>(() => leaderboardStore.getTop8());
   const [editingTrader, setEditingTrader] = useState<Trader | null>(null);
+  const [editingTopCoinsInput, setEditingTopCoinsInput] = useState<string>('');
   const [tradeCtrl, setTradeCtrl] = useState<AdminTradeControl>(() => leaderboardStore.getTradeControl());
   const [whaleSym, setWhaleSym] = useState("SOL");
   const [whaleAmount, setWhaleAmount] = useState("50000");
   const [activeSubTab, setActiveSubTab] = useState<"top8" | "stream">("top8");
+
+  const openEditTrader = (trader: Trader) => {
+    setEditingTrader(trader);
+    setEditingTopCoinsInput(trader.topCoins ? trader.topCoins.join(', ') : '');
+  };
 
   const saveTop8 = () => {
     leaderboardStore.saveTop8(top8);
@@ -6116,7 +6242,7 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
                   <span style={{ color: C.muted }}>Pairs: {trader.topCoins.join(', ')}</span>
                   <button
                     type="button"
-                    onClick={() => setEditingTrader(trader)}
+                    onClick={() => openEditTrader(trader)}
                     style={{
                       background: 'rgba(124,58,237,0.15)',
                       border: '1px solid rgba(124,58,237,0.3)',
@@ -6261,8 +6387,19 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
                       <label style={{ display: 'block', fontSize: 11, color: C.muted, marginBottom: 4 }}>Top Coins (comma separated)</label>
                       <input
                         type="text"
-                        value={editingTrader.topCoins.join(', ')}
-                        onChange={e => updateTrader(editingTrader.id, 'topCoins', e.target.value.split(',').map(s => s.trim().toUpperCase()))}
+                        value={editingTopCoinsInput}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setEditingTopCoinsInput(val);
+                          const parsed = val.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+                          updateTrader(editingTrader.id, 'topCoins', parsed);
+                        }}
+                        onBlur={() => {
+                          if (editingTrader) {
+                            setEditingTopCoinsInput(editingTrader.topCoins.join(', '));
+                          }
+                        }}
+                        placeholder="e.g. SOL, WIF, BREW"
                         style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, color: C.text, fontSize: 12 }}
                       />
                     </div>

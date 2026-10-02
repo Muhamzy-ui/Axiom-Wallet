@@ -6,12 +6,12 @@ from ..models import MemeToken, Trade, SwapTransaction, PricePoint, PlatformSett
 from .ledger import credit_balance, debit_balance
 
 BASE_RATES_USD = {
-    'SOL': Decimal('179.84'),
+    'SOL': Decimal('121.69'),
     'ETH': Decimal('2650.00'),
     'USDT': Decimal('1.00'),
     'USDC': Decimal('1.00'),
     'USD': Decimal('1.00'),
-    'BTC': Decimal('77724.00'),
+    'BTC': Decimal('84600.00'),
 }
 
 def generate_tx_hash(prefix='tx_'):

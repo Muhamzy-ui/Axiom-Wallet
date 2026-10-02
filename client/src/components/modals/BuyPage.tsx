@@ -149,7 +149,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
       : buyTokenObj && buyTokenObj.numericPrice > 0
       ? buyTokenObj.numericPrice
       : buyCoin === "SOL"
-      ? 179.84
+      ? 121.69
       : buyCoin === "BTC"
       ? 77724.0
       : 2650.0;
@@ -259,10 +259,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
           <span>Direct fiat onramp & vault delivery</span>
         </div>
 
-        <div className="fullpage-status-badge">
-          <span className="pulse-dot" />
-          <span>ONRAMP LIVE</span>
-        </div>
+        <div style={{ width: 68 }} />
       </header>
 
       {/* Main Body */}
@@ -828,7 +825,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                       sym === "USDT" || sym === "USDC"
                         ? 1.0
                         : marketStore.getToken(sym)?.numericPrice ||
-                          (sym === "SOL" ? 179.84 : sym === "BTC" ? 77724 : 2650);
+                          (sym === "SOL" ? 121.69 : sym === "BTC" ? 77724 : 2650);
 
                     return (
                       <button

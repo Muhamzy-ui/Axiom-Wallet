@@ -49,6 +49,7 @@ export interface MarketToken {
   isMarketMakerActive?: boolean;
   customPrice?: boolean;
   user_holders_count?: number;
+  real_buyers_count?: number;
   total_buyers_count?: number;
   total_user_buy_volume_usd?: number;
   user_circulating_tokens?: number;
@@ -210,26 +211,26 @@ const INITIAL_TOKENS: MarketToken[] = [
   {
     sym: "SOL",
     name: "Solana",
-    price: "$179.84",
-    numericPrice: 179.84,
+    price: "$121.69",
+    numericPrice: 121.69,
     solPrice: "1.0000 SOL",
-    change: "+6.84%",
-    changeNum: 6.84,
-    cap: "$82.6B",
-    fdv: "$105.8B",
-    liq: "$38.5M",
+    change: "+2.08%",
+    changeNum: 2.08,
+    cap: "$71.58B",
+    fdv: "$75.16B",
+    liq: "$349.2M",
     pos: true,
     supply: 459297153,
-    m5: { val: "0.27%", up: true },
-    h1: { val: "1.23%", up: true },
-    h6: { val: "3.75%", up: true },
-    h24: { val: "6.84%", up: true },
+    m5: { val: "0.15%", up: true },
+    h1: { val: "0.68%", up: true },
+    h6: { val: "2.08%", up: true },
+    h24: { val: "2.08%", up: true },
     txns: 135006,
     buys: 71014,
     sells: 63992,
-    vol: 245.5,
-    buyVol: 132.4,
-    sellVol: 113.1,
+    vol: 436.5,
+    buyVol: 242.4,
+    sellVol: 194.1,
     traders: 18257,
     buyers: 9878,
     sellers: 8379,
@@ -237,7 +238,7 @@ const INITIAL_TOKENS: MarketToken[] = [
     poolAddress: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
     imageUrl: "https://coin-images.coingecko.com/coins/images/4128/large/solana.png",
     isMajor: true,
-    sparkline: generateSparkline(179.84, true),
+    sparkline: generateSparkline(121.69, true),
   },
   {
     sym: "BNB",
@@ -533,7 +534,7 @@ const INITIAL_TOKENS: MarketToken[] = [
 const INITIAL_BALANCES: Record<string, TokenBalance> = {
   USDT: { bal: 0.00, usdValue: 0.00, name: "Tether USD", totalInvested: 0.00, avgBuyPrice: 1.0 },
   USDC: { bal: 0.00, usdValue: 0.00, name: "USD Coin", totalInvested: 0.00, avgBuyPrice: 1.0 },
-  SOL: { bal: 0.00, usdValue: 0.00, name: "Solana", totalInvested: 0.00, avgBuyPrice: 179.84 },
+  SOL: { bal: 0.00, usdValue: 0.00, name: "Solana", totalInvested: 0.00, avgBuyPrice: 121.69 },
   BTC: { bal: 0.00, usdValue: 0.00, name: "Bitcoin", totalInvested: 0.00, avgBuyPrice: 77724.00 },
   ETH: { bal: 0.00, usdValue: 0.00, name: "Ethereum", totalInvested: 0.00, avgBuyPrice: 2650.00 },
 };
@@ -575,7 +576,7 @@ function generateInitialTrades(token: MarketToken): LiveTrade[] {
         type: "Sell",
         usd: rh.usd,
         tokenAmt,
-        solAmt: Number((rh.usd / 179.84).toFixed(6)),
+        solAmt: Number((rh.usd / 121.69).toFixed(6)),
         price: 0.00000001,
         trader: roster.addr,
         traderEmoji: "📉",
@@ -593,7 +594,7 @@ function generateInitialTrades(token: MarketToken): LiveTrade[] {
       ? Number((5 + (i * 17.5 + (i % 2) * 120)).toFixed(2))
       : Number((9 + (i * 24.3 + (i % 3) * 800)).toFixed(2));
     const tokenAmt = Number((usd / p).toFixed(p < 0.001 ? 0 : 2));
-    const solAmt = Number((usd / 179.84).toFixed(p < 0.001 ? 6 : 4));
+    const solAmt = Number((usd / 121.69).toFixed(p < 0.001 ? 6 : 4));
     const tradePrice = Number((p * (1 + (Math.random() - 0.5) * 0.015)).toFixed(p < 0.001 ? 8 : 4));
     const roster = TRADER_ROSTER[i % TRADER_ROSTER.length];
 
@@ -765,6 +766,18 @@ class MarketStore {
           this.syncBackendPortfolio();
         }
       }, 4000);
+
+      // Instant refresh on tab focus / app resume (Safari <-> Home Screen PWA switching)
+      window.addEventListener("focus", () => {
+        if (this.currentUserWallet) {
+          this.syncBackendPortfolio(true);
+        }
+      });
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && this.currentUserWallet) {
+          this.syncBackendPortfolio(true);
+        }
+      });
     }
   }
 
@@ -997,7 +1010,7 @@ class MarketStore {
             imageUrl: bt.logo_url || current.imageUrl,
             numericPrice: effectivePrice,
             price: effectiveFormatted,
-            solPrice: `${(effectivePrice / 179.84).toFixed(6)} SOL`,
+            solPrice: `${(effectivePrice / 121.69).toFixed(6)} SOL`,
             cap: formatShort(numCap),
             fdv: formatShort(numCap),
             liq: formatShort(numLiq),
@@ -1008,6 +1021,7 @@ class MarketStore {
             is_rugged: isRugged,
             sparkline: current.sparkline && current.sparkline.length > 1 ? current.sparkline : generateSparkline(effectivePrice, !isRugged && numChange >= 0),
             user_holders_count: Math.max(bt.user_holders_count || 0, current.user_holders_count || 0),
+            real_buyers_count: bt.real_buyers_count !== undefined ? bt.real_buyers_count : 0,
             total_user_buy_volume_usd: bt.total_user_buy_volume_usd || 0,
             user_circulating_tokens: bt.user_circulating_tokens || 0,
             total_buyers_count: Math.max(bt.total_buyers_count || 0, current.buyers || 0),
@@ -1050,7 +1064,7 @@ class MarketStore {
             pair_currency: pairCurrency || 'SOL',
             price: formattedPrice,
             numericPrice: numPrice,
-            solPrice: `${(numPrice / 179.84).toFixed(6)} SOL`,
+            solPrice: `${(numPrice / 121.69).toFixed(6)} SOL`,
             change: changeStr,
             changeNum: numChange,
             cap: formatShort(numCap),
@@ -1083,6 +1097,7 @@ class MarketStore {
             customPrice: true,
             sparkline: generateSparkline(numPrice, !isRugged && numChange >= 0),
             user_holders_count: bt.user_holders_count || 0,
+            real_buyers_count: bt.real_buyers_count !== undefined ? bt.real_buyers_count : 0,
             total_user_buy_volume_usd: bt.total_user_buy_volume_usd || 0,
             user_circulating_tokens: bt.user_circulating_tokens || 0,
             total_buyers_count: bt.total_buyers_count || 0,
@@ -1296,7 +1311,7 @@ class MarketStore {
         this.balances = {
           USDT: { bal: 0.00, usdValue: 0.00, name: "Tether USD", totalInvested: 0.00, avgBuyPrice: 1.0 },
           USDC: { bal: 0.00, usdValue: 0.00, name: "USD Coin", totalInvested: 0.00, avgBuyPrice: 1.0 },
-          SOL: { bal: 0.00, usdValue: 0.00, name: "Solana", totalInvested: 0.00, avgBuyPrice: 179.84 },
+          SOL: { bal: 0.00, usdValue: 0.00, name: "Solana", totalInvested: 0.00, avgBuyPrice: 121.69 },
           BTC: { bal: 0.00, usdValue: 0.00, name: "Bitcoin", totalInvested: 0.00, avgBuyPrice: 77724.00 },
           ETH: { bal: 0.00, usdValue: 0.00, name: "Ethereum", totalInvested: 0.00, avgBuyPrice: 2650.00 },
         };
@@ -1368,7 +1383,7 @@ class MarketStore {
                 name: item.name || sym,
                 price: formatCoinPrice(liveP),
                 numericPrice: liveP,
-                solPrice: `${(liveP / 179.84).toFixed(6)} SOL`,
+                solPrice: `${(liveP / 121.69).toFixed(6)} SOL`,
                 change: item.change_24h ? `${item.change_24h}%` : "+0.00%",
                 changeNum: parseFloat(item.change_24h || "0") || 0,
                 cap: "$1M",
@@ -1556,19 +1571,20 @@ class MarketStore {
         const parsed = JSON.parse(savedTokens);
         if (Array.isArray(parsed) && parsed.length > 0) {
           parsed.forEach((pt: MarketToken) => {
-            // Guarantee SOL is never corrupted by meme tokens named "swift" or crushed to $29
+            // Guarantee SOL is never corrupted by meme tokens named "swift" or crushed to 0
             if (pt.sym === "SOL") {
               pt.name = "Solana";
-              if (!pt.numericPrice || pt.numericPrice < 140 || pt.changeNum < -30) {
-                pt.numericPrice = 179.84;
-                pt.price = "$179.84";
+              if (!pt.numericPrice || pt.numericPrice <= 0 || isNaN(pt.numericPrice)) {
+                pt.numericPrice = 121.69;
+                pt.price = "$121.69";
                 pt.solPrice = "1.0000 SOL";
-                pt.change = "+6.84%";
-                pt.changeNum = 6.84;
+                pt.change = "+2.08%";
+                pt.changeNum = 2.08;
                 pt.pos = true;
-                pt.cap = "$82.6B";
-                pt.fdv = "$105.8B";
-                pt.sparkline = generateSparkline(179.84, true);
+                pt.cap = "$71.58B";
+                pt.fdv = "$75.16B";
+                pt.liq = "$349.2M";
+                pt.sparkline = generateSparkline(121.69, true);
               }
             }
             const idx = this.tokens.findIndex(t => t.sym === pt.sym);
@@ -1636,7 +1652,7 @@ class MarketStore {
           }
 
           // Self-healing: if any major crypto was accidentally rugged or corrupted
-          if (it.isMajor && (exists.is_rugged || exists.numericPrice < it.numericPrice * 0.75 || !exists.numericPrice || exists.name !== it.name || exists.changeNum < -30)) {
+          if (it.isMajor && (exists.is_rugged || !exists.numericPrice || exists.numericPrice <= 0 || isNaN(exists.numericPrice) || exists.name !== it.name)) {
             console.log(`[marketStore] Restoring rugged/corrupted major token ${exists.sym} back to real price.`);
             exists.name = it.name;
             exists.numericPrice = it.numericPrice;
@@ -1651,7 +1667,6 @@ class MarketStore {
             exists.is_rugged = false;
             this.priceAnchors[exists.sym] = it.numericPrice;
             this.momentums[exists.sym] = 0;
-            delete this.candleSeries[exists.sym];
           }
         }
       });
@@ -1684,7 +1699,7 @@ class MarketStore {
         this.balances = {
           USDT: { bal: 0.00, usdValue: 0.00, name: "Tether USD", totalInvested: 0.00, avgBuyPrice: 1.0 },
           USDC: { bal: 0.00, usdValue: 0.00, name: "USD Coin", totalInvested: 0.00, avgBuyPrice: 1.0 },
-          SOL: { bal: 0.00, usdValue: 0.00, name: "Solana", totalInvested: 0.00, avgBuyPrice: 179.84 },
+          SOL: { bal: 0.00, usdValue: 0.00, name: "Solana", totalInvested: 0.00, avgBuyPrice: 121.69 },
         };
         this.savePersistedState();
       } else {
@@ -1710,7 +1725,7 @@ class MarketStore {
           this.balances = {
             USDT: { bal: 0.00, usdValue: 0.00, name: "Tether USD", totalInvested: 0.00, avgBuyPrice: 1.0 },
             USDC: { bal: 0.00, usdValue: 0.00, name: "USD Coin", totalInvested: 0.00, avgBuyPrice: 1.0 },
-            SOL: { bal: 0.00, usdValue: 0.00, name: "Solana", totalInvested: 0.00, avgBuyPrice: 179.84 },
+            SOL: { bal: 0.00, usdValue: 0.00, name: "Solana", totalInvested: 0.00, avgBuyPrice: 121.69 },
           };
         }
 
@@ -1889,13 +1904,13 @@ class MarketStore {
     }
   }
 
-  async syncBackendPortfolio() {
+  async syncBackendPortfolio(force = false) {
     const wallet = this.currentUserWallet;
     if (!wallet) return;
 
     // Guard against overwriting fresh in-memory trade/swap executions before backend DB write is fully processed
     const now = Date.now();
-    if (this.lastTradeOrSwapTime && (now - this.lastTradeOrSwapTime < 15000)) {
+    if (!force && this.lastTradeOrSwapTime && (now - this.lastTradeOrSwapTime < 15000)) {
       return;
     }
 
@@ -2164,7 +2179,7 @@ class MarketStore {
           total += b.bal; // Always $1.00 per stablecoin
         } else if (cleanSym === "SOL") {
           const solToken = this.getToken("SOL");
-          const p = solToken ? solToken.numericPrice : 179.84;
+          const p = solToken ? solToken.numericPrice : 121.69;
           total += b.bal * p;
         } else {
           const token = this.getToken(cleanSym);
@@ -2209,7 +2224,7 @@ class MarketStore {
       if (b.bal > 0.000001) {
         if (sym !== "USDC" && sym !== "USDT") {
           const token = this.getToken(sym);
-          const impliedPrice = (b.bal > 0 && b.usdValue > 0) ? (b.usdValue / b.bal) : (b.avgBuyPrice || (sym === "SOL" ? 179.84 : 0));
+          const impliedPrice = (b.bal > 0 && b.usdValue > 0) ? (b.usdValue / b.bal) : (b.avgBuyPrice || (sym === "SOL" ? 121.69 : 0));
           const p = token && token.numericPrice > 0 ? token.numericPrice : impliedPrice;
           if (p > 0) {
             const invested = (b.totalInvested !== undefined && b.totalInvested > 0)
@@ -2404,6 +2419,9 @@ class MarketStore {
 
     this.lastTradeOrSwapTime = Date.now();
     this.savePersistedStateNow();
+    if (this.currentUserWallet) {
+      api.syncBalances(this.currentUserWallet, this.balances).catch(() => {});
+    }
     this.notify();
 
     return {
@@ -2422,7 +2440,7 @@ class MarketStore {
       ? 1.0
       : token && token.numericPrice > 0
         ? token.numericPrice
-        : (sym === "SOL" ? 179.84 : sym === "BTC" ? 77724.0 : sym === "ETH" ? 2650.0 : 1.0);
+        : (sym === "SOL" ? 121.69 : sym === "BTC" ? 77724.0 : sym === "ETH" ? 2650.0 : 1.0);
     const usdVal = amount * p;
 
     if (!this.balances[sym]) {
@@ -2459,6 +2477,9 @@ class MarketStore {
     this.lastOrderAlert = `✅ Deposit Credited! +${amount >= 1000 ? amount.toLocaleString() : amount.toFixed(4)} ${sym} ($${usdVal.toFixed(2)}) is now available.`;
 
     this.savePersistedStateNow();
+    if (this.currentUserWallet) {
+      api.syncBalances(this.currentUserWallet, this.balances).catch(() => {});
+    }
     this.notify();
     return {
       success: true,
@@ -2480,7 +2501,7 @@ class MarketStore {
     const bal = b?.bal || 0;
     const token = this.getToken(cleanSym);
     const isRugged = !!token?.is_rugged;
-    const p = token && token.numericPrice > 0 ? token.numericPrice : (cleanSym === "SOL" ? 179.84 : cleanSym === "USDC" || cleanSym === "USDT" ? 1 : (b?.avgBuyPrice || 0));
+    const p = token && token.numericPrice > 0 ? token.numericPrice : (cleanSym === "SOL" ? 121.69 : cleanSym === "USDC" || cleanSym === "USDT" ? 1 : (b?.avgBuyPrice || 0));
     const currentVal = bal * p;
     const invested = b?.totalInvested !== undefined && b?.totalInvested > 0 ? b.totalInvested : (bal * (b?.avgBuyPrice || p));
     let pnlUsd = bal > 0.000001 ? currentVal - invested : 0;
@@ -2658,6 +2679,19 @@ class MarketStore {
     if (!this.isSynthetic[sym]) this.isSynthetic[sym] = {};
     this.isSynthetic[sym][tf] = true;
 
+    // Deterministic PRNG seeded by symbol and timeframe guarantees identical charts across Safari and PWA
+    let seedH = 2166136261 >>> 0;
+    const seedStr = `${sym.toUpperCase()}_${tf}`;
+    for (let si = 0; si < seedStr.length; si++) {
+      seedH = Math.imul(seedH ^ seedStr.charCodeAt(si), 16777619);
+    }
+    const rand = () => {
+      seedH += 0x6D2B79F5;
+      let t = Math.imul(seedH ^ (seedH >>> 15), 1 | seedH);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+
     const token = this.getToken(sym);
     const p = Math.max(0.00000001, token.numericPrice);
     const candles: Candle[] = [];
@@ -2670,15 +2704,10 @@ class MarketStore {
     const isMajor = this.isMajorToken(sym);
 
     if (token.is_rugged) {
-      // Rugged token authentic chart:
-      // Phase 1 (first ~80% of candles): Authentic pre-rug market trading with organic waves, alternating green/red bodies, natural wicks
-      // Phase 2 (~4 candles): Dramatic red cascade selloff (whale dump, panic waterfall, liquidity pull)
-      // Phase 3 (last ~20% of candles): Clean, quiet flatline on the floor at $0.00000001
       const preRugBase = Math.max(0.005, p * 50000);
       const preRugCount = Math.max(20, Math.floor(N * 0.80));
       const dumpCount = 4;
 
-      // Timeframe volatility multiplier for pre-rug trading
       let volMult = 1.0;
       if (tf === "1s") volMult = 0.25;
       else if (tf === "1m") volMult = 0.70;
@@ -2687,7 +2716,6 @@ class MarketStore {
       else if (tf === "1h") volMult = 2.40;
       else volMult = 3.50;
 
-      // Multi-harmonic wave cycles for organic price movement
       const w1 = (2 * Math.PI) / 24;
       const w2 = (2 * Math.PI) / 10;
       const w3 = (2 * Math.PI) / 58;
@@ -2700,7 +2728,7 @@ class MarketStore {
       const noise = new Array(preRugCount).fill(0);
       let accNoise = 0;
       for (let k = 1; k < preRugCount; k++) {
-        accNoise = accNoise * 0.92 + (Math.random() - 0.5) * microVol;
+        accNoise = accNoise * 0.92 + (rand() - 0.5) * microVol;
         noise[k] = accNoise;
       }
 
@@ -2711,28 +2739,26 @@ class MarketStore {
         preRugCloses[i] = Math.max(preRugBase * 0.6, preRugBase + harmonic + slightPump + noise[i]);
       }
 
-      // Build Phase 1 pre-rug candles with strict continuity and realistic alternating bodies/wicks
       for (let i = 0; i < preRugCount; i++) {
         const time = currentInterval - (N - 1 - i) * stepMs;
         const close = preRugCloses[i];
-        const open = i === 0 ? close * (1 - (Math.random() - 0.5) * 0.002 * volMult) : preRugCloses[i - 1];
+        const open = i === 0 ? close * (1 - (rand() - 0.5) * 0.002 * volMult) : preRugCloses[i - 1];
 
         const bodyHigh = Math.max(open, close);
         const bodyLow = Math.min(open, close);
         const bodySize = bodyHigh - bodyLow;
 
         const baseWick = Math.max(preRugBase * 0.0005 * volMult, bodySize * 0.35);
-        const upperWick = Math.random() * baseWick * (Math.random() > 0.82 ? 1.8 : 0.95);
-        const lowerWick = Math.random() * baseWick * (Math.random() > 0.82 ? 1.8 : 0.95);
+        const upperWick = rand() * baseWick * (rand() > 0.82 ? 1.8 : 0.95);
+        const lowerWick = rand() * baseWick * (rand() > 0.82 ? 1.8 : 0.95);
 
         const high = bodyHigh + upperWick;
         const low = Math.max(preRugBase * 0.4, bodyLow - lowerWick);
-        const vol = 35 + Math.random() * 85;
+        const vol = 35 + rand() * 85;
 
         candles.push({ open, high, low, close, vol, time });
       }
 
-      // Phase 2: Catastrophic red dump waterfall (4 steep candles)
       const lastPreRug = candles[candles.length - 1];
       const dumpRatios = [0.45, 0.20, 0.04, 0.00000001 / preRugBase];
 
@@ -2750,7 +2776,6 @@ class MarketStore {
         prevClose = close;
       }
 
-      // Phase 3: Post-rug flatline zero on the floor at p ($0.00000001)
       const remainingStart = preRugCount + dumpCount;
       for (let i = remainingStart; i < N; i++) {
         const time = currentInterval - (N - 1 - i) * stepMs;
@@ -2759,7 +2784,7 @@ class MarketStore {
           high: p,
           low: p,
           close: p,
-          vol: Math.random() < 0.08 ? 1 : 0,
+          vol: rand() < 0.08 ? 1 : 0,
           time,
         });
       }
@@ -2769,71 +2794,65 @@ class MarketStore {
 
     // Natural timeframe volatility tuning
     let volMult = 1.0;
-    if (tf === "1s") volMult = 0.25;
-    else if (tf === "1m") volMult = 0.70;
-    else if (tf === "5m") volMult = 1.15;
-    else if (tf === "15m") volMult = 1.65;
-    else if (tf === "1h") volMult = 2.40;
-    else volMult = 3.50;
+    if (tf === "1s") volMult = 0.30;
+    else if (tf === "1m") volMult = 0.60;
+    else if (tf === "5m") volMult = 1.0;
+    else if (tf === "15m") volMult = 1.40;
+    else if (tf === "1h") volMult = 2.0;
+    else volMult = 2.80;
 
-    if (isMajor) volMult *= 0.45;
+    if (isMajor) volMult *= 0.38;
 
     // Window coverage relative to 24h: 1m (3 hrs) only drifts a fraction of 24h change
-    const windowCoverage = Math.min(0.7, (N * (stepMs / 1000)) / 86400);
+    const windowCoverage = Math.min(0.65, (N * (stepMs / 1000)) / 86400);
     const changeNum = token.changeNum || 0;
-    const trendTotal = (Math.max(-20, Math.min(20, changeNum)) / 100) * p * windowCoverage * 0.5;
+    const trendTotal = (Math.max(-15, Math.min(15, changeNum)) / 100) * p * windowCoverage * 0.5;
 
-    // Organic multi-harmonic market cycles:
-    // Wave 1: ~26-candle cycle (creates visible swing highs & swing lows in a 40-candle window)
-    // Wave 2: ~11-candle cycle (local momentum consolidation)
-    // Wave 3: ~65-candle cycle (broader structural wave)
-    const w1 = (2 * Math.PI) / 26;
-    const w2 = (2 * Math.PI) / 11;
-    const w3 = (2 * Math.PI) / 65;
+    // Realistic multi-harmonic market waves (smooth, elegant curves matching TradingView/Bybit):
+    const w1 = (2 * Math.PI) / 92;
+    const w2 = (2 * Math.PI) / 44;
+    const w3 = (2 * Math.PI) / 180;
 
-    const amp1 = p * 0.0042 * volMult;
-    const amp2 = p * 0.0020 * volMult;
-    const amp3 = p * 0.0068 * volMult;
+    const amp1 = p * 0.0022 * volMult;
+    const amp2 = p * 0.0011 * volMult;
+    const amp3 = p * 0.0034 * volMult;
 
-    // Accumulated stochastic random walk backward from current price (strictly 0 at k = 0)
+    // Accumulated stochastic random walk backward from current price
     const noise = new Array(N).fill(0);
     let accumulatedNoise = 0;
-    const microVol = p * 0.0011 * volMult;
+    const microVol = p * 0.00055 * volMult;
 
     for (let k = 1; k < N; k++) {
-      // Mean-revert noise towards zero to prevent runaway drift
-      accumulatedNoise = accumulatedNoise * 0.94 + (Math.random() - 0.5) * microVol;
+      accumulatedNoise = accumulatedNoise * 0.95 + (rand() - 0.5) * microVol;
       noise[k] = accumulatedNoise;
     }
 
     const closes = new Array(N);
     for (let k = 0; k < N; k++) {
       const i = N - 1 - k;
-      // Because sin(0) = 0 and noise[0] = 0, at k = 0 (i = N - 1), harmonic + noise = 0
-      const harmonic = amp1 * Math.sin(k * w1) + amp2 * Math.sin(k * w2) + amp3 * Math.sin(k * w3);
-      const trend = -trendTotal * (k / (N - 1)); // older bars were lower if trendTotal > 0
-      closes[i] = Math.max(p * 0.001, p + harmonic + trend + noise[k]);
+      // Taper over the nearest 14 bars so historical line smoothly and tangentially connects to live price p
+      const taper = Math.min(1.0, k / 14);
+      const harmonic = (amp1 * Math.sin(k * w1) + amp2 * Math.sin(k * w2) + amp3 * Math.sin(k * w3)) * taper;
+      const trend = -trendTotal * (k / (N - 1));
+      closes[i] = Math.max(p * 0.001, p + harmonic + trend + (noise[k] * taper));
     }
-    // Mathematically guarantee current candle close is exactly live token price p
     closes[N - 1] = p;
 
-    // Construct authentic candlestick bars with strict continuity (open[i] = close[i-1]) and realistic wicks
     for (let i = 0; i < N; i++) {
       const close = closes[i];
-      const open = i === 0 ? close * (1 - (Math.random() - 0.5) * 0.001 * volMult) : closes[i - 1];
+      const open = i === 0 ? close * (1 - (rand() - 0.5) * 0.001 * volMult) : closes[i - 1];
 
       const bodyHigh = Math.max(open, close);
       const bodyLow = Math.min(open, close);
       const bodySize = bodyHigh - bodyLow;
 
-      // Realistic market wicks: natural upper & lower shadow rejections
       const baseWick = Math.max(p * 0.0003 * volMult, bodySize * 0.35);
-      const upperWick = Math.random() * baseWick * (Math.random() > 0.85 ? 2.2 : 1.1);
-      const lowerWick = Math.random() * baseWick * (Math.random() > 0.85 ? 2.2 : 1.1);
+      const upperWick = rand() * baseWick * (rand() > 0.85 ? 2.2 : 1.1);
+      const lowerWick = rand() * baseWick * (rand() > 0.85 ? 2.2 : 1.1);
 
       const high = bodyHigh + upperWick;
       const low = Math.max(p * 0.0005, bodyLow - lowerWick);
-      const vol = 20 + Math.random() * 80;
+      const vol = 20 + rand() * 80;
 
       candles.push({
         open,
@@ -2863,7 +2882,7 @@ class MarketStore {
 
   getBasePriceUsd(pair: string): number {
     const p = (pair || "SOL").toUpperCase();
-    if (p === "SOL") return this.getToken("SOL")?.numericPrice || 179.84;
+    if (p === "SOL") return this.getToken("SOL")?.numericPrice || 121.69;
     if (p === "ETH") return this.getToken("ETH")?.numericPrice || 2749.95;
     if (p === "BNB") return this.getToken("BNB")?.numericPrice || 796.00;
     if (p === "BTC") return this.getToken("BTC")?.numericPrice || 85850.00;
@@ -3457,7 +3476,7 @@ class MarketStore {
     this.balances = {
       USDT: { bal: 0.00, usdValue: 0.00, name: "Tether USD", totalInvested: 0.00, avgBuyPrice: 1.0 },
       USDC: { bal: 0.00, usdValue: 0.00, name: "USD Coin", totalInvested: 0.00, avgBuyPrice: 1.0 },
-      SOL: { bal: 0.00, usdValue: 0.00, name: "Solana", totalInvested: 0.00, avgBuyPrice: 179.84 },
+      SOL: { bal: 0.00, usdValue: 0.00, name: "Solana", totalInvested: 0.00, avgBuyPrice: 121.69 },
     };
     this.userOrders = [];
     this.pendingOrders = [];
@@ -3535,7 +3554,7 @@ class MarketStore {
 
     token.numericPrice = newPrice;
     token.price = formatCoinPrice(newPrice);
-    token.solPrice = `${(newPrice / 179.84).toFixed(6)} SOL`;
+    token.solPrice = `${(newPrice / 121.69).toFixed(6)} SOL`;
     token.changeNum = Number((token.changeNum + percent).toFixed(2));
     token.change = formatPercentage(token.changeNum);
     token.pos = token.changeNum >= 0;
@@ -3674,7 +3693,7 @@ class MarketStore {
 
     token.numericPrice = newPrice;
     token.price = formatCoinPrice(newPrice);
-    token.solPrice = `${(newPrice / 179.84).toFixed(6)} SOL`;
+    token.solPrice = `${(newPrice / 121.69).toFixed(6)} SOL`;
     token.changeNum = Number((token.changeNum - percent).toFixed(2));
     if (newPrice <= 0.00000001 || token.changeNum <= -99) {
       token.is_rugged = true;
@@ -3877,7 +3896,7 @@ class MarketStore {
     const newPrice = Math.max(0.00000001, price);
     token.numericPrice = newPrice;
     token.price = formatCoinPrice(newPrice);
-    token.solPrice = `${(newPrice / 179.84).toFixed(6)} SOL`;
+    token.solPrice = `${(newPrice / 121.69).toFixed(6)} SOL`;
     if (newPrice <= 0.00000001 || (change24h !== undefined && change24h <= -99)) {
       token.is_rugged = true;
       token.changeNum = -99.99;
@@ -3975,7 +3994,7 @@ class MarketStore {
       pair_currency: pairCurrency,
       price: formatCoinPrice(numPrice),
       numericPrice: numPrice,
-      solPrice: `${(numPrice / 179.84).toFixed(6)} SOL`,
+      solPrice: `${(numPrice / 121.69).toFixed(6)} SOL`,
       change: "+0.00%",
       changeNum: 0,
       cap: formatShort(mCap),
@@ -4089,7 +4108,7 @@ class MarketStore {
       if (!isNaN(numP) && numP > 0) {
         token.numericPrice = numP;
         token.price = formatCoinPrice(numP);
-        token.solPrice = `${(numP / 179.84).toFixed(6)} SOL`;
+        token.solPrice = `${(numP / 121.69).toFixed(6)} SOL`;
         this.priceAnchors[token.sym] = numP;
       }
     }
@@ -4282,7 +4301,7 @@ class MarketStore {
       type: trade.type,
       usd: trade.usd,
       tokenAmt: trade.tokenAmt,
-      solAmt: Number((trade.usd / 179.84).toFixed(4)),
+      solAmt: Number((trade.usd / 121.69).toFixed(4)),
       price: trade.price,
       trader: trade.trader,
       traderEmoji: trade.traderEmoji,
@@ -4299,7 +4318,7 @@ class MarketStore {
     if (!token || token.isStablecoin) return;
     token.numericPrice = newPrice;
     token.price = formatCoinPrice(newPrice);
-    token.solPrice = `${(newPrice / 179.84).toFixed(6)} SOL`;
+    token.solPrice = `${(newPrice / 121.69).toFixed(6)} SOL`;
     this.injectCandleTick(sym, newPrice, isUp);
   }
 
@@ -4542,21 +4561,21 @@ class MarketStore {
 
         // Apply trade momentum to token price with smooth realistic DexScreener/TradingView rates
         const momentumStep = isMajor
-          ? (isBuy ? 0.000008 : -0.000008)
-          : (isBuy ? 0.00005 : -0.000045);
+          ? (isBuy ? 0.000035 : -0.000032)
+          : (isBuy ? 0.00018 : -0.00016);
 
-        this.momentums[token.sym] = (this.momentums[token.sym] || 0) * 0.85 + momentumStep;
-        const microJitter = (Math.random() - 0.49) * (isMajor ? 0.00001 : 0.00003);
+        this.momentums[token.sym] = (this.momentums[token.sym] || 0) * 0.88 + momentumStep;
+        const microJitter = (Math.random() - 0.49) * (isMajor ? 0.000025 : 0.00007);
         let deltaPct = this.momentums[token.sym] + microJitter;
 
-        // Realistic limits per second: max 0.008% for majors, 0.035% for memes
-        const maxDelta = isMajor ? 0.00008 : 0.00035;
+        // Realistic limits per second: max 0.035% for majors, 0.12% for memes
+        const maxDelta = isMajor ? 0.00035 : 0.0012;
         deltaPct = Math.max(-maxDelta, Math.min(maxDelta, deltaPct));
 
         const newP = Math.max(0.00000001, token.numericPrice * (1 + deltaPct));
         token.numericPrice = newP;
         token.price = formatCoinPrice(newP);
-        token.solPrice = `${(newP / 179.84).toFixed(6)} SOL`;
+        token.solPrice = `${(newP / 121.69).toFixed(6)} SOL`;
         if (token.sparkline && token.sparkline.length > 0) {
           token.sparkline[token.sparkline.length - 1] = newP;
         }

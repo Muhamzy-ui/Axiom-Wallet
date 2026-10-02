@@ -147,7 +147,8 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     const token = marketStore.getToken(targetSym);
     const isMcap = dispMode === 'Mcap';
     const isSol = currMode === 'SOL';
-    const mult = isMcap ? (token.supply || 1_000_000_000) : isSol ? 1 / 179.84 : 1;
+    const solPrice = marketStore.getToken('SOL')?.numericPrice || 121.69;
+    const mult = isMcap ? (token.supply || 1_000_000_000) : isSol ? 1 / solPrice : 1;
 
     // Trigger background fetch if real Gecko pool token
     marketStore.loadRealCandles(targetSym, timeframe);
@@ -257,8 +258,8 @@ export const CandleChart: React.FC<CandleChartProps> = ({
 
     // Display healthy readable candles with right breathing room and unrestricted historical scrolling
     chart.timeScale().applyOptions({
-      barSpacing: timeframe === 'D' ? 11 : timeframe === '4h' ? 10 : 9,
-      rightOffset: 8,
+      barSpacing: timeframe === 'D' ? 11 : timeframe === '4h' ? 10 : timeframe === '1s' ? 6 : 9,
+      rightOffset: 3,
       minBarSpacing: 1.5,
       fixLeftEdge: false,
       fixRightEdge: false,
@@ -328,9 +329,9 @@ export const CandleChart: React.FC<CandleChartProps> = ({
         borderColor: isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)',
         timeVisible: true,
         secondsVisible: timeframe === '1s',
-        barSpacing: 9,
-        minBarSpacing: 2.5,
-        rightOffset: 12,
+        barSpacing: timeframe === '1s' ? 6 : 9,
+        minBarSpacing: 2.0,
+        rightOffset: 3,
       },
       rightPriceScale: {
         borderColor: isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)',
@@ -544,7 +545,8 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       const token = marketStore.getToken(targetSym);
       const isMcap = dispMode === 'Mcap';
       const isSol = currMode === 'SOL';
-      const mult = isMcap ? (token.supply || 1_000_000_000) : isSol ? 1 / 179.84 : 1;
+      const solPrice = marketStore.getToken('SOL')?.numericPrice || 121.69;
+      const mult = isMcap ? (token.supply || 1_000_000_000) : isSol ? 1 / solPrice : 1;
 
       const last = rawCandles[rawCandles.length - 1];
 

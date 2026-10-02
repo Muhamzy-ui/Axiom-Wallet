@@ -141,10 +141,7 @@ export const SendPage: React.FC<SendPageProps> = ({
           <span>Direct instant transfer to any Axiom user via UID</span>
         </div>
 
-        <div className="fullpage-status-badge">
-          <span className="pulse-dot" />
-          <span>INSTANT P2P TRANSFER</span>
-        </div>
+        <div style={{ width: 68 }} />
       </header>
 
       {/* Main Body */}

@@ -33,6 +33,7 @@ export interface MemeToken {
   created_at: string;
   chart_points?: { price: number; timestamp: string }[];
   user_holders_count?: number;
+  real_buyers_count?: number;
   total_user_buy_volume_usd?: number;
   user_circulating_tokens?: number;
 }

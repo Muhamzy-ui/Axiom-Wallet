@@ -159,7 +159,7 @@ function TokenSnapshot({ sym, flash }: { sym: string; flash?: (m: string) => voi
   const d = marketStore.getToken(sym);
   const [activeTf, setActiveTf] = useState("24H");
 
-  const solStr = d.solPrice ?? (parseFloat(d.price.replace(/[\$,]/g, "")) / 179.84).toFixed(6) + " SOL";
+  const solStr = d.solPrice ?? (parseFloat(d.price.replace(/[\$,]/g, "")) / 121.69).toFixed(6) + " SOL";
 
   const periods: { id: string; label: string; val: string; up: boolean; zero?: boolean }[] = [
     { id: "5M", label: "5M", val: d.m5.val, up: d.m5.up, zero: d.m5.zero },
@@ -1556,6 +1556,19 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
     flash(res.message);
   };
 
+  const scrollToTradeOrder = (targetSide?: "Buy" | "Sell") => {
+    if (targetSide) setSide(targetSide);
+    setMobileSubTab("order");
+    setTimeout(() => {
+      const panel = document.getElementById("dex-order-panel") || document.getElementById("dex-mobile-trade-pane") || document.querySelector(".order-panel-container.mobile-embedded") || document.querySelector(".order-panel-container");
+      if (panel) {
+        panel.scrollIntoView({ behavior: "smooth", block: "start" });
+        panel.classList.add("trade-panel-focus-pulse");
+        setTimeout(() => panel.classList.remove("trade-panel-focus-pulse"), 1400);
+      }
+    }, 70);
+  };
+
   // Live dynamic calculation for "You receive" based on base pair currency
   const numAmt = parseFloat(amountInput) || 0;
   const limitTargetP = parseFloat(limitPriceInput) || m.numericPrice;
@@ -1580,7 +1593,8 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
 
   const isMcap = dispMode === "Mcap";
   const isSol = currMode === "SOL";
-  const mult = isMcap ? (m.supply || 1_000_000_000) : (isSol ? (1 / 179.84) : 1);
+  const solPrice = marketStore.getToken("SOL")?.numericPrice || 121.69;
+  const mult = isMcap ? (m.supply || 1_000_000_000) : (isSol ? (1 / solPrice) : 1);
   const fmtDisp = (p: number) => {
     const v = p * mult;
     if (isMcap) {
@@ -2165,7 +2179,7 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
             <button
               type="button"
               className={`dex-subtab-btn ${mobileSubTab === "order" ? "active" : ""}`}
-              onClick={() => setMobileSubTab("order")}
+              onClick={() => scrollToTradeOrder()}
             >
               <ArrowDownUp size={13} />
               <span>Trade</span>
@@ -2211,8 +2225,8 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
               </div>
             )}
             {mobileSubTab === "order" && (
-              <div className="dex-mobile-tab-pane">
-                <div className="order-panel-container mobile-embedded">
+              <div className="dex-mobile-tab-pane" id="dex-mobile-trade-pane">
+                <div className="order-panel-container mobile-embedded" id="dex-order-panel">
                   <div className="side-tabs">
                     <button
                       type="button"
@@ -2273,7 +2287,7 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                         ≈ ${(() => {
                           const val = parseFloat(amountInput) || 0;
                           const usdVal = side === "Buy"
-                            ? (isCash ? val : val * (pairCurrency === "SOL" ? (marketStore.getToken("SOL")?.numericPrice || 179.84) : 1))
+                            ? (isCash ? val : val * (pairCurrency === "SOL" ? (marketStore.getToken("SOL")?.numericPrice || 121.69) : 1))
                             : val * m.numericPrice;
                           return usdVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                         })()} USD
@@ -2296,7 +2310,7 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                         ≈ ${(() => {
                           const val = parseFloat(amountInput) || 0;
                           const usdVal = side === "Buy"
-                            ? (isCash ? val : val * (pairCurrency === "SOL" ? (marketStore.getToken("SOL")?.numericPrice || 179.84) : 1))
+                            ? (isCash ? val : val * (pairCurrency === "SOL" ? (marketStore.getToken("SOL")?.numericPrice || 121.69) : 1))
                             : val * m.numericPrice;
                           return usdVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                         })()} USD
@@ -2398,7 +2412,7 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                               alignItems: "center",
                               gap: 6
                             }}
-                            onClick={() => { setSide("Buy"); setMobileSubTab("order"); }}
+                            onClick={() => scrollToTradeOrder("Buy")}
                           >
                             <Zap size={13} /> Buy {m.sym} Now
                           </button>
@@ -2579,16 +2593,16 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
         {mobileSubTab !== "order" && (
           <div className="dex-floating-trade-bar">
             <div className="dex-floating-presets">
-              <button type="button" onClick={() => { setAmountInput("0.1"); setSide("Buy"); setMobileSubTab("order"); flash("Set 0.1 SOL Buy"); }}>0.1 SOL</button>
-              <button type="button" onClick={() => { setAmountInput("0.5"); setSide("Buy"); setMobileSubTab("order"); flash("Set 0.5 SOL Buy"); }}>0.5 SOL</button>
-              <button type="button" onClick={() => { setAmountInput("1"); setSide("Buy"); setMobileSubTab("order"); flash("Set 1.0 SOL Buy"); }}>1.0 SOL</button>
-              <button type="button" onClick={() => { setAmountInput("5"); setSide("Buy"); setMobileSubTab("order"); flash("Set 5.0 SOL Buy"); }}>5.0 SOL</button>
+              <button type="button" onClick={() => { setAmountInput("0.1"); flash("Set 0.1 SOL Buy"); scrollToTradeOrder("Buy"); }}>0.1 SOL</button>
+              <button type="button" onClick={() => { setAmountInput("0.5"); flash("Set 0.5 SOL Buy"); scrollToTradeOrder("Buy"); }}>0.5 SOL</button>
+              <button type="button" onClick={() => { setAmountInput("1"); flash("Set 1.0 SOL Buy"); scrollToTradeOrder("Buy"); }}>1.0 SOL</button>
+              <button type="button" onClick={() => { setAmountInput("5"); flash("Set 5.0 SOL Buy"); scrollToTradeOrder("Buy"); }}>5.0 SOL</button>
             </div>
             <div className="dex-floating-buttons">
               <button
                 type="button"
                 className="dex-float-btn buy"
-                onClick={() => { setSide("Buy"); setMobileSubTab("order"); }}
+                onClick={() => scrollToTradeOrder("Buy")}
               >
                 <Zap size={15} />
                 <span>Buy {m.sym}</span>
@@ -2596,7 +2610,7 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
               <button
                 type="button"
                 className="dex-float-btn sell"
-                onClick={() => { setSide("Sell"); setMobileSubTab("order"); }}
+                onClick={() => scrollToTradeOrder("Sell")}
               >
                 <Coins size={15} />
                 <span>Sell {m.sym}</span>
@@ -2905,7 +2919,7 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                         ≈ ${(() => {
                           const val = parseFloat(amountInput) || 0;
                           const usdVal = side === "Buy"
-                            ? (isCash ? val : val * (pairCurrency === "SOL" ? (marketStore.getToken("SOL")?.numericPrice || 179.84) : 1))
+                            ? (isCash ? val : val * (pairCurrency === "SOL" ? (marketStore.getToken("SOL")?.numericPrice || 121.69) : 1))
                             : val * m.numericPrice;
                           return usdVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                         })()} USD
@@ -2964,7 +2978,7 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                         ≈ ${(() => {
                           const val = parseFloat(amountInput) || 0;
                           const usdVal = side === "Buy"
-                            ? (isCash ? val : val * (pairCurrency === "SOL" ? (marketStore.getToken("SOL")?.numericPrice || 179.84) : 1))
+                            ? (isCash ? val : val * (pairCurrency === "SOL" ? (marketStore.getToken("SOL")?.numericPrice || 121.69) : 1))
                             : val * m.numericPrice;
                           return usdVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                         })()} USD
@@ -2986,7 +3000,7 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                         ≈ ${(() => {
                           const val = parseFloat(amountInput) || 0;
                           const usdVal = side === "Buy"
-                            ? (isCash ? val : val * (pairCurrency === "SOL" ? (marketStore.getToken("SOL")?.numericPrice || 179.84) : 1))
+                            ? (isCash ? val : val * (pairCurrency === "SOL" ? (marketStore.getToken("SOL")?.numericPrice || 121.69) : 1))
                             : val * m.numericPrice;
                           return usdVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                         })()} USD
@@ -4273,7 +4287,7 @@ function ProfileView({
   const portfolioMetrics = marketStore.getPortfolioMetrics();
   const totalUsd = portfolioMetrics.totalValue;
   const solToken = marketStore.getToken("SOL");
-  const solPrice = solToken?.numericPrice || 179.84;
+  const solPrice = solToken?.numericPrice || 121.69;
   const solEquiv = solPrice > 0 ? (totalUsd / solPrice).toFixed(4) : "0.0000";
 
   const balances = marketStore.getBalances();

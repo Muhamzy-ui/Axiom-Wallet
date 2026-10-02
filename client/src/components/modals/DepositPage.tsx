@@ -87,7 +87,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
       : depositTokenObj && depositTokenObj.numericPrice > 0
       ? depositTokenObj.numericPrice
       : depositCoin === "SOL"
-      ? 179.84
+      ? 121.69
       : depositCoin === "BTC"
       ? 77724.0
       : depositCoin === "ETH"
@@ -252,10 +252,7 @@ const NETWORK_POOLS: Record<string, string[]> = {
           <span>Direct non-custodial vault funding</span>
         </div>
 
-        <div className="fullpage-status-badge">
-          <span className="pulse-dot" />
-          <span>MAINNET ACTIVE</span>
-        </div>
+        <div style={{ width: 68 }} />
       </header>
 
       {/* Main Scrollable Body */}
@@ -360,7 +357,7 @@ const NETWORK_POOLS: Record<string, string[]> = {
                     sym === "USDT" || sym === "USDC"
                       ? 1.0
                       : marketStore.getToken(sym)?.numericPrice ||
-                        (sym === "SOL" ? 179.84 : sym === "BTC" ? 77724 : 2650);
+                        (sym === "SOL" ? 121.69 : sym === "BTC" ? 77724 : 2650);
 
                   return (
                     <button

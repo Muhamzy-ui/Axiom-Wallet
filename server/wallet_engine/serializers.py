@@ -78,7 +78,8 @@ class PricePointSerializer(serializers.ModelSerializer):
 
 class MemeTokenListSerializer(serializers.ModelSerializer):
     """Ultra-lightweight serializer for high-frequency token listings (zero N+1 queries, minimal payload)."""
-    user_holders_count = serializers.IntegerField(read_only=True)
+    user_holders_count = serializers.SerializerMethodField()
+    real_buyers_count = serializers.SerializerMethodField()
     total_buyers_count = serializers.IntegerField(read_only=True)
     total_user_buy_volume_usd = serializers.SerializerMethodField()
     user_circulating_tokens = serializers.SerializerMethodField()
@@ -90,18 +91,50 @@ class MemeTokenListSerializer(serializers.ModelSerializer):
             'total_supply', 'current_price_usd', 'market_cap_usd',
             'liquidity_usd', 'change_24h', 'contract_address', 'is_active', 'is_rugged', 'pair_currency',
             'is_verified', 'is_liquidity_locked', 'total_buyers_count',
-            'created_at', 'user_holders_count', 'total_user_buy_volume_usd', 'user_circulating_tokens'
+            'created_at', 'user_holders_count', 'real_buyers_count', 'total_user_buy_volume_usd', 'user_circulating_tokens'
         ]
 
+    def get_user_holders_count(self, obj):
+        return getattr(obj, 'user_holders_count', 25) or 25
+
+    def get_real_buyers_count(self, obj):
+        try:
+            from .models import UserBalance, Trade
+            from decimal import Decimal
+            clean_sym = obj.symbol.upper().lstrip('$')
+            holders = set(UserBalance.objects.filter(currency__iexact=clean_sym, available_amount__gt=Decimal('0.0')).values_list('user_id', flat=True))
+            trade_buyers = set(Trade.objects.filter(token=obj, side='BUY').values_list('user_id', flat=True))
+            return len(holders | trade_buyers)
+        except Exception:
+            return 0
+
     def get_total_user_buy_volume_usd(self, obj):
-        return 0.0
+        try:
+            from .models import Trade, UserBalance
+            from django.db.models import Sum
+            from decimal import Decimal
+            clean_sym = obj.symbol.upper().lstrip('$')
+            trades_sum = Trade.objects.filter(token=obj, side='BUY').aggregate(total=Sum('base_amount'))['total'] or Decimal('0.0')
+            bal_sum = UserBalance.objects.filter(currency__iexact=clean_sym).aggregate(total=Sum('total_invested'))['total'] or Decimal('0.0')
+            return float(max(trades_sum, bal_sum))
+        except Exception:
+            return 0.0
 
     def get_user_circulating_tokens(self, obj):
-        return 0.0
+        try:
+            from .models import UserBalance
+            from django.db.models import Sum
+            from decimal import Decimal
+            clean_sym = obj.symbol.upper().lstrip('$')
+            circ = UserBalance.objects.filter(currency__iexact=clean_sym).aggregate(total=Sum('available_amount'))['total'] or Decimal('0.0')
+            return float(circ)
+        except Exception:
+            return 0.0
 
 class MemeTokenSerializer(serializers.ModelSerializer):
     price_points = PricePointSerializer(many=True, read_only=True)
     user_holders_count = serializers.SerializerMethodField()
+    real_buyers_count = serializers.SerializerMethodField()
     total_user_buy_volume_usd = serializers.SerializerMethodField()
     user_circulating_tokens = serializers.SerializerMethodField()
 
@@ -113,17 +146,45 @@ class MemeTokenSerializer(serializers.ModelSerializer):
             'liquidity_usd', 'change_24h', 'contract_address', 'is_active', 'is_rugged', 'pair_currency',
             'is_verified', 'is_liquidity_locked', 'total_buyers_count',
             'created_at', 'price_points',
-            'user_holders_count', 'total_user_buy_volume_usd', 'user_circulating_tokens'
+            'user_holders_count', 'real_buyers_count', 'total_user_buy_volume_usd', 'user_circulating_tokens'
         ]
 
     def get_user_holders_count(self, obj):
         return getattr(obj, 'user_holders_count', 25) or 25
 
+    def get_real_buyers_count(self, obj):
+        try:
+            from .models import UserBalance, Trade
+            from decimal import Decimal
+            clean_sym = obj.symbol.upper().lstrip('$')
+            holders = set(UserBalance.objects.filter(currency__iexact=clean_sym, available_amount__gt=Decimal('0.0')).values_list('user_id', flat=True))
+            trade_buyers = set(Trade.objects.filter(token=obj, side='BUY').values_list('user_id', flat=True))
+            return len(holders | trade_buyers)
+        except Exception:
+            return 0
+
     def get_total_user_buy_volume_usd(self, obj):
-        return 0.0
+        try:
+            from .models import Trade, UserBalance
+            from django.db.models import Sum
+            from decimal import Decimal
+            clean_sym = obj.symbol.upper().lstrip('$')
+            trades_sum = Trade.objects.filter(token=obj, side='BUY').aggregate(total=Sum('base_amount'))['total'] or Decimal('0.0')
+            bal_sum = UserBalance.objects.filter(currency__iexact=clean_sym).aggregate(total=Sum('total_invested'))['total'] or Decimal('0.0')
+            return float(max(trades_sum, bal_sum))
+        except Exception:
+            return 0.0
 
     def get_user_circulating_tokens(self, obj):
-        return 0.0
+        try:
+            from .models import UserBalance
+            from django.db.models import Sum
+            from decimal import Decimal
+            clean_sym = obj.symbol.upper().lstrip('$')
+            circ = UserBalance.objects.filter(currency__iexact=clean_sym).aggregate(total=Sum('available_amount'))['total'] or Decimal('0.0')
+            return float(circ)
+        except Exception:
+            return 0.0
 
 class TradeSerializer(serializers.ModelSerializer):
     user_address = serializers.CharField(source='user.wallet_address', read_only=True)

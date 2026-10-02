@@ -25,8 +25,11 @@
 .phantom-mobile-header {
   display: none;
   width: 100%;
-  padding: 14px 20px;
-  background: rgba(8, 10, 18, 0.88);
+  padding-top: max(14px, env(safe-area-inset-top, 14px));
+  padding-bottom: 14px;
+  padding-left: max(20px, env(safe-area-inset-left, 20px));
+  padding-right: max(20px, env(safe-area-inset-right, 20px));
+  background: rgba(8, 10, 18, 0.94);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);

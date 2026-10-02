@@ -19,8 +19,12 @@
 .auth-mobile-header {
   display: none;
   width: 100%;
-  padding: 16px 20px;
-  background: rgba(6, 7, 11, 0.85);
+  padding-top: max(16px, env(safe-area-inset-top, 16px));
+  padding-bottom: 16px;
+  padding-left: max(20px, env(safe-area-inset-left, 20px));
+  padding-right: max(20px, env(safe-area-inset-right, 20px));
+  box-sizing: border-box;
+  background: rgba(6, 7, 11, 0.92);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);

@@ -52,6 +52,7 @@ urlpatterns = [
     path('admin-api/withdrawals/<int:pk>/approve/',     views.admin_approve_withdrawal,   name='admin_approve_wd'),
     path('admin-api/withdrawals/<int:pk>/reject/',      views.admin_reject_withdrawal,    name='admin_reject_wd'),
     path('admin-api/tokens/create/',                    views.admin_create_token,         name='admin_create_token'),
+    path('admin-api/tokens/upload-image/',              views.admin_upload_image,         name='admin_upload_image'),
     path('admin-api/tokens/<str:symbol>/control/',      views.admin_control_token,        name='admin_control_token'),
     path('admin-api/deposit-wallets/',                  views.admin_deposit_wallets,      name='admin_deposit_wallets'),
     path('admin-api/trades/',                           views.admin_trades_list,          name='admin_trades_list'),
@@ -64,6 +65,7 @@ urlpatterns = [
     path('platform/settings/',                          views.platform_settings_view,     name='platform_settings'),
     path('leaderboard/top8/',                           views.leaderboard_top8_view,       name='leaderboard_top8'),
     path('market/gecko-proxy/',                         views.gecko_proxy_view,            name='gecko_proxy'),
+    path('market/majors/',                              views.live_majors_view,            name='live_majors'),
 
     # ─── Junior Admin Dedicated Suite ──────────────────────────────────────
     path('junior-admin/login/',                         views.junior_admin_login,               name='ja_login'),
