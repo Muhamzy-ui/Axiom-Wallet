@@ -5612,6 +5612,7 @@ function AppShell({
 
     setIsManualSyncing(true);
     try {
+      marketStore.forceSyncAllPrices();
       await Promise.all([
         marketStore.syncBackendPortfolio(true),
         marketStore.fetchRealMarketData(),
@@ -5630,6 +5631,7 @@ function AppShell({
 
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
+        marketStore.forceSyncAllPrices();
         marketStore.syncBackendPortfolio(true);
         marketStore.fetchRealMarketData();
       }

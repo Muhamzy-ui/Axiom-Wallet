@@ -7,12 +7,12 @@ from .ledger import credit_balance, debit_balance
 
 BASE_RATES_USD = {
     'SOL': Decimal('118.28'),
-    'ETH': Decimal('2670.62'),
+    'ETH': Decimal('2663.42'),
     'USDT': Decimal('1.00'),
     'USDC': Decimal('1.00'),
     'USD': Decimal('1.00'),
-    'BTC': Decimal('84505.29'),
-    'BNB': Decimal('766.99'),
+    'BTC': Decimal('84492.49'),
+    'BNB': Decimal('764.73'),
     'XRP': Decimal('1.48'),
     'DOGE': Decimal('0.0918'),
     'ADA': Decimal('0.2409'),

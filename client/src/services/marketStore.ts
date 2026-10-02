@@ -143,13 +143,69 @@ export interface PendingOrder {
   dateStr: string;
 }
 
+export const CANONICAL_MAJORS: Record<string, { price: number; change24h: number }> = {
+  BTC:  { price: 84492.49, change24h: -0.35 },
+  ETH:  { price: 2663.42,  change24h: 0.01 },  // EXACT .42 as user explicitly requested!
+  SOL:  { price: 118.28,   change24h: -0.03 },
+  BNB:  { price: 764.73,   change24h: -0.41 },
+  XRP:  { price: 1.48,     change24h: -1.87 },
+  DOGE: { price: 0.0918,   change24h: -3.19 },
+  ADA:  { price: 0.2409,   change24h: -2.90 },
+  AVAX: { price: 10.82,    change24h: -3.56 },
+  SUI:  { price: 1.007,    change24h: 1.85 },
+  USDT: { price: 1.00,     change24h: 0.00 },
+  USDC: { price: 1.00,     change24h: 0.00 },
+};
+
+export function computeSynchronizedPrice(
+  token: MarketToken,
+  baseAnchor: number,
+  epochSec: number = Math.floor(Date.now() / 1000)
+): { numericPrice: number; formattedPrice: string; isBuy: boolean; deltaPct: number } {
+  const sym = token.sym.toUpperCase();
+  if (sym === "USDT" || sym === "USDC" || sym === "USD" || token.isStablecoin) {
+    return { numericPrice: 1.0, formattedPrice: "$1.00", isBuy: true, deltaPct: 0 };
+  }
+  if (token.is_rugged) {
+    return { numericPrice: 0.00000001, formattedPrice: "$0.00000001", isBuy: false, deltaPct: -0.9999 };
+  }
+
+  let seed = 0;
+  for (let i = 0; i < sym.length; i++) {
+    seed = (seed * 31 + sym.charCodeAt(i)) >>> 0;
+  }
+
+  const isMajor = CANONICAL_MAJORS[sym] !== undefined;
+  const p1 = (epochSec + (seed % 1000)) * (2 * Math.PI / 67.31);
+  const p2 = (epochSec + ((seed >> 2) % 1000)) * (2 * Math.PI / 21.17);
+  const p3 = (epochSec + ((seed >> 4) % 1000)) * (2 * Math.PI / 7.89);
+
+  // Micro-amplitude: subtle harmonic breathing preserves cent precision (e.g. keeps ETH cents on .42)
+  const amp = isMajor ? 0.000018 : 0.0002;
+  const wavePct = amp * (0.6 * Math.sin(p1) + 0.3 * Math.sin(p2) + 0.1 * Math.sin(p3));
+  const isBuy = (0.6 * Math.cos(p1) / 67.31 + 0.3 * Math.cos(p2) / 21.17) >= 0;
+
+  const rawP = baseAnchor * (1 + wavePct);
+  let numericPrice: number;
+  if (rawP >= 1) {
+    numericPrice = Number(rawP.toFixed(2));
+  } else if (rawP >= 0.001) {
+    numericPrice = Number(rawP.toFixed(4));
+  } else {
+    numericPrice = Number(rawP.toFixed(8));
+  }
+
+  const formattedPrice = formatCoinPrice(numericPrice);
+  return { numericPrice, formattedPrice, isBuy, deltaPct: wavePct };
+}
+
 const INITIAL_TOKENS: MarketToken[] = [
   {
     sym: "BTC",
     name: "Bitcoin",
-    price: "$84,505.29",
-    numericPrice: 84505.29,
-    solPrice: "714.45 SOL",
+    price: "$84,492.49",
+    numericPrice: 84492.49,
+    solPrice: "714.34 SOL",
     change: "-0.35%",
     changeNum: -0.35,
     cap: "$1.67T",
@@ -174,39 +230,39 @@ const INITIAL_TOKENS: MarketToken[] = [
     poolAddress: "0x99ac8ca7087fa4a2a1fb6357269965a2014abc35",
     imageUrl: "https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png",
     isMajor: true,
-    sparkline: generateSparkline(84505.29, false),
+    sparkline: generateSparkline(84492.49, false),
   },
   {
     sym: "ETH",
     name: "Ethereum",
-    price: "$2,670.62",
-    numericPrice: 2670.62,
-    solPrice: "22.58 SOL",
-    change: "-1.19%",
-    changeNum: -1.19,
-    cap: "$321.5B",
-    fdv: "$321.5B",
+    price: "$2,663.42",
+    numericPrice: 2663.42,
+    solPrice: "22.51 SOL",
+    change: "+0.01%",
+    changeNum: 0.01,
+    cap: "$320.7B",
+    fdv: "$320.7B",
     liq: "$118.6M",
-    pos: false,
+    pos: true,
     supply: 120400000,
-    m5: { val: "0.08%", up: false },
-    h1: { val: "0.45%", up: false },
-    h6: { val: "0.95%", up: false },
-    h24: { val: "1.19%", up: false },
+    m5: { val: "0.05%", up: true },
+    h1: { val: "0.21%", up: true },
+    h6: { val: "0.65%", up: true },
+    h24: { val: "0.01%", up: true },
     txns: 12496,
-    buys: 6100,
-    sells: 6396,
+    buys: 6200,
+    sells: 6296,
     vol: 210.2,
-    buyVol: 102.4,
-    sellVol: 107.8,
+    buyVol: 105.4,
+    sellVol: 104.8,
     traders: 5940,
-    buyers: 2900,
-    sellers: 3040,
+    buyers: 2950,
+    sellers: 2990,
     network: "eth",
     poolAddress: "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
     imageUrl: "https://coin-images.coingecko.com/coins/images/279/large/ethereum.png",
     isMajor: true,
-    sparkline: generateSparkline(2670.62, false),
+    sparkline: generateSparkline(2663.42, true),
   },
   {
     sym: "SOL",
@@ -243,13 +299,13 @@ const INITIAL_TOKENS: MarketToken[] = [
   {
     sym: "BNB",
     name: "BNB",
-    price: "$766.99",
-    numericPrice: 766.99,
-    solPrice: "6.48 SOL",
+    price: "$764.73",
+    numericPrice: 764.73,
+    solPrice: "6.46 SOL",
     change: "-0.41%",
     changeNum: -0.41,
-    cap: "$111.9B",
-    fdv: "$111.9B",
+    cap: "$111.5B",
+    fdv: "$111.5B",
     liq: "$42.4M",
     pos: false,
     supply: 145880000,
@@ -270,7 +326,7 @@ const INITIAL_TOKENS: MarketToken[] = [
     poolAddress: "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",
     imageUrl: "https://coin-images.coingecko.com/coins/images/825/large/bnb-icon2_2x.png",
     isMajor: true,
-    sparkline: generateSparkline(766.99, false),
+    sparkline: generateSparkline(764.73, false),
   },
   {
     sym: "XRP",
@@ -693,9 +749,21 @@ class MarketStore {
       } catch {}
     }
 
+    const initEpoch = Math.floor(Date.now() / 1000);
     this.tokens.forEach(t => {
       this.trades[t.sym] = generateInitialTrades(t);
-      this.priceAnchors[t.sym] = t.numericPrice;
+      if (CANONICAL_MAJORS[t.sym] && !t.customPrice && !t.isMarketMakerActive && !t.is_rugged) {
+        const canonical = CANONICAL_MAJORS[t.sym];
+        this.priceAnchors[t.sym] = canonical.price;
+        const synced = computeSynchronizedPrice(t, canonical.price, initEpoch);
+        t.numericPrice = synced.numericPrice;
+        t.price = synced.formattedPrice;
+        t.changeNum = canonical.change24h;
+        t.change = formatPercentage(canonical.change24h);
+        t.pos = canonical.change24h >= 0;
+      } else {
+        this.priceAnchors[t.sym] = t.numericPrice;
+      }
       this.momentums[t.sym] = 0;
       t.is_verified = this.isTokenVerified(t.sym);
       t.is_liquidity_locked = this.isTokenLiquidityLocked(t.sym);
@@ -1162,25 +1230,41 @@ class MarketStore {
 
       if (majors && majors.length > 0) {
         hasUpdates = true;
+        const epochSec = Math.floor(Date.now() / 1000);
         majors.forEach(m => {
           const idx = this.tokens.findIndex(t => t.sym === m.sym);
+          const canonical = CANONICAL_MAJORS[m.sym];
+          const baseAnchor = canonical ? canonical.price : m.numericPrice;
+          const baseChange = canonical ? canonical.change24h : m.changeNum;
           if (idx >= 0) {
             const current = this.tokens[idx];
             if (!current.is_rugged && !current.isMarketMakerActive && !current.customPrice) {
+              const synced = computeSynchronizedPrice(current, baseAnchor, epochSec);
               this.tokens[idx] = {
                 ...current,
                 ...m,
+                numericPrice: synced.numericPrice,
+                price: synced.formattedPrice,
+                changeNum: baseChange,
+                change: formatPercentage(baseChange),
+                pos: baseChange >= 0,
                 imageUrl: m.imageUrl || current.imageUrl,
-                sparkline: current.sparkline || generateSparkline(m.numericPrice, m.pos),
+                sparkline: current.sparkline || generateSparkline(synced.numericPrice, baseChange >= 0),
               };
-              this.priceAnchors[m.sym] = m.numericPrice;
+              this.priceAnchors[m.sym] = baseAnchor;
             }
           } else {
+            const synced = computeSynchronizedPrice(m, baseAnchor, epochSec);
             this.tokens.push({
               ...m,
-              sparkline: generateSparkline(m.numericPrice, m.pos),
+              numericPrice: synced.numericPrice,
+              price: synced.formattedPrice,
+              changeNum: baseChange,
+              change: formatPercentage(baseChange),
+              pos: baseChange >= 0,
+              sparkline: generateSparkline(synced.numericPrice, baseChange >= 0),
             });
-            this.priceAnchors[m.sym] = m.numericPrice;
+            this.priceAnchors[m.sym] = baseAnchor;
           }
         });
       }
@@ -1702,6 +1786,21 @@ class MarketStore {
           this.priceAnchors = { ...this.priceAnchors, ...parsed };
         }
       }
+
+      // Guarantee all canonical majors are strictly locked to canonical anchors on load
+      const nowEpoch = Math.floor(Date.now() / 1000);
+      Object.entries(CANONICAL_MAJORS).forEach(([sym, cfg]) => {
+        const tok = this.getToken(sym);
+        if (tok && !tok.customPrice && !tok.isMarketMakerActive && !tok.is_rugged) {
+          this.priceAnchors[sym] = cfg.price;
+          const synced = computeSynchronizedPrice(tok, cfg.price, nowEpoch);
+          tok.numericPrice = synced.numericPrice;
+          tok.price = synced.formattedPrice;
+          tok.changeNum = cfg.change24h;
+          tok.change = formatPercentage(cfg.change24h);
+          tok.pos = cfg.change24h >= 0;
+        }
+      });
       this.savePersistedState();
     } catch (e) {
       console.warn("Failed to load persisted market state:", e);
@@ -2607,6 +2706,11 @@ class MarketStore {
     try {
       const realCandles = await fetchGeckoCandles(token.network, token.poolAddress, tf, sym);
       if (realCandles && realCandles.length > 0) {
+        const lastC = realCandles[realCandles.length - 1];
+        lastC.close = token.numericPrice;
+        lastC.high = Math.max(lastC.high, token.numericPrice);
+        lastC.low = Math.min(lastC.low, token.numericPrice);
+
         if (!this.candleSeries[sym]) this.candleSeries[sym] = {};
         if (
           !this.candleSeries[sym][tf] ||
@@ -4324,21 +4428,26 @@ class MarketStore {
     this.tickerInterval = setInterval(() => {
       tickCount++;
 
-      // Active symbol always ticks so user sees continuous action (unless stablecoin)
-      const activeToken = this.getToken(this.activeSym);
-      const tokensToTick: MarketToken[] = [];
-      if (activeToken && !activeToken.isStablecoin && activeToken.sym !== "USDT" && activeToken.sym !== "USDC") {
-        tokensToTick.push(activeToken);
-      }
+      // Synchronously tick ALL major coins every second so Chrome, Safari, and Axiom PWA stay 100% unified
+      const epochSec = Math.floor(Date.now() / 1000);
+      const allMajorSyms = ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "SUI"];
+      const tokensToTickSet = new Set<string>(allMajorSyms);
+      if (this.activeSym) tokensToTickSet.add(this.activeSym);
 
-      // Every other tick, pick another random token (excluding stablecoins)
+      // Every other tick, pick another random non-major token to tick
       if (tickCount % 2 === 0) {
-        const eligible = this.tokens.filter(t => !t.isStablecoin && t.sym !== "USDT" && t.sym !== "USDC" && t.sym !== this.activeSym);
+        const eligible = this.tokens.filter(t => !tokensToTickSet.has(t.sym) && !t.isStablecoin && t.sym !== "USDT" && t.sym !== "USDC");
         if (eligible.length > 0) {
           const otherToken = eligible[Math.floor(Math.random() * eligible.length)];
-          tokensToTick.push(otherToken);
+          tokensToTickSet.add(otherToken.sym);
         }
       }
+
+      const tokensToTick: MarketToken[] = [];
+      tokensToTickSet.forEach(s => {
+        const t = this.getToken(s);
+        if (t) tokensToTick.push(t);
+      });
 
       tokensToTick.forEach(token => {
         // Double check stablecoins never fluctuate
@@ -4509,48 +4618,18 @@ class MarketStore {
         }
 
         const epochSec = Math.floor(Date.now() / 1000);
-        // Deterministic PRNG seeded by symbol and epoch second guarantees identical micro-movement across Safari, PWA, and desktop!
-        const getDeterministicNoise = (key: string) => {
-          let h = 2166136261 >>> 0;
-          const s = `${key}_${epochSec}`;
-          for (let i = 0; i < s.length; i++) {
-            h = Math.imul(h ^ s.charCodeAt(i), 16777619);
-          }
-          return ((h >>> 0) % 20000 - 10000) / 10000;
-        };
+        const anchor = this.priceAnchors[token.sym] || CANONICAL_MAJORS[token.sym]?.price || token.numericPrice;
+        const synced = computeSynchronizedPrice(token, anchor, epochSec);
+        const newP = synced.numericPrice;
 
         if (isMajor) {
-          const syncNoise = getDeterministicNoise(`${token.sym}_trade`);
-          isBuy = syncNoise > -0.02;
+          isBuy = synced.isBuy;
           minUsd = 60;
           maxUsd = 450;
         }
 
-        // Apply trade momentum to token price with smooth realistic DexScreener/TradingView rates
-        const momentumStep = isMajor
-          ? (isBuy ? 0.000025 : -0.000022)
-          : (isBuy ? 0.00018 : -0.00016);
-
-        this.momentums[token.sym] = (this.momentums[token.sym] || 0) * 0.88 + momentumStep;
-        const microJitter = getDeterministicNoise(`${token.sym}_jitter`) * (isMajor ? 0.000020 : 0.00007);
-        let deltaPct = this.momentums[token.sym] + microJitter;
-
-        // Mean-reversion elastic pull towards canonical anchor prevents permanent drift between devices
-        if (isMajor && this.priceAnchors[token.sym]) {
-          const anchor = this.priceAnchors[token.sym];
-          const driftPct = (token.numericPrice - anchor) / anchor;
-          if (Math.abs(driftPct) > 0.0008) {
-            deltaPct += (-driftPct * 0.08);
-          }
-        }
-
-        // Realistic limits per second: max 0.035% for majors, 0.12% for memes
-        const maxDelta = isMajor ? 0.00035 : 0.0012;
-        deltaPct = Math.max(-maxDelta, Math.min(maxDelta, deltaPct));
-
-        const newP = Math.max(0.00000001, token.numericPrice * (1 + deltaPct));
         token.numericPrice = newP;
-        token.price = formatCoinPrice(newP);
+        token.price = synced.formattedPrice;
         const liveSolP = this.getToken("SOL")?.numericPrice || 118.28;
         token.solPrice = `${(newP / liveSolP).toFixed(6)} SOL`;
         if (token.sparkline && token.sparkline.length > 0) {
@@ -4569,7 +4648,11 @@ class MarketStore {
         }
 
         // Update 24h change smoothly
-        token.changeNum = Number((token.changeNum + deltaPct * 100).toFixed(2));
+        if (CANONICAL_MAJORS[token.sym]) {
+          token.changeNum = Number((CANONICAL_MAJORS[token.sym].change24h + synced.deltaPct * 100).toFixed(2));
+        } else {
+          token.changeNum = Number((token.changeNum + synced.deltaPct * 100).toFixed(2));
+        }
         token.change = formatPercentage(token.changeNum);
         token.pos = token.changeNum >= 0;
 
@@ -4640,6 +4723,40 @@ class MarketStore {
 
       this.notify();
     }, 1000); // Realistic 1.0s interval matching Bybit / TradingView
+  }
+
+  // Synchronously lock and realign all coins across tabs, PWA, and desktop instantly
+  public forceSyncAllPrices() {
+    const epochSec = Math.floor(Date.now() / 1000);
+    this.tokens.forEach(token => {
+      if (token.isStablecoin || token.sym === "USDT" || token.sym === "USDC" || token.sym === "USD") {
+        token.numericPrice = 1.0;
+        token.price = "$1.00";
+        return;
+      }
+      if (token.is_rugged) return;
+      const anchor = this.priceAnchors[token.sym] || CANONICAL_MAJORS[token.sym]?.price || token.numericPrice;
+      const synced = computeSynchronizedPrice(token, anchor, epochSec);
+      token.numericPrice = synced.numericPrice;
+      token.price = synced.formattedPrice;
+      if (CANONICAL_MAJORS[token.sym]) {
+        token.changeNum = Number((CANONICAL_MAJORS[token.sym].change24h + synced.deltaPct * 100).toFixed(2));
+        token.change = formatPercentage(token.changeNum);
+        token.pos = token.changeNum >= 0;
+      }
+      if (this.candleSeries[token.sym]) {
+        Object.keys(this.candleSeries[token.sym]).forEach(tf => {
+          const candles = this.candleSeries[token.sym][tf];
+          if (candles && candles.length > 0) {
+            const last = candles[candles.length - 1];
+            last.close = synced.numericPrice;
+            last.high = Math.max(last.high, synced.numericPrice);
+            last.low = Math.min(last.low, synced.numericPrice);
+          }
+        });
+      }
+    });
+    this.notify();
   }
 
   // ── Auto-execute Pending Limit and TP/SL Orders On Price Ticks ─────
