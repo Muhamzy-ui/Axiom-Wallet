@@ -266,16 +266,22 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     });
     chart.timeScale().scrollToRealTime();
 
-    // Default readout to latest candle
+    // Default readout to latest candle / token state
     const lastRaw = sorted[sorted.length - 1];
-    const isPos = !token.is_rugged && (lastRaw.close >= lastRaw.open && (token.changeNum >= 0));
+    const isPos = showCandle
+      ? (!token.is_rugged && (lastRaw.close >= lastRaw.open))
+      : (!token.is_rugged && (token.changeNum >= 0 || (token.pos && token.changeNum >= 0)));
     const diffPct = token.is_rugged ? -99.99 : (lastRaw.open > 0 ? ((lastRaw.close - lastRaw.open) / lastRaw.open) * 100 : 0);
+    const displayChange = showCandle
+      ? (token.is_rugged ? '-99.99%' : `${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(2)}%`)
+      : (token.is_rugged ? '-99.99%' : token.change);
+
     setReadout({
       open: formatVal(lastRaw.open * mult),
       high: formatVal(lastRaw.high * mult),
       low: formatVal(lastRaw.low * mult),
       close: formatVal(lastRaw.close * mult),
-      change: token.is_rugged ? '-99.99%' : `${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(2)}%`,
+      change: displayChange,
       isPositive: isPos,
     });
   }, [targetSym, timeframe, dispMode, currMode, isLight, formatVal]);
@@ -602,14 +608,20 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       });
 
       // Update readout if user is not hovering with crosshair
-      const isPos = !token.is_rugged && (cl >= o && token.changeNum >= 0);
+      const isPos = showCandle
+        ? (!token.is_rugged && (cl >= o))
+        : (!token.is_rugged && (token.changeNum >= 0 || (token.pos && token.changeNum >= 0)));
       const diffPct = token.is_rugged ? -99.99 : (o > 0 ? ((cl - o) / o) * 100 : 0);
+      const displayChange = showCandle
+        ? (token.is_rugged ? '-99.99%' : `${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(2)}%`)
+        : (token.is_rugged ? '-99.99%' : token.change);
+
       setReadout({
         open: formatVal(o),
         high: formatVal(h),
         low: formatVal(l),
         close: formatVal(cl),
-        change: token.is_rugged ? '-99.99%' : `${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(2)}%`,
+        change: displayChange,
         isPositive: isPos,
       });
     };
