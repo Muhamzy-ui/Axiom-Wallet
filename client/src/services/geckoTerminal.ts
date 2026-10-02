@@ -381,11 +381,95 @@ let cachedTrending: MarketToken[] = getFallbackTrending();
  */
 export async function fetchGeckoMajors(): Promise<MarketToken[]> {
   const now = Date.now();
-  if (cachedMajors.length >= 3 && now - lastMajorsFetchTime < 15000) {
+  if (cachedMajors.length >= 3 && now - lastMajorsFetchTime < 1800) {
     return cachedMajors;
   }
 
-  // 0. Primary: Fetch synchronized live majors from backend API endpoint (same-origin, 0 CORS, unified price parity)
+  const binanceMap: Record<string, string> = {
+    BTCUSDT: "BTC",
+    ETHUSDT: "ETH",
+    SOLUSDT: "SOL",
+    BNBUSDT: "BNB",
+    XRPUSDT: "XRP",
+    DOGEUSDT: "DOGE",
+    ADAUSDT: "ADA",
+    AVAXUSDT: "AVAX",
+    SUIUSDT: "SUI",
+  };
+
+  // 1. Primary: Direct Binance 24hr Ticker API (Ultra-fast, CORS-enabled *, 100% Bybit/Binance market parity)
+  try {
+    const syms = Object.keys(binanceMap);
+    const url = `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(syms))}`;
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    if (res.ok) {
+      const list = await res.json();
+      if (Array.isArray(list) && list.length > 0) {
+        const liveMap = new Map<string, any>();
+        list.forEach(item => {
+          const sym = binanceMap[item.symbol];
+          if (sym) liveMap.set(sym, item);
+        });
+
+        const solItem = liveMap.get("SOL");
+        const solPrice = solItem ? parseFloat(solItem.lastPrice) : 118.28;
+
+        const results: MarketToken[] = MAJOR_CONFIGS.map(cfg => {
+          const live = liveMap.get(cfg.sym);
+          if (!live) return buildFallbackMajorToken(cfg);
+
+          const numPrice = parseFloat(live.lastPrice) || cfg.fallbackPrice;
+          const changeNum = parseFloat(live.priceChangePercent) !== undefined && !isNaN(parseFloat(live.priceChangePercent))
+            ? Number(parseFloat(live.priceChangePercent).toFixed(2))
+            : cfg.fallbackChange || 0;
+          const pos = changeNum >= 0;
+          const volUsd = parseFloat(live.quoteVolume) || 50000000;
+          const mcap = numPrice * cfg.supply;
+          const solP = cfg.sym === "SOL" ? 1 : numPrice / solPrice;
+
+          return {
+            sym: cfg.sym,
+            name: cfg.name,
+            price: formatPrice(numPrice),
+            numericPrice: numPrice,
+            solPrice: `${solP.toFixed(solP < 0.01 ? 6 : cfg.sym === "SOL" ? 4 : 2)} SOL`,
+            change: `${pos ? "+" : ""}${changeNum.toFixed(2)}%`,
+            changeNum,
+            cap: formatUsdShort(mcap),
+            fdv: formatUsdShort(mcap * 1.05),
+            liq: formatUsdShort(volUsd * 0.08),
+            pos,
+            supply: cfg.supply,
+            m5: { val: `${Math.abs(changeNum * 0.04).toFixed(2)}%`, up: pos },
+            h1: { val: `${Math.abs(changeNum * 0.18).toFixed(2)}%`, up: pos },
+            h6: { val: `${Math.abs(changeNum * 0.55).toFixed(2)}%`, up: pos },
+            h24: { val: `${Math.abs(changeNum).toFixed(2)}%`, up: pos },
+            txns: parseInt(live.count) || 8500,
+            buys: Math.round((parseInt(live.count) || 8500) * (pos ? 0.53 : 0.47)),
+            sells: Math.round((parseInt(live.count) || 8500) * (pos ? 0.47 : 0.53)),
+            vol: Number((volUsd / 1e6).toFixed(2)),
+            buyVol: Number(((volUsd * (pos ? 0.53 : 0.47)) / 1e6).toFixed(2)),
+            sellVol: Number(((volUsd * (pos ? 0.47 : 0.53)) / 1e6).toFixed(2)),
+            traders: Math.round((parseInt(live.count) || 8500) * 0.65),
+            buyers: Math.round((parseInt(live.count) || 8500) * 0.35),
+            sellers: Math.round((parseInt(live.count) || 8500) * 0.30),
+            network: cfg.network,
+            poolAddress: cfg.poolAddress,
+            imageUrl: cfg.imageUrl,
+            isMajor: true,
+          };
+        });
+
+        cachedMajors = results;
+        lastMajorsFetchTime = now;
+        return results;
+      }
+    }
+  } catch (_binanceErr) {
+    // If client direct Binance connection is blocked (e.g. restrictive network), fall through to backend proxy
+  }
+
+  // 2. Secondary: Backend API proxy to Binance (same-origin fallback)
   try {
     const res = await fetch(`${API_BASE}/market/majors/?_t=${now}`, {
       cache: "no-store",
@@ -400,7 +484,7 @@ export async function fetchGeckoMajors(): Promise<MarketToken[]> {
         });
 
         const solItem = liveMap.get("SOL");
-        const solPrice = solItem ? Number(solItem.price) : 121.69;
+        const solPrice = solItem ? Number(solItem.price) : 118.28;
 
         const results: MarketToken[] = MAJOR_CONFIGS.map(cfg => {
           const live = liveMap.get(cfg.sym);
@@ -451,91 +535,7 @@ export async function fetchGeckoMajors(): Promise<MarketToken[]> {
         return results;
       }
     }
-  } catch (_e) {}
-
-  // 1. Try Binance public 24hr ticker API (instant fallback)
-  try {
-    const binanceMap: Record<string, string> = {
-      BTCUSDT: "BTC",
-      ETHUSDT: "ETH",
-      SOLUSDT: "SOL",
-      BNBUSDT: "BNB",
-      XRPUSDT: "XRP",
-      DOGEUSDT: "DOGE",
-      ADAUSDT: "ADA",
-      AVAXUSDT: "AVAX",
-      SUIUSDT: "SUI",
-    };
-    const syms = Object.keys(binanceMap);
-    const url = `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(syms))}`;
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
-    if (res.ok) {
-      const list = await res.json();
-      if (Array.isArray(list) && list.length > 0) {
-        const liveMap = new Map<string, any>();
-        list.forEach(item => {
-          const sym = binanceMap[item.symbol];
-          if (sym) liveMap.set(sym, item);
-        });
-
-        const solItem = liveMap.get("SOL");
-        const solPrice = solItem ? parseFloat(solItem.lastPrice) : 121.69;
-
-        const results: MarketToken[] = MAJOR_CONFIGS.map(cfg => {
-          const live = liveMap.get(cfg.sym);
-          if (!live) return buildFallbackMajorToken(cfg);
-          if (!live) return buildFallbackMajorToken(cfg);
-
-          const numPrice = parseFloat(live.lastPrice) || cfg.fallbackPrice;
-          const changeNum = parseFloat(live.priceChangePercent) !== undefined && !isNaN(parseFloat(live.priceChangePercent))
-            ? Number(parseFloat(live.priceChangePercent).toFixed(2))
-            : cfg.fallbackChange || 0;
-          const pos = changeNum >= 0;
-          const volUsd = parseFloat(live.quoteVolume) || 50000000;
-          const mcap = numPrice * cfg.supply;
-          const solP = cfg.sym === "SOL" ? 1 : numPrice / solPrice;
-
-          return {
-            sym: cfg.sym,
-            name: cfg.name,
-            price: formatPrice(numPrice),
-            numericPrice: numPrice,
-            solPrice: `${solP.toFixed(solP < 0.01 ? 6 : cfg.sym === "SOL" ? 4 : 2)} SOL`,
-            change: `${pos ? "+" : ""}${changeNum.toFixed(2)}%`,
-            changeNum,
-            cap: formatUsdShort(mcap),
-            fdv: formatUsdShort(mcap * 1.05),
-            liq: formatUsdShort(volUsd * 0.08),
-            pos,
-            supply: cfg.supply,
-            m5: { val: `${Math.abs(changeNum * 0.04).toFixed(2)}%`, up: pos },
-            h1: { val: `${Math.abs(changeNum * 0.18).toFixed(2)}%`, up: pos },
-            h6: { val: `${Math.abs(changeNum * 0.55).toFixed(2)}%`, up: pos },
-            h24: { val: `${Math.abs(changeNum).toFixed(2)}%`, up: pos },
-            txns: parseInt(live.count) || 8500,
-            buys: Math.round((parseInt(live.count) || 8500) * (pos ? 0.53 : 0.47)),
-            sells: Math.round((parseInt(live.count) || 8500) * (pos ? 0.47 : 0.53)),
-            vol: Number((volUsd / 1e6).toFixed(2)),
-            buyVol: Number(((volUsd * (pos ? 0.53 : 0.47)) / 1e6).toFixed(2)),
-            sellVol: Number(((volUsd * (pos ? 0.47 : 0.53)) / 1e6).toFixed(2)),
-            traders: Math.round((parseInt(live.count) || 8500) * 0.65),
-            buyers: Math.round((parseInt(live.count) || 8500) * 0.35),
-            sellers: Math.round((parseInt(live.count) || 8500) * 0.30),
-            network: cfg.network,
-            poolAddress: cfg.poolAddress,
-            imageUrl: cfg.imageUrl,
-            isMajor: true,
-          };
-        });
-
-        cachedMajors = results;
-        lastMajorsFetchTime = now;
-        return results;
-      }
-    }
-  } catch (_e) {
-    // Continue to CoinGecko / GeckoTerminal
-  }
+  } catch (_backendErr) {}
 
   // 2. Try CoinGecko simple price API as secondary live provider
   try {

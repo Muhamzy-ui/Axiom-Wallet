@@ -1,5 +1,5 @@
 // Axiom Wallet Service Worker for PWA & Home Screen Support
-const CACHE_NAME = 'axiom-wallet-v2';
+const CACHE_NAME = 'axiom-wallet-v3';
 const PRECACHE_ASSETS = [
   '/manifest.json',
   '/axiom-icon.png',

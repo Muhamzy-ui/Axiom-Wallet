@@ -43,7 +43,7 @@
         // Register Service Worker with instant auto-update & cache bust for PWA
         if ('serviceWorker' in navigator) {
           window.addEventListener('load', function() {
-            navigator.serviceWorker.register('/sw.js?v=2').then(function(reg) {
+            navigator.serviceWorker.register('/sw.js?v=3').then(function(reg) {
               console.log('[Axiom PWA] Service Worker registered with scope:', reg.scope);
               reg.update();
               if (reg.waiting) {

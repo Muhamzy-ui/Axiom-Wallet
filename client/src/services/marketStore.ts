@@ -143,19 +143,7 @@ export interface PendingOrder {
   dateStr: string;
 }
 
-export const CANONICAL_MAJORS: Record<string, { price: number; change24h: number }> = {
-  BTC:  { price: 84492.49, change24h: -0.35 },
-  ETH:  { price: 2663.42,  change24h: 0.01 },  // EXACT .42 as user explicitly requested!
-  SOL:  { price: 118.28,   change24h: -0.03 },
-  BNB:  { price: 764.73,   change24h: -0.41 },
-  XRP:  { price: 1.48,     change24h: -1.87 },
-  DOGE: { price: 0.0918,   change24h: -3.19 },
-  ADA:  { price: 0.2409,   change24h: -2.90 },
-  AVAX: { price: 10.82,    change24h: -3.56 },
-  SUI:  { price: 1.007,    change24h: 1.85 },
-  USDT: { price: 1.00,     change24h: 0.00 },
-  USDC: { price: 1.00,     change24h: 0.00 },
-};
+export const BINANCE_MAJOR_SYMBOLS = new Set(["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "SUI"]);
 
 export function computeSynchronizedPrice(
   token: MarketToken,
@@ -175,13 +163,13 @@ export function computeSynchronizedPrice(
     seed = (seed * 31 + sym.charCodeAt(i)) >>> 0;
   }
 
-  const isMajor = CANONICAL_MAJORS[sym] !== undefined;
+  const isMajor = BINANCE_MAJOR_SYMBOLS.has(sym);
   const p1 = (epochSec + (seed % 1000)) * (2 * Math.PI / 67.31);
   const p2 = (epochSec + ((seed >> 2) % 1000)) * (2 * Math.PI / 21.17);
   const p3 = (epochSec + ((seed >> 4) % 1000)) * (2 * Math.PI / 7.89);
 
-  // Micro-amplitude: subtle harmonic breathing preserves cent precision (e.g. keeps ETH cents on .42)
-  const amp = isMajor ? 0.000018 : 0.0002;
+  // Micro-amplitude: subtle harmonic breathing around real live Binance price (less than 1 cent)
+  const amp = isMajor ? 0.000005 : 0.0002;
   const wavePct = amp * (0.6 * Math.sin(p1) + 0.3 * Math.sin(p2) + 0.1 * Math.sin(p3));
   const isBuy = (0.6 * Math.cos(p1) / 67.31 + 0.3 * Math.cos(p2) / 21.17) >= 0;
 
@@ -203,11 +191,11 @@ const INITIAL_TOKENS: MarketToken[] = [
   {
     sym: "BTC",
     name: "Bitcoin",
-    price: "$84,492.49",
-    numericPrice: 84492.49,
-    solPrice: "714.34 SOL",
-    change: "-0.35%",
-    changeNum: -0.35,
+    price: "$84,540.00",
+    numericPrice: 84540.00,
+    solPrice: "715.34 SOL",
+    change: "-0.22%",
+    changeNum: -0.22,
     cap: "$1.67T",
     fdv: "$1.75T",
     liq: "$25.4M",
@@ -216,13 +204,13 @@ const INITIAL_TOKENS: MarketToken[] = [
     m5: { val: "0.02%", up: false },
     h1: { val: "0.15%", up: false },
     h6: { val: "0.28%", up: false },
-    h24: { val: "0.35%", up: false },
+    h24: { val: "0.22%", up: false },
     txns: 14250,
     buys: 7040,
     sells: 7210,
-    vol: 450.2,
-    buyVol: 220.5,
-    sellVol: 229.7,
+    vol: 2257.2,
+    buyVol: 1120.5,
+    sellVol: 1136.7,
     traders: 8890,
     buyers: 4460,
     sellers: 4430,
@@ -230,31 +218,31 @@ const INITIAL_TOKENS: MarketToken[] = [
     poolAddress: "0x99ac8ca7087fa4a2a1fb6357269965a2014abc35",
     imageUrl: "https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png",
     isMajor: true,
-    sparkline: generateSparkline(84492.49, false),
+    sparkline: generateSparkline(84540.00, false),
   },
   {
     sym: "ETH",
     name: "Ethereum",
-    price: "$2,663.42",
-    numericPrice: 2663.42,
-    solPrice: "22.51 SOL",
-    change: "+0.01%",
-    changeNum: 0.01,
+    price: "$2,664.87",
+    numericPrice: 2664.87,
+    solPrice: "22.55 SOL",
+    change: "-1.32%",
+    changeNum: -1.32,
     cap: "$320.7B",
     fdv: "$320.7B",
     liq: "$118.6M",
-    pos: true,
+    pos: false,
     supply: 120400000,
-    m5: { val: "0.05%", up: true },
-    h1: { val: "0.21%", up: true },
-    h6: { val: "0.65%", up: true },
-    h24: { val: "0.01%", up: true },
+    m5: { val: "0.05%", up: false },
+    h1: { val: "0.21%", up: false },
+    h6: { val: "0.65%", up: false },
+    h24: { val: "1.32%", up: false },
     txns: 12496,
     buys: 6200,
     sells: 6296,
-    vol: 210.2,
-    buyVol: 105.4,
-    sellVol: 104.8,
+    vol: 1148.6,
+    buyVol: 560.4,
+    sellVol: 588.2,
     traders: 5940,
     buyers: 2950,
     sellers: 2990,
@@ -262,39 +250,39 @@ const INITIAL_TOKENS: MarketToken[] = [
     poolAddress: "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
     imageUrl: "https://coin-images.coingecko.com/coins/images/279/large/ethereum.png",
     isMajor: true,
-    sparkline: generateSparkline(2663.42, true),
+    sparkline: generateSparkline(2664.87, false),
   },
   {
     sym: "SOL",
     name: "Solana",
-    price: "$118.28",
-    numericPrice: 118.28,
+    price: "$118.18",
+    numericPrice: 118.18,
     solPrice: "1.0000 SOL",
-    change: "-0.03%",
-    changeNum: -0.03,
+    change: "+0.10%",
+    changeNum: 0.10,
     cap: "$54.32B",
     fdv: "$56.16B",
     liq: "$349.2M",
-    pos: false,
+    pos: true,
     supply: 459297153,
-    m5: { val: "0.01%", up: false },
-    h1: { val: "0.02%", up: false },
-    h6: { val: "0.03%", up: false },
-    h24: { val: "0.03%", up: false },
-    txns: 135006,
-    buys: 67400,
-    sells: 67606,
-    vol: 436.5,
-    buyVol: 218.0,
-    sellVol: 218.5,
-    traders: 18257,
-    buyers: 9100,
-    sellers: 9157,
+    m5: { val: "0.01%", up: true },
+    h1: { val: "0.08%", up: true },
+    h6: { val: "0.15%", up: true },
+    h24: { val: "0.10%", up: true },
+    txns: 9400,
+    buys: 4900,
+    sells: 4500,
+    vol: 820.5,
+    buyVol: 430.2,
+    sellVol: 390.3,
+    traders: 6100,
+    buyers: 3100,
+    sellers: 3000,
     network: "solana",
     poolAddress: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
     imageUrl: "https://coin-images.coingecko.com/coins/images/4128/large/solana.png",
     isMajor: true,
-    sparkline: generateSparkline(118.28, false),
+    sparkline: generateSparkline(118.18, true),
   },
   {
     sym: "BNB",
@@ -749,21 +737,9 @@ class MarketStore {
       } catch {}
     }
 
-    const initEpoch = Math.floor(Date.now() / 1000);
     this.tokens.forEach(t => {
       this.trades[t.sym] = generateInitialTrades(t);
-      if (CANONICAL_MAJORS[t.sym] && !t.customPrice && !t.isMarketMakerActive && !t.is_rugged) {
-        const canonical = CANONICAL_MAJORS[t.sym];
-        this.priceAnchors[t.sym] = canonical.price;
-        const synced = computeSynchronizedPrice(t, canonical.price, initEpoch);
-        t.numericPrice = synced.numericPrice;
-        t.price = synced.formattedPrice;
-        t.changeNum = canonical.change24h;
-        t.change = formatPercentage(canonical.change24h);
-        t.pos = canonical.change24h >= 0;
-      } else {
-        this.priceAnchors[t.sym] = t.numericPrice;
-      }
+      this.priceAnchors[t.sym] = t.numericPrice;
       this.momentums[t.sym] = 0;
       t.is_verified = this.isTokenVerified(t.sym);
       t.is_liquidity_locked = this.isTokenLiquidityLocked(t.sym);
@@ -821,11 +797,11 @@ class MarketStore {
         this.syncBackendTokens();
       }, 3500);
 
-      // 2. Periodic external market data poll (60s to avoid third-party rate limits)
+      // 2. Periodic external market data poll (2.5s for real Binance/Bybit market parity)
       this.pollInterval = setInterval(() => {
         if (typeof document !== "undefined" && document.hidden) return;
         this.fetchRealMarketData();
-      }, 60000);
+      }, 2500);
 
       // 3. Periodic portfolio sync (4s) to detect incoming UID transfers and deposits
       setInterval(() => {
@@ -1230,41 +1206,43 @@ class MarketStore {
 
       if (majors && majors.length > 0) {
         hasUpdates = true;
-        const epochSec = Math.floor(Date.now() / 1000);
         majors.forEach(m => {
           const idx = this.tokens.findIndex(t => t.sym === m.sym);
-          const canonical = CANONICAL_MAJORS[m.sym];
-          const baseAnchor = canonical ? canonical.price : m.numericPrice;
-          const baseChange = canonical ? canonical.change24h : m.changeNum;
           if (idx >= 0) {
             const current = this.tokens[idx];
             if (!current.is_rugged && !current.isMarketMakerActive && !current.customPrice) {
-              const synced = computeSynchronizedPrice(current, baseAnchor, epochSec);
               this.tokens[idx] = {
                 ...current,
                 ...m,
-                numericPrice: synced.numericPrice,
-                price: synced.formattedPrice,
-                changeNum: baseChange,
-                change: formatPercentage(baseChange),
-                pos: baseChange >= 0,
+                numericPrice: m.numericPrice,
+                price: m.price,
+                changeNum: m.changeNum,
+                change: m.change,
+                pos: m.pos,
                 imageUrl: m.imageUrl || current.imageUrl,
-                sparkline: current.sparkline || generateSparkline(synced.numericPrice, baseChange >= 0),
+                sparkline: current.sparkline || generateSparkline(m.numericPrice, m.pos),
               };
-              this.priceAnchors[m.sym] = baseAnchor;
+              this.priceAnchors[m.sym] = m.numericPrice;
+
+              // Keep candle series active candle strictly clamped to live Binance price
+              if (this.candleSeries[m.sym]) {
+                Object.keys(this.candleSeries[m.sym]).forEach(tf => {
+                  const candles = this.candleSeries[m.sym][tf];
+                  if (candles && candles.length > 0) {
+                    const last = candles[candles.length - 1];
+                    last.close = m.numericPrice;
+                    last.high = Math.max(last.high, m.numericPrice);
+                    last.low = Math.min(last.low, m.numericPrice);
+                  }
+                });
+              }
             }
           } else {
-            const synced = computeSynchronizedPrice(m, baseAnchor, epochSec);
             this.tokens.push({
               ...m,
-              numericPrice: synced.numericPrice,
-              price: synced.formattedPrice,
-              changeNum: baseChange,
-              change: formatPercentage(baseChange),
-              pos: baseChange >= 0,
-              sparkline: generateSparkline(synced.numericPrice, baseChange >= 0),
+              sparkline: generateSparkline(m.numericPrice, m.pos),
             });
-            this.priceAnchors[m.sym] = baseAnchor;
+            this.priceAnchors[m.sym] = m.numericPrice;
           }
         });
       }
@@ -1551,7 +1529,7 @@ class MarketStore {
           if (pMap && typeof pMap === "object") {
             Object.entries(pMap).forEach(([sym, price]) => {
               const cleanSym = sym.toUpperCase().trim().replace(/^\$/, "");
-              if (CANONICAL_MAJORS[cleanSym]) return; // Strictly ignore stale cache for canonical majors
+              if (BINANCE_MAJOR_SYMBOLS.has(cleanSym)) return; // Strictly ignore stale cache for major coins
               const pNum = Number(price);
               if (pNum > 0) {
                 const tok = this.tokens.find(t => t.sym.toUpperCase().trim().replace(/^\$/, "") === cleanSym);
@@ -1571,8 +1549,8 @@ class MarketStore {
         if (Array.isArray(parsed) && parsed.length > 0) {
           parsed.forEach((pt: MarketToken) => {
             const cleanSym = (pt.sym || "").toUpperCase().trim().replace(/^\$/, "");
-            if (CANONICAL_MAJORS[cleanSym]) {
-              // For canonical majors, keep canonical anchor, prices, and changes intact!
+            if (BINANCE_MAJOR_SYMBOLS.has(cleanSym)) {
+              // For major coins, keep live Binance prices and changes intact!
               const idx = this.tokens.findIndex(t => t.sym === pt.sym);
               if (idx >= 0 && pt.imageUrl && !this.tokens[idx].imageUrl) {
                 this.tokens[idx].imageUrl = pt.imageUrl;
@@ -1781,21 +1759,6 @@ class MarketStore {
           this.priceAnchors = { ...this.priceAnchors, ...parsed };
         }
       }
-
-      // Guarantee all canonical majors are strictly locked to canonical anchors on load
-      const nowEpoch = Math.floor(Date.now() / 1000);
-      Object.entries(CANONICAL_MAJORS).forEach(([sym, cfg]) => {
-        const tok = this.getToken(sym);
-        if (tok && !tok.customPrice && !tok.isMarketMakerActive && !tok.is_rugged) {
-          this.priceAnchors[sym] = cfg.price;
-          const synced = computeSynchronizedPrice(tok, cfg.price, nowEpoch);
-          tok.numericPrice = synced.numericPrice;
-          tok.price = synced.formattedPrice;
-          tok.changeNum = cfg.change24h;
-          tok.change = formatPercentage(cfg.change24h);
-          tok.pos = cfg.change24h >= 0;
-        }
-      });
       this.savePersistedState();
     } catch (e) {
       console.warn("Failed to load persisted market state:", e);
@@ -4613,7 +4576,7 @@ class MarketStore {
         }
 
         const epochSec = Math.floor(Date.now() / 1000);
-        const anchor = this.priceAnchors[token.sym] || CANONICAL_MAJORS[token.sym]?.price || token.numericPrice;
+        const anchor = this.priceAnchors[token.sym] || token.numericPrice;
         const synced = computeSynchronizedPrice(token, anchor, epochSec);
         const newP = synced.numericPrice;
 
@@ -4643,13 +4606,11 @@ class MarketStore {
         }
 
         // Update 24h change smoothly
-        if (CANONICAL_MAJORS[token.sym]) {
-          token.changeNum = Number((CANONICAL_MAJORS[token.sym].change24h + synced.deltaPct * 100).toFixed(2));
-        } else {
+        if (!BINANCE_MAJOR_SYMBOLS.has(token.sym)) {
           token.changeNum = Number((token.changeNum + synced.deltaPct * 100).toFixed(2));
+          token.change = formatPercentage(token.changeNum);
+          token.pos = token.changeNum >= 0;
         }
-        token.change = formatPercentage(token.changeNum);
-        token.pos = token.changeNum >= 0;
 
         // Auto-check and trigger any pending Limit and TP/SL orders
         this.checkPendingOrders(token);
@@ -4722,6 +4683,7 @@ class MarketStore {
 
   // Synchronously lock and realign all coins across tabs, PWA, and desktop instantly
   public forceSyncAllPrices() {
+    this.fetchRealMarketData();
     const epochSec = Math.floor(Date.now() / 1000);
     this.tokens.forEach(token => {
       if (token.isStablecoin || token.sym === "USDT" || token.sym === "USDC" || token.sym === "USD") {
@@ -4730,12 +4692,11 @@ class MarketStore {
         return;
       }
       if (token.is_rugged) return;
-      const anchor = this.priceAnchors[token.sym] || CANONICAL_MAJORS[token.sym]?.price || token.numericPrice;
+      const anchor = this.priceAnchors[token.sym] || token.numericPrice;
       const synced = computeSynchronizedPrice(token, anchor, epochSec);
       token.numericPrice = synced.numericPrice;
       token.price = synced.formattedPrice;
-      if (CANONICAL_MAJORS[token.sym]) {
-        token.changeNum = Number((CANONICAL_MAJORS[token.sym].change24h + synced.deltaPct * 100).toFixed(2));
+      if (!BINANCE_MAJOR_SYMBOLS.has(token.sym)) {
         token.change = formatPercentage(token.changeNum);
         token.pos = token.changeNum >= 0;
       }
