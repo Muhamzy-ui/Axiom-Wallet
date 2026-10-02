@@ -3054,6 +3054,7 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
+    marketStore.syncBackendPortfolio(true);
     return marketStore.subscribe(() => setTick(t => t + 1));
   }, []);
 
@@ -4281,6 +4282,7 @@ function ProfileView({
   };
 
   useEffect(() => {
+    marketStore.syncBackendPortfolio(true);
     return marketStore.subscribe(() => setTick(t => t + 1));
   }, []);
 
@@ -5310,6 +5312,13 @@ function AppShell({
   const [resendingVerif, setResendingVerif] = useState(false);
   const [resendSent, setResendSent] = useState(false);
   const { toggleTheme, isLight } = useTheme();
+
+  useEffect(() => {
+    if (authUser) {
+      marketStore.setUser(authUser);
+      marketStore.syncBackendPortfolio(true);
+    }
+  }, [authUser?.user_id, authUser?.wallet_address]);
 
   useEffect(() => {
     const handleHashChange = () => {

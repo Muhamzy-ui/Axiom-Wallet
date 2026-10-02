@@ -523,18 +523,30 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
         throw new Error(resp.error || "Failed to restore wallet");
       }
 
+      const finalUsername = resp.username || (typeof localStorage !== "undefined" ? localStorage.getItem("axiom_user_username") : "") || "Account 1";
+      const finalAvatar = resp.avatar_url || (typeof localStorage !== "undefined" ? localStorage.getItem("axiom_user_avatar") : "") || undefined;
+
+      if (resp.username && typeof localStorage !== "undefined") localStorage.setItem("axiom_user_username", resp.username);
+      if (resp.avatar_url && typeof localStorage !== "undefined") localStorage.setItem("axiom_user_avatar", resp.avatar_url);
+
       const user: AuthUser = {
         user_id: resp.user_id || "",
         email: resp.email || "",
         wallet_address: resp.wallet_address,
         is_admin: !!resp.is_admin,
         is_email_verified: true,
-        full_name: resp.full_name || "Account 1",
+        full_name: resp.full_name || finalUsername,
+        username: finalUsername,
+        avatar_url: finalAvatar,
       };
 
       setStoredWalletAddress(resp.wallet_address);
       setStoredAddress(resp.wallet_address);
-      if (typeof localStorage !== "undefined") localStorage.setItem("axiom_active_view", "wallet");
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("axiom_wallet_address", resp.wallet_address);
+        if (resp.user_id) localStorage.setItem("axiom_user_id", resp.user_id);
+        localStorage.setItem("axiom_active_view", "wallet");
+      }
       if (typeof window !== "undefined") window.location.hash = "wallet";
       onAuth(user);
     } catch (err: any) {
@@ -582,7 +594,11 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
       };
 
       setStoredWalletAddress(resp.wallet_address);
-      if (typeof localStorage !== "undefined") localStorage.setItem("axiom_active_view", "wallet");
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("axiom_wallet_address", resp.wallet_address);
+        if (resp.user_id) localStorage.setItem("axiom_user_id", resp.user_id);
+        localStorage.setItem("axiom_active_view", "wallet");
+      }
       if (typeof window !== "undefined") window.location.hash = "wallet";
       onAuth(user);
     } catch (err: any) {

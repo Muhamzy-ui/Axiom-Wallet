@@ -1304,19 +1304,6 @@ class MarketStore {
           this.balances = { ...this.balances, ...parsed };
         }
       } catch { }
-    } else {
-      // Keep existing balances if already populated, otherwise initialize
-      const hasExistingBal = Object.values(this.balances).some(b => (b?.bal || 0) > 0);
-      if (!hasExistingBal) {
-        this.balances = {
-          USDT: { bal: 0.00, usdValue: 0.00, name: "Tether USD", totalInvested: 0.00, avgBuyPrice: 1.0 },
-          USDC: { bal: 0.00, usdValue: 0.00, name: "USD Coin", totalInvested: 0.00, avgBuyPrice: 1.0 },
-          SOL: { bal: 0.00, usdValue: 0.00, name: "Solana", totalInvested: 0.00, avgBuyPrice: 121.69 },
-          BTC: { bal: 0.00, usdValue: 0.00, name: "Bitcoin", totalInvested: 0.00, avgBuyPrice: 77724.00 },
-          ETH: { bal: 0.00, usdValue: 0.00, name: "Ethereum", totalInvested: 0.00, avgBuyPrice: 2650.00 },
-        };
-      }
-      this.savePersistedStateNow();
     }
 
     // Always restore user orders and trade activity history, never delete or reset
@@ -1358,92 +1345,12 @@ class MarketStore {
       await this.syncBackendTokens();
     } catch { }
 
-    // 2. Also sync live balances, total invested, and trade positions from backend database
-    if (wallet) {
-      try {
-        const portfolio = await api.getPortfolio(wallet);
-        if (portfolio && Array.isArray(portfolio.balances)) {
-          portfolio.balances.forEach((item: any) => {
-            const rawSym = (item.currency || "").toUpperCase().trim();
-            const sym = rawSym.replace(/^\$/, "");
-            if (!sym) return;
+    // 2. Fetch live balances and transactions directly from backend database with forced refresh
+    try {
+      await this.syncBackendPortfolio(true);
+    } catch { }
 
-            const amt = parseFloat(item.available_amount || "0") || 0;
-            const backendInvested = parseFloat(item.total_invested || "0") || 0;
-            const backendAvgPrice = parseFloat(item.avg_buy_price || "0") || 0;
-            const itemPrice = parseFloat(item.price_usd || "0") || 0;
-
-            const token = this.getToken(sym);
-            const liveP = token && token.numericPrice > 0 ? token.numericPrice : (itemPrice > 0 ? itemPrice : (backendAvgPrice > 0 ? backendAvgPrice : 1));
-
-            // If token is missing from this.tokens, dynamically register it
-            if (!this.tokens.some(t => t.sym.toUpperCase().replace(/^\$/, "") === sym)) {
-              const newToken: MarketToken = {
-                sym,
-                name: item.name || sym,
-                price: formatCoinPrice(liveP),
-                numericPrice: liveP,
-                solPrice: `${(liveP / 121.69).toFixed(6)} SOL`,
-                change: item.change_24h ? `${item.change_24h}%` : "+0.00%",
-                changeNum: parseFloat(item.change_24h || "0") || 0,
-                cap: "$1M",
-                fdv: "$1M",
-                liq: "$50K",
-                pos: !item.change_24h || !item.change_24h.startsWith("-"),
-                supply: 1000000000,
-                m5: { val: "0%", up: true, zero: true },
-                h1: { val: "0%", up: true, zero: true },
-                h6: { val: "0%", up: true, zero: true },
-                h24: { val: "0%", up: true, zero: true },
-                txns: 1,
-                buys: 1,
-                sells: 0,
-                vol: 10,
-                buyVol: 5.8,
-                sellVol: 4.2,
-                traders: 1,
-                buyers: 1,
-                sellers: 0,
-                network: "solana",
-                imageUrl: item.icon || "https://coin-images.coingecko.com/coins/images/33890/large/popcat.png",
-                sparkline: generateSparkline(liveP, true),
-                is_rugged: !!item.is_rugged,
-              };
-              this.tokens.push(newToken);
-            }
-
-            const local = this.balances[sym];
-            if (!local) {
-              this.balances[sym] = {
-                bal: amt,
-                usdValue: Number((amt * liveP).toFixed(2)),
-                name: item.name || sym,
-                totalInvested: backendInvested > 0 ? backendInvested : (amt > 0 ? Number((amt * (backendAvgPrice || liveP)).toFixed(2)) : 0),
-                avgBuyPrice: backendAvgPrice > 0 ? backendAvgPrice : liveP,
-              };
-            } else {
-              if (amt > 0 || !this.balances[sym].bal || this.balances[sym].bal === 0) {
-                this.balances[sym].bal = amt;
-              }
-              this.balances[sym].usdValue = Number((this.balances[sym].bal * liveP).toFixed(2));
-              if (backendInvested > 0 || !this.balances[sym].totalInvested) {
-                this.balances[sym].totalInvested = backendInvested;
-              }
-              if (backendAvgPrice > 0 || !this.balances[sym].avgBuyPrice) {
-                this.balances[sym].avgBuyPrice = backendAvgPrice;
-              }
-              if (item.name) this.balances[sym].name = item.name;
-            }
-          });
-
-          // Sync consolidated balances to backend DB so DB is strictly in parity
-          api.syncBalances(wallet, this.balances);
-          this.savePersistedStateNow();
-        }
-      } catch { }
-      this.syncBackendPortfolio();
-    }
-
+    this.savePersistedStateNow();
     this.notify();
   }
 
@@ -1905,8 +1812,10 @@ class MarketStore {
   }
 
   async syncBackendPortfolio(force = false) {
-    const wallet = this.currentUserWallet;
-    if (!wallet) return;
+    const targetIdentifier = this.currentUserWallet
+      || this.currentUserId
+      || (typeof window !== "undefined" && window.localStorage ? (window.localStorage.getItem("axiom_wallet_address") || window.localStorage.getItem("axiom_user_id") || "") : "");
+    if (!targetIdentifier) return;
 
     // Guard against overwriting fresh in-memory trade/swap executions before backend DB write is fully processed
     const now = Date.now();
@@ -1915,7 +1824,7 @@ class MarketStore {
     }
 
     try {
-      const portfolio = await api.getPortfolio(wallet);
+      const portfolio = await api.getPortfolio(targetIdentifier);
       if (!portfolio) return;
 
       let hasUpdates = false;
@@ -1935,6 +1844,42 @@ class MarketStore {
           const token = this.getToken(sym);
           const liveP = token && token.numericPrice > 0 ? token.numericPrice : (itemPrice > 0 ? itemPrice : (backendAvgPrice > 0 ? backendAvgPrice : (sym === "USDT" || sym === "USDC" || sym === "USD" ? 1.0 : 1)));
 
+          // Dynamically register missing token if not present in this.tokens
+          if (!this.tokens.some(t => t.sym.toUpperCase().replace(/^\$/, "") === sym)) {
+            const newToken: MarketToken = {
+              sym,
+              name: item.name || sym,
+              price: formatCoinPrice(liveP),
+              numericPrice: liveP,
+              solPrice: `${(liveP / 121.69).toFixed(6)} SOL`,
+              change: item.change_24h ? `${item.change_24h}%` : "+0.00%",
+              changeNum: parseFloat(item.change_24h || "0") || 0,
+              cap: "$1M",
+              fdv: "$1M",
+              liq: "$50K",
+              pos: !item.change_24h || !item.change_24h.startsWith("-"),
+              supply: 1000000000,
+              m5: { val: "0%", up: true, zero: true },
+              h1: { val: "0%", up: true, zero: true },
+              h6: { val: "0%", up: true, zero: true },
+              h24: { val: "0%", up: true, zero: true },
+              txns: 1,
+              buys: 1,
+              sells: 0,
+              vol: 10,
+              buyVol: 5.8,
+              sellVol: 4.2,
+              traders: 1,
+              buyers: 1,
+              sellers: 0,
+              network: "solana",
+              imageUrl: item.icon || "https://coin-images.coingecko.com/coins/images/33890/large/popcat.png",
+              sparkline: generateSparkline(liveP, true),
+              is_rugged: !!item.is_rugged,
+            };
+            this.tokens.push(newToken);
+          }
+
           const local = this.balances[sym];
           if (!local) {
             this.balances[sym] = {
@@ -1946,13 +1891,14 @@ class MarketStore {
             };
             hasUpdates = true;
           } else {
-            if (local.bal !== amt) {
+            if (local.bal !== amt || local.usdValue === 0 && amt > 0) {
               local.bal = amt;
               local.usdValue = Number((amt * liveP).toFixed(2));
               hasUpdates = true;
             }
             if (backendInvested > 0) local.totalInvested = backendInvested;
             if (backendAvgPrice > 0) local.avgBuyPrice = backendAvgPrice;
+            if (item.name) local.name = item.name;
           }
         });
       }
@@ -1961,7 +1907,7 @@ class MarketStore {
       if (Array.isArray((portfolio as any).recent_transactions)) {
         const existingOrderIds = new Set(this.userOrders.map((o: any) => o.id));
         let hasNewTx = false;
-        const uid = this.currentUserId || wallet;
+        const uid = this.currentUserId || targetIdentifier;
         const seenTxKey = `axiom_seen_tx_${uid}`;
         const rawSeen = (typeof window !== "undefined" && window.localStorage) ? (localStorage.getItem(seenTxKey) || "[]") : "[]";
         let seenSet = new Set<string>();
@@ -2021,10 +1967,8 @@ class MarketStore {
         }
       }
 
-      if (hasUpdates) {
-        this.savePersistedStateNow();
-        this.notify();
-      }
+      this.savePersistedStateNow();
+      this.notify();
     } catch {
       // silently keep working
     }
