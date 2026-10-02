@@ -1550,9 +1550,11 @@ class MarketStore {
           const pMap = JSON.parse(savedPrices);
           if (pMap && typeof pMap === "object") {
             Object.entries(pMap).forEach(([sym, price]) => {
+              const cleanSym = sym.toUpperCase().trim().replace(/^\$/, "");
+              if (CANONICAL_MAJORS[cleanSym]) return; // Strictly ignore stale cache for canonical majors
               const pNum = Number(price);
               if (pNum > 0) {
-                const tok = this.tokens.find(t => t.sym.toUpperCase().trim().replace(/^\$/, "") === sym);
+                const tok = this.tokens.find(t => t.sym.toUpperCase().trim().replace(/^\$/, "") === cleanSym);
                 if (tok) {
                   tok.numericPrice = pNum;
                   tok.price = formatCoinPrice(pNum);
@@ -1568,21 +1570,14 @@ class MarketStore {
         const parsed = JSON.parse(savedTokens);
         if (Array.isArray(parsed) && parsed.length > 0) {
           parsed.forEach((pt: MarketToken) => {
-            // Guarantee SOL is never corrupted by meme tokens named "swift" or crushed to 0
-            if (pt.sym === "SOL") {
-              pt.name = "Solana";
-              if (!pt.numericPrice || pt.numericPrice <= 0 || isNaN(pt.numericPrice)) {
-                pt.numericPrice = 121.69;
-                pt.price = "$121.69";
-                pt.solPrice = "1.0000 SOL";
-                pt.change = "+2.08%";
-                pt.changeNum = 2.08;
-                pt.pos = true;
-                pt.cap = "$71.58B";
-                pt.fdv = "$75.16B";
-                pt.liq = "$349.2M";
-                pt.sparkline = generateSparkline(121.69, true);
+            const cleanSym = (pt.sym || "").toUpperCase().trim().replace(/^\$/, "");
+            if (CANONICAL_MAJORS[cleanSym]) {
+              // For canonical majors, keep canonical anchor, prices, and changes intact!
+              const idx = this.tokens.findIndex(t => t.sym === pt.sym);
+              if (idx >= 0 && pt.imageUrl && !this.tokens[idx].imageUrl) {
+                this.tokens[idx].imageUrl = pt.imageUrl;
               }
+              return;
             }
             const idx = this.tokens.findIndex(t => t.sym === pt.sym);
             if (idx >= 0) {

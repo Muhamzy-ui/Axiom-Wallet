@@ -1,8 +1,6 @@
 // Axiom Wallet Service Worker for PWA & Home Screen Support
-const CACHE_NAME = 'axiom-wallet-v1';
+const CACHE_NAME = 'axiom-wallet-v2';
 const PRECACHE_ASSETS = [
-  '/',
-  '/index.html',
   '/manifest.json',
   '/axiom-icon.png',
   '/icon-192.png',
@@ -28,6 +26,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
+            console.log('[Axiom SW] Purging old cache:', key);
             return caches.delete(key);
           }
         })
@@ -36,16 +35,36 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Do not intercept or cache backend API or websocket calls
+  // Do not intercept or cache backend API, websocket, or external third-party calls
   if (url.pathname.startsWith('/api') || url.pathname.startsWith('/ws') || request.method !== 'GET') {
     return;
   }
 
-  // Network-first strategy for navigation and assets
+  // HTML Navigation: Always fetch fresh HTML from network so new builds are immediately loaded
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          return response;
+        })
+        .catch(() => {
+          return caches.match('/index.html');
+        })
+    );
+    return;
+  }
+
+  // Static assets: Network-first
   event.respondWith(
     fetch(request)
       .then((networkResponse) => {
@@ -58,14 +77,7 @@ self.addEventListener('fetch', (event) => {
         return networkResponse;
       })
       .catch(() => {
-        return caches.match(request).then((cachedResponse) => {
-          if (cachedResponse) {
-            return cachedResponse;
-          }
-          if (request.mode === 'navigate') {
-            return caches.match('/index.html');
-          }
-        });
+        return caches.match(request);
       })
   );
 });
