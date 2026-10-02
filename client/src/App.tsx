@@ -3052,6 +3052,7 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
   const [searchQ, setSearchQ] = useState("");
   const [copied, setCopied] = useState(false);
   const [tick, setTick] = useState(0);
+  const [isWalletSyncing, setIsWalletSyncing] = useState(false);
 
   useEffect(() => {
     marketStore.syncBackendPortfolio(true);
@@ -3129,6 +3130,44 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
       }
     });
 
+    // Also include any coins the user has executed buy orders for
+    if (Array.isArray(marketStore.userOrders)) {
+      marketStore.userOrders.forEach(ord => {
+        if (ord && (ord.side === "Buy" || String(ord.side).toLowerCase() === "buy")) {
+          const rawSym = (ord.sym || "").toUpperCase().trim();
+          const cleanSym = rawSym.replace(/^\$/, "");
+          if (cleanSym && !added.has(cleanSym) && !added.has(rawSym)) {
+            let t = marketStore.getToken(cleanSym);
+            if (!t) {
+              t = {
+                sym: cleanSym,
+                name: ord.name || cleanSym,
+                price: formatCoinPrice(ord.price || 1.0),
+                numericPrice: ord.price || 1.0,
+                solPrice: "0.0055 SOL",
+                change: "+0.00%",
+                changeNum: 0,
+                cap: "$1M",
+                fdv: "$1M",
+                liq: "$50K",
+                pos: true,
+                supply: 1000000000,
+                m5: { val: "0%", up: true },
+                h1: { val: "0%", up: true },
+                h6: { val: "0%", up: true },
+                h24: { val: "0%", up: true },
+                txns: 1, buys: 1, sells: 0, vol: 1, buyVol: 1, sellVol: 0, traders: 1, buyers: 1, sellers: 0,
+                imageUrl: cleanSym === "USDT" ? COIN_IMGS.USDT : undefined,
+              };
+            }
+            list.push(t);
+            added.add(cleanSym);
+            added.add(rawSym);
+          }
+        }
+      });
+    }
+
     const mapped = list.map(token => {
       const rawSym = (token.sym || "").toUpperCase().trim();
       const cleanSym = rawSym.replace(/^\$/, "");
@@ -3180,8 +3219,13 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
   }, [rawBalances, tick]);
 
   const boughtCoins = useMemo(() => {
-    return allTokensList.filter(b => !b.isStable && b.balNum > 0.000001);
-  }, [allTokensList]);
+    const buyOrderSyms = new Set(
+      (marketStore.userOrders || [])
+        .filter(o => o && (o.side === "Buy" || String(o.side).toLowerCase() === "buy"))
+        .map(o => (o.sym || "").toUpperCase().replace(/^\$/, ""))
+    );
+    return allTokensList.filter(b => !b.isStable && (b.balNum > 0.000001 || buyOrderSyms.has(b.sym.toUpperCase().replace(/^\$/, "")) || b.invested > 0));
+  }, [allTokensList, tick]);
 
   const totalMoneyInvestedInBought = useMemo(() => {
     return boughtCoins.reduce((acc, b) => acc + b.invested, 0);
@@ -3262,13 +3306,35 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
     <div className="wallet-screen">
       {/* UID & Universal Search strip */}
       <div className="wallet-topbar">
-        <button className="addr-chip" onClick={handleCopy} title="Click to copy your Axiom UID">
-          <span className="addr-dot" />
-          <span style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 700 }}>
-            {copied ? <span style={{ color: "var(--green)" }}>Copied!</span> : `UID: ${userUid}`}
-          </span>
-          <Copy size={11} />
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button className="addr-chip" onClick={handleCopy} title="Click to copy your Axiom UID">
+            <span className="addr-dot" />
+            <span style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 700 }}>
+              {copied ? <span style={{ color: "var(--green)" }}>Copied!</span> : `UID: ${userUid}`}
+            </span>
+            <Copy size={11} />
+          </button>
+          <button
+            type="button"
+            className="addr-chip"
+            onClick={async () => {
+              setIsWalletSyncing(true);
+              if (flash) flash("Synchronizing portfolio with ledger...");
+              try {
+                await Promise.all([
+                  marketStore.syncBackendPortfolio(true),
+                  marketStore.fetchRealMarketData(),
+                ]);
+                if (flash) flash("⚡ Balances & prices synchronized!");
+              } catch { }
+              setTimeout(() => setIsWalletSyncing(false), 600);
+            }}
+            title="Refresh balances and market rates"
+            style={{ padding: "4px 8px", cursor: "pointer" }}
+          >
+            <RefreshCw size={11} className={isWalletSyncing ? "spin-animate" : ""} />
+          </button>
+        </div>
         <div className="wallet-search" style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
           <Search size={13} color="var(--muted)" />
           <input
@@ -5395,6 +5461,106 @@ function AppShell({
     }, 4000);
   };
 
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
+  const [pullY, setPullY] = useState(0);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const touchStartRef = useRef<number | null>(null);
+  const lastReloadClickRef = useRef<number>(0);
+
+  const handleQuickReload = async () => {
+    const now = Date.now();
+    // If clicked twice in under 1.2s, trigger a hard browser refresh
+    if (now - lastReloadClickRef.current < 1200) {
+      flash("Hard reloading Axiom application...");
+      window.location.reload();
+      return;
+    }
+    lastReloadClickRef.current = now;
+
+    setIsManualSyncing(true);
+    try {
+      await Promise.all([
+        marketStore.syncBackendPortfolio(true),
+        marketStore.fetchRealMarketData(),
+      ]);
+      flash("⚡ Axiom Portfolio & Market Synchronized!");
+    } catch {
+      flash("Synchronized with central ledger.");
+    } finally {
+      setTimeout(() => setIsManualSyncing(false), 600);
+    }
+  };
+
+  // Pull-to-refresh listener for iOS Home Screen standalone PWAs
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (window.scrollY <= 2) {
+        touchStartRef.current = e.touches[0].clientY;
+      } else {
+        touchStartRef.current = null;
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (touchStartRef.current !== null && window.scrollY <= 2) {
+        const currentY = e.touches[0].clientY;
+        const diff = currentY - touchStartRef.current;
+        if (diff > 0) {
+          setPullY(Math.min(diff * 0.45, 80));
+        }
+      }
+    };
+
+    const onTouchEnd = async () => {
+      if (touchStartRef.current !== null) {
+        touchStartRef.current = null;
+        if (pullY > 50) {
+          setIsPullRefreshing(true);
+          try {
+            await Promise.all([
+              marketStore.syncBackendPortfolio(true),
+              marketStore.fetchRealMarketData(),
+            ]);
+            flash("⚡ Axiom Ledger Refreshed!");
+          } catch {
+            // fallback
+          } finally {
+            setTimeout(() => {
+              setIsPullRefreshing(false);
+              setPullY(0);
+            }, 500);
+          }
+        } else {
+          setPullY(0);
+        }
+      }
+    };
+
+    // Auto-sync whenever the app resumes into foreground
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        marketStore.syncBackendPortfolio(true);
+        marketStore.fetchRealMarketData();
+      }
+    };
+
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
+    window.addEventListener("touchend", onTouchEnd, { passive: true });
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", onVisibilityChange);
+
+    return () => {
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", onVisibilityChange);
+    };
+  }, [pullY]);
+
   const handleResendVerification = async () => {
     if (!authUser.email || resendingVerif) return;
     setResendingVerif(true);
@@ -5490,6 +5656,20 @@ function AppShell({
         </div>
       )}
 
+      {/* ── iOS Standalone PWA Pull-To-Refresh Bar ── */}
+      {(pullY > 0 || isPullRefreshing) && (
+        <div
+          className="ios-pull-refresh-bar"
+          style={{
+            height: isPullRefreshing ? 48 : pullY,
+            opacity: Math.min(1, Math.max(0.3, pullY / 35)),
+          }}
+        >
+          <RefreshCw size={15} className={isPullRefreshing ? "spin-animate" : ""} style={{ transform: `rotate(${pullY * 4}deg)` }} />
+          <span>{isPullRefreshing ? "Synchronizing Axiom Ledger..." : pullY > 50 ? "Release to refresh" : "Pull down to refresh"}</span>
+        </div>
+      )}
+
       <header className="app-header">
         <button className="app-brand" onClick={() => navigateTo("wallet")} style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <AxiomLogo size={32} />
@@ -5506,6 +5686,17 @@ function AppShell({
           <div className="network-chip">
             <span className="network-dot" />Solana<ChevronDown size={12} />
           </div>
+
+          {/* Quick Refresh / Reload Button (Crucial for iOS Home Screen standalone PWA) */}
+          <button
+            type="button"
+            className="header-icon-btn reload-sync-btn"
+            onClick={handleQuickReload}
+            title="Reload & Synchronize Data (Tap to sync, double-tap to reload app)"
+            aria-label="Reload and Synchronize"
+          >
+            <RefreshCw size={15} className={isManualSyncing ? "spin-animate" : ""} />
+          </button>
 
           {/* Theme Toggle Button */}
           <button

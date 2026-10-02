@@ -2174,23 +2174,43 @@ def sync_user_balances(request):
         if trade_info and isinstance(trade_info, dict):
             raw_sym = str(trade_info.get('sym', '')).upper().strip()
             clean_sym = raw_sym.lstrip('$')
-            token_obj = MemeToken.objects.filter(symbol=raw_sym).first() or MemeToken.objects.filter(symbol=clean_sym).first() or MemeToken.objects.filter(symbol=f"${clean_sym}").first()
-            if token_obj:
-                try:
-                    side_val = 'BUY' if str(trade_info.get('type', '')).upper() in ['BUY', 'B'] else 'SELL'
-                    Trade.objects.create(
-                        user=user,
-                        token=token_obj,
-                        side=side_val,
-                        base_currency='USDT',
-                        base_amount=Decimal(str(trade_info.get('usd', 0))),
-                        token_amount=Decimal(str(trade_info.get('tokenAmt', 0))),
-                        price_usd=Decimal(str(trade_info.get('price', 0))),
-                        fee_usd=Decimal('0.0'),
-                        tx_hash=generate_tx_hash('tr_')
-                    )
-                except Exception as e:
-                    logger.warning(f"Trade creation in sync_user_balances: {e}")
+            if clean_sym:
+                token_obj = (
+                    MemeToken.objects.filter(symbol__iexact=raw_sym).first()
+                    or MemeToken.objects.filter(symbol__iexact=clean_sym).first()
+                    or MemeToken.objects.filter(symbol__iexact=f"${clean_sym}").first()
+                )
+                if not token_obj:
+                    try:
+                        trade_price_dec = Decimal(str(trade_info.get('price', 1.0) or 1.0))
+                        token_obj = MemeToken.objects.create(
+                            symbol=clean_sym,
+                            name=str(trade_info.get('name') or clean_sym),
+                            current_price_usd=trade_price_dec if trade_price_dec > 0 else Decimal('1.0'),
+                            market_cap_usd=Decimal('10000000.0'),
+                            liquidity_usd=Decimal('500000.0'),
+                            total_supply=Decimal('1000000000'),
+                            change_24h=Decimal('0.0'),
+                        )
+                    except Exception as tok_err:
+                        logger.warning(f"Auto-create MemeToken failed: {tok_err}")
+
+                if token_obj:
+                    try:
+                        side_val = 'BUY' if str(trade_info.get('type', '')).upper() in ['BUY', 'B'] else 'SELL'
+                        Trade.objects.create(
+                            user=user,
+                            token=token_obj,
+                            side=side_val,
+                            base_currency='USDT',
+                            base_amount=Decimal(str(trade_info.get('usd', 0))),
+                            token_amount=Decimal(str(trade_info.get('tokenAmt', 0))),
+                            price_usd=Decimal(str(trade_info.get('price', 0))),
+                            fee_usd=Decimal('0.0'),
+                            tx_hash=generate_tx_hash('tr_')
+                        )
+                    except Exception as e:
+                        logger.warning(f"Trade creation in sync_user_balances: {e}")
 
     return Response({'success': True})
 
@@ -3941,13 +3961,65 @@ def live_majors_view(request):
     except Exception:
         pass
 
-    # Fallback if Binance empty
+    # 2. Try CoinGecko fallback if Binance was empty or rate-limited
     if not results:
-        for sym, rate in BASE_RATES_USD.items():
+        try:
+            cg_url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,binancecoin,ripple,dogecoin,cardano,avalanche-2,sui&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true"
+            cg_req = urllib.request.Request(cg_url, headers={'User-Agent': 'AxiomWallet/1.0', 'Accept': 'application/json'})
+            with urllib.request.urlopen(cg_req, timeout=3.5) as cg_resp:
+                if cg_resp.status == 200:
+                    cg_raw = json.loads(cg_resp.read().decode('utf-8'))
+                    cg_map = {
+                        'bitcoin': 'BTC',
+                        'ethereum': 'ETH',
+                        'solana': 'SOL',
+                        'binancecoin': 'BNB',
+                        'ripple': 'XRP',
+                        'dogecoin': 'DOGE',
+                        'cardano': 'ADA',
+                        'avalanche-2': 'AVAX',
+                        'sui': 'SUI',
+                    }
+                    for cg_id, sym in cg_map.items():
+                        c_data = cg_raw.get(cg_id)
+                        if c_data and 'usd' in c_data:
+                            p_val = float(c_data.get('usd') or 0.0)
+                            chg_val = float(c_data.get('usd_24h_change') or 0.0)
+                            vol_val = float(c_data.get('usd_24h_vol') or 50000000.0)
+                            results.append({
+                                'sym': sym,
+                                'price': p_val,
+                                'change24h': chg_val,
+                                'volumeUsd': vol_val,
+                                'tradesCount': 8500,
+                            })
+                            if sym in BASE_RATES_USD and p_val > 0:
+                                BASE_RATES_USD[sym] = Decimal(str(round(p_val, 2)))
+        except Exception:
+            pass
+
+    # 3. Canonical market baseline if external networks are offline/unreachable
+    if not results:
+        canonical_fallback = {
+            'BTC': (84505.29, -0.35),
+            'ETH': (2670.62, -1.19),
+            'SOL': (118.28, -0.03),
+            'BNB': (766.99, -0.41),
+            'XRP': (1.48, -1.87),
+            'DOGE': (0.0918, -3.19),
+            'ADA': (0.2409, -2.90),
+            'AVAX': (10.82, -3.56),
+            'SUI': (1.007, 1.85),
+            'USDT': (1.00, 0.00),
+            'USDC': (1.00, 0.00),
+            'USD': (1.00, 0.00),
+        }
+        for sym, (def_p, def_chg) in canonical_fallback.items():
+            rate = float(BASE_RATES_USD.get(sym, Decimal(str(def_p))))
             results.append({
                 'sym': sym,
-                'price': float(rate),
-                'change24h': 1.85,
+                'price': rate,
+                'change24h': def_chg,
                 'volumeUsd': 50000000.0,
                 'tradesCount': 8500,
             })

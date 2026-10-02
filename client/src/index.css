@@ -8475,7 +8475,7 @@ div[class*="attribution"] {
 /* ── iOS 26 Dynamic Island Top Toast ────────────────────────────── */
 .ios26-dynamic-island {
   position: fixed;
-  top: 16px;
+  top: max(calc(env(safe-area-inset-top, 0px) + 12px), 24px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 999999;
@@ -8614,4 +8614,30 @@ div[class*="attribution"] {
 
 .trade-panel-focus-pulse {
   animation: tradeFocusPulse 1.4s ease-out !important;
+}
+
+/* ── iOS PWA Pull-to-Refresh & Header Reload ─────────────────────── */
+.ios-pull-refresh-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(124, 58, 237, 0.12);
+  border-bottom: 1px solid rgba(124, 58, 237, 0.25);
+  color: #C084FC;
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  transition: height 160ms cubic-bezier(0.19, 1, 0.22, 1);
+  user-select: none;
+  touch-action: pan-y;
+}
+
+.spin-animate {
+  animation: spinCw 750ms linear infinite;
+}
+
+@keyframes spinCw {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }

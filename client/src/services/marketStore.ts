@@ -147,258 +147,258 @@ const INITIAL_TOKENS: MarketToken[] = [
   {
     sym: "BTC",
     name: "Bitcoin",
-    price: "$85,850.00",
-    numericPrice: 85850.00,
-    solPrice: "730.64 SOL",
-    change: "+5.61%",
-    changeNum: 5.61,
-    cap: "$1.72T",
-    fdv: "$1.80T",
+    price: "$84,505.29",
+    numericPrice: 84505.29,
+    solPrice: "714.45 SOL",
+    change: "-0.35%",
+    changeNum: -0.35,
+    cap: "$1.67T",
+    fdv: "$1.75T",
     liq: "$25.4M",
-    pos: true,
+    pos: false,
     supply: 19750000,
-    m5: { val: "0.22%", up: true },
-    h1: { val: "0.98%", up: true },
-    h6: { val: "3.10%", up: true },
-    h24: { val: "5.61%", up: true },
+    m5: { val: "0.02%", up: false },
+    h1: { val: "0.15%", up: false },
+    h6: { val: "0.28%", up: false },
+    h24: { val: "0.35%", up: false },
     txns: 14250,
-    buys: 7540,
-    sells: 6710,
+    buys: 7040,
+    sells: 7210,
     vol: 450.2,
-    buyVol: 240.5,
-    sellVol: 209.7,
+    buyVol: 220.5,
+    sellVol: 229.7,
     traders: 8890,
-    buyers: 4660,
-    sellers: 4230,
+    buyers: 4460,
+    sellers: 4430,
     network: "eth",
     poolAddress: "0x99ac8ca7087fa4a2a1fb6357269965a2014abc35",
     imageUrl: "https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png",
     isMajor: true,
-    sparkline: generateSparkline(85850, true),
+    sparkline: generateSparkline(84505.29, false),
   },
   {
     sym: "ETH",
     name: "Ethereum",
-    price: "$2,750.00",
-    numericPrice: 2750.00,
-    solPrice: "23.40 SOL",
-    change: "+4.44%",
-    changeNum: 4.44,
-    cap: "$335.2B",
-    fdv: "$335.2B",
+    price: "$2,670.62",
+    numericPrice: 2670.62,
+    solPrice: "22.58 SOL",
+    change: "-1.19%",
+    changeNum: -1.19,
+    cap: "$321.5B",
+    fdv: "$321.5B",
     liq: "$118.6M",
-    pos: true,
+    pos: false,
     supply: 120400000,
-    m5: { val: "0.18%", up: true },
-    h1: { val: "0.80%", up: true },
-    h6: { val: "2.45%", up: true },
-    h24: { val: "4.44%", up: true },
+    m5: { val: "0.08%", up: false },
+    h1: { val: "0.45%", up: false },
+    h6: { val: "0.95%", up: false },
+    h24: { val: "1.19%", up: false },
     txns: 12496,
-    buys: 6499,
-    sells: 5997,
+    buys: 6100,
+    sells: 6396,
     vol: 210.2,
-    buyVol: 112.4,
-    sellVol: 97.8,
+    buyVol: 102.4,
+    sellVol: 107.8,
     traders: 5940,
-    buyers: 3119,
-    sellers: 2821,
+    buyers: 2900,
+    sellers: 3040,
     network: "eth",
     poolAddress: "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
     imageUrl: "https://coin-images.coingecko.com/coins/images/279/large/ethereum.png",
     isMajor: true,
-    sparkline: generateSparkline(2750.00, true),
+    sparkline: generateSparkline(2670.62, false),
   },
   {
     sym: "SOL",
     name: "Solana",
-    price: "$121.69",
-    numericPrice: 121.69,
+    price: "$118.28",
+    numericPrice: 118.28,
     solPrice: "1.0000 SOL",
-    change: "+2.08%",
-    changeNum: 2.08,
-    cap: "$71.58B",
-    fdv: "$75.16B",
+    change: "-0.03%",
+    changeNum: -0.03,
+    cap: "$54.32B",
+    fdv: "$56.16B",
     liq: "$349.2M",
-    pos: true,
+    pos: false,
     supply: 459297153,
-    m5: { val: "0.15%", up: true },
-    h1: { val: "0.68%", up: true },
-    h6: { val: "2.08%", up: true },
-    h24: { val: "2.08%", up: true },
+    m5: { val: "0.01%", up: false },
+    h1: { val: "0.02%", up: false },
+    h6: { val: "0.03%", up: false },
+    h24: { val: "0.03%", up: false },
     txns: 135006,
-    buys: 71014,
-    sells: 63992,
+    buys: 67400,
+    sells: 67606,
     vol: 436.5,
-    buyVol: 242.4,
-    sellVol: 194.1,
+    buyVol: 218.0,
+    sellVol: 218.5,
     traders: 18257,
-    buyers: 9878,
-    sellers: 8379,
+    buyers: 9100,
+    sellers: 9157,
     network: "solana",
     poolAddress: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
     imageUrl: "https://coin-images.coingecko.com/coins/images/4128/large/solana.png",
     isMajor: true,
-    sparkline: generateSparkline(121.69, true),
+    sparkline: generateSparkline(118.28, false),
   },
   {
     sym: "BNB",
     name: "BNB",
-    price: "$796.00",
-    numericPrice: 796.00,
-    solPrice: "6.77 SOL",
-    change: "+4.36%",
-    changeNum: 4.36,
-    cap: "$105.9B",
-    fdv: "$105.9B",
+    price: "$766.99",
+    numericPrice: 766.99,
+    solPrice: "6.48 SOL",
+    change: "-0.41%",
+    changeNum: -0.41,
+    cap: "$111.9B",
+    fdv: "$111.9B",
     liq: "$42.4M",
-    pos: true,
+    pos: false,
     supply: 145880000,
-    m5: { val: "0.17%", up: true },
-    h1: { val: "0.78%", up: true },
-    h6: { val: "2.40%", up: true },
-    h24: { val: "4.36%", up: true },
+    m5: { val: "0.04%", up: false },
+    h1: { val: "0.18%", up: false },
+    h6: { val: "0.32%", up: false },
+    h24: { val: "0.41%", up: false },
     txns: 5410,
-    buys: 2950,
-    sells: 2460,
+    buys: 2650,
+    sells: 2760,
     vol: 84.2,
-    buyVol: 45.1,
-    sellVol: 39.1,
+    buyVol: 41.1,
+    sellVol: 43.1,
     traders: 3450,
-    buyers: 1880,
-    sellers: 1570,
+    buyers: 1700,
+    sellers: 1750,
     network: "bsc",
     poolAddress: "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",
     imageUrl: "https://coin-images.coingecko.com/coins/images/825/large/bnb-icon2_2x.png",
     isMajor: true,
-    sparkline: generateSparkline(796.00, true),
+    sparkline: generateSparkline(766.99, false),
   },
   {
     sym: "XRP",
     name: "XRP",
-    price: "$1.49",
-    numericPrice: 1.49,
-    solPrice: "0.0127 SOL",
-    change: "+6.42%",
-    changeNum: 6.42,
-    cap: "$93.9B",
-    fdv: "$149.0B",
+    price: "$1.48",
+    numericPrice: 1.48,
+    solPrice: "0.0125 SOL",
+    change: "-1.87%",
+    changeNum: -1.87,
+    cap: "$84.1B",
+    fdv: "$148.0B",
     liq: "$31.8M",
-    pos: true,
+    pos: false,
     supply: 56810000000,
-    m5: { val: "0.25%", up: true },
-    h1: { val: "1.15%", up: true },
-    h6: { val: "3.50%", up: true },
-    h24: { val: "6.42%", up: true },
+    m5: { val: "0.12%", up: false },
+    h1: { val: "0.65%", up: false },
+    h6: { val: "1.20%", up: false },
+    h24: { val: "1.87%", up: false },
     txns: 9850,
-    buys: 5420,
-    sells: 4430,
+    buys: 4800,
+    sells: 5050,
     vol: 76.8,
-    buyVol: 42.5,
-    sellVol: 34.3,
+    buyVol: 37.5,
+    sellVol: 39.3,
     traders: 6200,
-    buyers: 3440,
-    sellers: 2760,
+    buyers: 3000,
+    sellers: 3200,
     network: "bsc",
     poolAddress: "0x49246143De65451Cee6368C1C8518e974C68B1e2",
     imageUrl: "https://coin-images.coingecko.com/coins/images/44/large/xrp-symbol-white-128.png",
     isMajor: true,
-    sparkline: generateSparkline(1.49, true),
+    sparkline: generateSparkline(1.48, false),
   },
   {
     sym: "DOGE",
     name: "Dogecoin",
-    price: "$0.0975",
-    numericPrice: 0.0975,
-    solPrice: "0.00083 SOL",
-    change: "+11.87%",
-    changeNum: 11.87,
-    cap: "$15.2B",
-    fdv: "$15.2B",
+    price: "$0.0918",
+    numericPrice: 0.0918,
+    solPrice: "0.00077 SOL",
+    change: "-3.19%",
+    changeNum: -3.19,
+    cap: "$13.4B",
+    fdv: "$13.4B",
     liq: "$28.1M",
-    pos: true,
+    pos: false,
     supply: 146400000000,
-    m5: { val: "0.47%", up: true },
-    h1: { val: "2.10%", up: true },
-    h6: { val: "6.50%", up: true },
-    h24: { val: "11.87%", up: true },
+    m5: { val: "0.15%", up: false },
+    h1: { val: "0.90%", up: false },
+    h6: { val: "2.10%", up: false },
+    h24: { val: "3.19%", up: false },
     txns: 12920,
-    buys: 7220,
-    sells: 5700,
+    buys: 6100,
+    sells: 6820,
     vol: 68.1,
-    buyVol: 38.2,
-    sellVol: 29.9,
+    buyVol: 32.2,
+    sellVol: 35.9,
     traders: 7900,
-    buyers: 4500,
-    sellers: 3400,
+    buyers: 3800,
+    sellers: 4100,
     network: "bsc",
     poolAddress: "0x78923d8c11e2f3d79f04ddb53c155d045d6540b6",
     imageUrl: "https://coin-images.coingecko.com/coins/images/5/large/dogecoin.png",
     isMajor: true,
-    sparkline: generateSparkline(0.0975, true),
+    sparkline: generateSparkline(0.0918, false),
   },
   {
     sym: "ADA",
     name: "Cardano",
-    price: "$0.243",
-    numericPrice: 0.243,
-    solPrice: "0.00207 SOL",
-    change: "+6.07%",
-    changeNum: 6.07,
-    cap: "$9.11B",
-    fdv: "$10.9B",
+    price: "$0.2409",
+    numericPrice: 0.2409,
+    solPrice: "0.00203 SOL",
+    change: "-2.90%",
+    changeNum: -2.90,
+    cap: "$8.61B",
+    fdv: "$10.8B",
     liq: "$18.6M",
-    pos: true,
+    pos: false,
     supply: 35740000000,
-    m5: { val: "0.24%", up: true },
-    h1: { val: "1.09%", up: true },
-    h6: { val: "3.34%", up: true },
-    h24: { val: "6.07%", up: true },
+    m5: { val: "0.11%", up: false },
+    h1: { val: "0.85%", up: false },
+    h6: { val: "1.90%", up: false },
+    h24: { val: "2.90%", up: false },
     txns: 6120,
-    buys: 3380,
-    sells: 2740,
+    buys: 2900,
+    sells: 3220,
     vol: 42.4,
-    buyVol: 23.8,
-    sellVol: 18.6,
+    buyVol: 20.8,
+    sellVol: 21.6,
     traders: 3950,
-    buyers: 2180,
-    sellers: 1770,
+    buyers: 1900,
+    sellers: 2050,
     network: "bsc",
     poolAddress: "0x403b2901ee7c963174fb24e54823293e62f026a2",
     imageUrl: "https://coin-images.coingecko.com/coins/images/975/large/cardano.png",
     isMajor: true,
-    sparkline: generateSparkline(0.243, true),
+    sparkline: generateSparkline(0.2409, false),
   },
   {
     sym: "AVAX",
     name: "Avalanche",
-    price: "$11.02",
-    numericPrice: 11.02,
-    solPrice: "0.0938 SOL",
-    change: "-1.63%",
-    changeNum: -1.63,
-    cap: "$4.87B",
-    fdv: "$7.93B",
+    price: "$10.82",
+    numericPrice: 10.82,
+    solPrice: "0.0915 SOL",
+    change: "-3.56%",
+    changeNum: -3.56,
+    cap: "$4.39B",
+    fdv: "$7.79B",
     liq: "$14.2M",
     pos: false,
     supply: 406000000,
-    m5: { val: "0.08%", up: false },
-    h1: { val: "0.35%", up: false },
-    h6: { val: "1.10%", up: false },
-    h24: { val: "1.63%", up: false },
+    m5: { val: "0.14%", up: false },
+    h1: { val: "0.95%", up: false },
+    h6: { val: "2.20%", up: false },
+    h24: { val: "3.56%", up: false },
     txns: 5890,
-    buys: 2680,
-    sells: 3210,
+    buys: 2700,
+    sells: 3190,
     vol: 34.6,
-    buyVol: 15.1,
-    sellVol: 19.5,
+    buyVol: 16.1,
+    sellVol: 18.5,
     traders: 3700,
-    buyers: 1690,
-    sellers: 2010,
+    buyers: 1750,
+    sellers: 1950,
     network: "avax",
     poolAddress: "0xf4003f4efbe8691b60249e6afbc61791a8c38ff6",
     imageUrl: "https://coin-images.coingecko.com/coins/images/12559/large/Avalanche_Circle_RedWhite_Trans.png",
     isMajor: true,
-    sparkline: generateSparkline(11.02, false),
+    sparkline: generateSparkline(10.82, false),
   },
   {
     sym: "SUI",
@@ -1269,6 +1269,12 @@ class MarketStore {
 
   currentUserId: string = typeof window !== "undefined" && window.localStorage ? (window.localStorage.getItem("axiom_user_id") || "") : "";
   currentUserWallet: string = typeof window !== "undefined" && window.localStorage ? (window.localStorage.getItem("axiom_wallet_address") || "") : "";
+
+  getSyncIdentifier(): string {
+    return this.currentUserWallet
+      || this.currentUserId
+      || (typeof window !== "undefined" && window.localStorage ? (window.localStorage.getItem("axiom_wallet_address") || window.localStorage.getItem("axiom_user_id") || "") : "");
+  }
 
   async setUser(user: { user_id?: string; id?: string; email?: string; wallet_address?: string } | null) {
     const uid = user ? (user.user_id || user.id || user.email || user.wallet_address || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("axiom_wallet_address") : "") || "axiom_user") : "";
@@ -2363,8 +2369,9 @@ class MarketStore {
 
     this.lastTradeOrSwapTime = Date.now();
     this.savePersistedStateNow();
-    if (this.currentUserWallet) {
-      api.syncBalances(this.currentUserWallet, this.balances).catch(() => {});
+    const targetSyncId = this.getSyncIdentifier();
+    if (targetSyncId) {
+      api.syncBalances(targetSyncId, this.balances).catch(() => {});
     }
     this.notify();
 
@@ -2421,8 +2428,9 @@ class MarketStore {
     this.lastOrderAlert = `✅ Deposit Credited! +${amount >= 1000 ? amount.toLocaleString() : amount.toFixed(4)} ${sym} ($${usdVal.toFixed(2)}) is now available.`;
 
     this.savePersistedStateNow();
-    if (this.currentUserWallet) {
-      api.syncBalances(this.currentUserWallet, this.balances).catch(() => {});
+    const targetSyncId = this.getSyncIdentifier();
+    if (targetSyncId) {
+      api.syncBalances(targetSyncId, this.balances).catch(() => {});
     }
     this.notify();
     return {
@@ -2987,10 +2995,11 @@ class MarketStore {
       token.vol = (token.buyVol || 0) + (token.sellVol || 0);
 
       this.savePersistedStateNow();
-      const targetWalletBuy = this.currentUserWallet || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("axiom_wallet_address") || "" : "");
+      const targetWalletBuy = this.getSyncIdentifier();
       if (targetWalletBuy) {
         api.syncBalances(targetWalletBuy, this.balances, {
           sym,
+          name: token.name,
           type: "Buy",
           usd: usdAmount,
           tokenAmt: tokensReceived,
@@ -3148,10 +3157,11 @@ class MarketStore {
         },
       });
       this.savePersistedStateNow();
-      const targetWalletSell = this.currentUserWallet || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("axiom_wallet_address") || "" : "");
+      const targetWalletSell = this.getSyncIdentifier();
       if (targetWalletSell) {
         api.syncBalances(targetWalletSell, this.balances, {
           sym,
+          name: token.name,
           type: "Sell",
           usd: grossUsdReceived,
           tokenAmt: amount,
@@ -4496,21 +4506,43 @@ class MarketStore {
               cycle.phaseTicksLeft = 10 + Math.floor(Math.random() * 8);
             }
           }
-        } else if (isMajor) {
-          // Major coins: realistic Bybit order-flow balance
-          isBuy = Math.random() > 0.49;
+        }
+
+        const epochSec = Math.floor(Date.now() / 1000);
+        // Deterministic PRNG seeded by symbol and epoch second guarantees identical micro-movement across Safari, PWA, and desktop!
+        const getDeterministicNoise = (key: string) => {
+          let h = 2166136261 >>> 0;
+          const s = `${key}_${epochSec}`;
+          for (let i = 0; i < s.length; i++) {
+            h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+          }
+          return ((h >>> 0) % 20000 - 10000) / 10000;
+        };
+
+        if (isMajor) {
+          const syncNoise = getDeterministicNoise(`${token.sym}_trade`);
+          isBuy = syncNoise > -0.02;
           minUsd = 60;
           maxUsd = 450;
         }
 
         // Apply trade momentum to token price with smooth realistic DexScreener/TradingView rates
         const momentumStep = isMajor
-          ? (isBuy ? 0.000035 : -0.000032)
+          ? (isBuy ? 0.000025 : -0.000022)
           : (isBuy ? 0.00018 : -0.00016);
 
         this.momentums[token.sym] = (this.momentums[token.sym] || 0) * 0.88 + momentumStep;
-        const microJitter = (Math.random() - 0.49) * (isMajor ? 0.000025 : 0.00007);
+        const microJitter = getDeterministicNoise(`${token.sym}_jitter`) * (isMajor ? 0.000020 : 0.00007);
         let deltaPct = this.momentums[token.sym] + microJitter;
+
+        // Mean-reversion elastic pull towards canonical anchor prevents permanent drift between devices
+        if (isMajor && this.priceAnchors[token.sym]) {
+          const anchor = this.priceAnchors[token.sym];
+          const driftPct = (token.numericPrice - anchor) / anchor;
+          if (Math.abs(driftPct) > 0.0008) {
+            deltaPct += (-driftPct * 0.08);
+          }
+        }
 
         // Realistic limits per second: max 0.035% for majors, 0.12% for memes
         const maxDelta = isMajor ? 0.00035 : 0.0012;
@@ -4519,7 +4551,8 @@ class MarketStore {
         const newP = Math.max(0.00000001, token.numericPrice * (1 + deltaPct));
         token.numericPrice = newP;
         token.price = formatCoinPrice(newP);
-        token.solPrice = `${(newP / 121.69).toFixed(6)} SOL`;
+        const liveSolP = this.getToken("SOL")?.numericPrice || 118.28;
+        token.solPrice = `${(newP / liveSolP).toFixed(6)} SOL`;
         if (token.sparkline && token.sparkline.length > 0) {
           token.sparkline[token.sparkline.length - 1] = newP;
         }
