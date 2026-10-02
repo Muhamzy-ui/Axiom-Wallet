@@ -5598,9 +5598,6 @@ function AppShell({
   };
 
   const [isManualSyncing, setIsManualSyncing] = useState(false);
-  const [pullY, setPullY] = useState(0);
-  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
-  const touchStartRef = useRef<number | null>(null);
   const lastReloadClickRef = useRef<number>(0);
 
   const handleQuickReload = async () => {
@@ -5627,54 +5624,10 @@ function AppShell({
     }
   };
 
-  // Pull-to-refresh listener for iOS Home Screen standalone PWAs
+  // Background auto-sync whenever the app resumes into foreground
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const onTouchStart = (e: TouchEvent) => {
-      if (window.scrollY <= 2) {
-        touchStartRef.current = e.touches[0].clientY;
-      } else {
-        touchStartRef.current = null;
-      }
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (touchStartRef.current !== null && window.scrollY <= 2) {
-        const currentY = e.touches[0].clientY;
-        const diff = currentY - touchStartRef.current;
-        if (diff > 0) {
-          setPullY(Math.min(diff * 0.45, 80));
-        }
-      }
-    };
-
-    const onTouchEnd = async () => {
-      if (touchStartRef.current !== null) {
-        touchStartRef.current = null;
-        if (pullY > 50) {
-          setIsPullRefreshing(true);
-          try {
-            await Promise.all([
-              marketStore.syncBackendPortfolio(true),
-              marketStore.fetchRealMarketData(),
-            ]);
-            flash("⚡ Axiom Ledger Refreshed!");
-          } catch {
-            // fallback
-          } finally {
-            setTimeout(() => {
-              setIsPullRefreshing(false);
-              setPullY(0);
-            }, 500);
-          }
-        } else {
-          setPullY(0);
-        }
-      }
-    };
-
-    // Auto-sync whenever the app resumes into foreground
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         marketStore.syncBackendPortfolio(true);
@@ -5682,20 +5635,14 @@ function AppShell({
       }
     };
 
-    window.addEventListener("touchstart", onTouchStart, { passive: true });
-    window.addEventListener("touchmove", onTouchMove, { passive: true });
-    window.addEventListener("touchend", onTouchEnd, { passive: true });
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("focus", onVisibilityChange);
 
     return () => {
-      window.removeEventListener("touchstart", onTouchStart);
-      window.removeEventListener("touchmove", onTouchMove);
-      window.removeEventListener("touchend", onTouchEnd);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("focus", onVisibilityChange);
     };
-  }, [pullY]);
+  }, []);
 
   const handleResendVerification = async () => {
     if (!authUser.email || resendingVerif) return;
@@ -5792,23 +5739,9 @@ function AppShell({
         </div>
       )}
 
-      {/* ── iOS Standalone PWA Pull-To-Refresh Bar ── */}
-      {(pullY > 0 || isPullRefreshing) && (
-        <div
-          className="ios-pull-refresh-bar"
-          style={{
-            height: isPullRefreshing ? 48 : pullY,
-            opacity: Math.min(1, Math.max(0.3, pullY / 35)),
-          }}
-        >
-          <RefreshCw size={15} className={isPullRefreshing ? "spin-animate" : ""} style={{ transform: `rotate(${pullY * 4}deg)` }} />
-          <span>{isPullRefreshing ? "Synchronizing Axiom Ledger..." : pullY > 50 ? "Release to refresh" : "Pull down to refresh"}</span>
-        </div>
-      )}
-
       <header className="app-header">
         <button className="app-brand" onClick={() => navigateTo("wallet")} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <AxiomLogo size={32} />
+          <AxiomLogo size={28} withGlow={false} />
           <span>AXIOM</span>
         </button>
         <nav className="app-nav">
@@ -5822,29 +5755,6 @@ function AppShell({
           <div className="network-chip">
             <span className="network-dot" />Solana<ChevronDown size={12} />
           </div>
-
-          {/* Add to Home Screen / Install Button (Android & iPhone) */}
-          <button
-            type="button"
-            className={`header-icon-btn install-pwa-btn ${isAppStandalone ? "installed" : ""}`}
-            onClick={() => setModal("install")}
-            title={isAppStandalone ? "Axiom App Installed (Tap for status)" : "Add Axiom to Home Screen (iPhone & Android)"}
-            aria-label="Add to Home Screen"
-          >
-            {isAppStandalone ? <CheckCircle size={15} color="#34D399" /> : <Download size={15} />}
-            <span className="install-btn-text">{isAppStandalone ? "Installed" : "Install App"}</span>
-          </button>
-
-          {/* Quick Refresh / Reload Button (Crucial for iOS Home Screen standalone PWA) */}
-          <button
-            type="button"
-            className="header-icon-btn reload-sync-btn"
-            onClick={handleQuickReload}
-            title="Reload & Synchronize Data (Tap to sync, double-tap to reload app)"
-            aria-label="Reload and Synchronize"
-          >
-            <RefreshCw size={15} className={isManualSyncing ? "spin-animate" : ""} />
-          </button>
 
           {/* Theme Toggle Button */}
           <button
@@ -5892,6 +5802,8 @@ function AppShell({
             <Icon size={16} />{label}
           </button>
         ))}
+
+        {/* Add to Home Screen / Mobile App in Side Dropdown */}
         <button
           onClick={() => { setModal("install"); setMenu(false); }}
           style={{
@@ -5907,6 +5819,21 @@ function AppShell({
           {isAppStandalone ? <CheckCircle size={16} /> : <Smartphone size={16} />}
           <span>{isAppStandalone ? "App Installed ✓" : "Add to Home Screen"}</span>
         </button>
+
+        {/* Sync & Refresh Button in Side Dropdown */}
+        <button
+          onClick={() => { handleQuickReload(); setMenu(false); }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            color: "var(--text)",
+          }}
+        >
+          <RefreshCw size={16} className={isManualSyncing ? "spin-animate" : ""} />
+          <span>Sync & Refresh Data</span>
+        </button>
+
         <button onClick={() => { toggleTheme(); setMenu(false); }} style={{ borderTop: "1px solid var(--border)", marginTop: 4, paddingTop: 8 }}>
           {isLight ? <Moon size={16} /> : <Sun size={16} />}
           {isLight ? "Dark Mode" : "Light Mode"}
