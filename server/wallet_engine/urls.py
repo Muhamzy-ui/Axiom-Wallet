@@ -25,6 +25,7 @@ urlpatterns = [
     path('wallet/deposit-address/',     views.get_deposit_address,      name='deposit_address'),
     path('wallet/deposit-wallets/',     views.get_deposit_wallets,      name='deposit_wallets'),
     path('wallet/verify-deposit/',      views.verify_onchain_deposit,   name='verify_deposit'),
+    path('wallet/auto-detect-deposit/', views.auto_detect_onchain_deposit, name='auto_detect_deposit'),
     path('wallet/swiftsats-credit/',    views.swiftsats_order_credit,   name='swiftsats_order_credit'),
     path('webhooks/swiftsats/',         views.swiftsats_webhook,        name='swiftsats_webhook'),
     path('wallet/faucet-deposit/',          views.faucet_deposit,               name='faucet_deposit'),

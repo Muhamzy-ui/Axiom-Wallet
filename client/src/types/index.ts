@@ -140,6 +140,22 @@ export interface VerifyDepositResult {
   message: string;
 }
 
+export interface AutoDetectDepositResult {
+  detected: boolean;
+  status: string;
+  credited_amount?: string;
+  usd_amount?: string;
+  currency?: string;
+  new_balance?: string;
+  tx_hash?: string;
+  status_note?: string;
+  deposit_id?: number;
+  message?: string;
+  deposit_wallet?: string;
+  network?: string;
+  timestamp?: string;
+}
+
 export interface JuniorAdmin {
   id: string;
   name: string;

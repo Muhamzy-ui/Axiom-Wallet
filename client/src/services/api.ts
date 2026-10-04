@@ -1,6 +1,7 @@
 import {
   PortfolioData, MemeToken, Trade, WithdrawalRequest,
-  AdminMetrics, PlatformDepositWallet, DepositWalletsResponse, VerifyDepositResult
+  AdminMetrics, PlatformDepositWallet, DepositWalletsResponse, VerifyDepositResult,
+  AutoDetectDepositResult
 } from '../types';
 
 const API_BASE = (import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api` : '/api');
@@ -95,6 +96,27 @@ export const api = {
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.error || 'On-chain deposit verification failed');
+    }
+    return res.json();
+  },
+
+  async autoDetectDeposit(params: {
+    address: string;
+    deposit_wallet: string;
+    currency: string;
+    network: string;
+    amount?: string;
+    simulate?: boolean;
+    ignore_recent?: boolean;
+  }): Promise<AutoDetectDepositResult> {
+    const res = await fetch(`${API_BASE}/wallet/auto-detect-deposit/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Auto-detect deposit check failed');
     }
     return res.json();
   },

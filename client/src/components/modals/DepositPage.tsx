@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   ChevronLeft, Copy, Check, ShieldCheck, Zap, RefreshCw,
-  ExternalLink, AlertTriangle, Clock
+  ExternalLink, AlertTriangle, Clock, Radio, Activity, ChevronDown, ChevronUp, Sparkles
 } from "lucide-react";
 import { api } from "../../services/api";
 import { type PlatformDepositWallet } from "../../types";
@@ -71,6 +71,11 @@ export const DepositPage: React.FC<DepositPageProps> = ({
     txHash: string;
   } | null>(null);
   const [copiedAddr, setCopiedAddr] = useState<boolean>(false);
+  const [isAutoChecking, setIsAutoChecking] = useState<boolean>(false);
+  const [pollCount, setPollCount] = useState<number>(0);
+  const [lastPollTime, setLastPollTime] = useState<string>("Just now");
+  const [showManualTx, setShowManualTx] = useState<boolean>(false);
+  const [isSimulating, setIsSimulating] = useState<boolean>(false);
 
   const handleSelectCoin = (sym: DepositCoin) => {
     setDepositCoin(sym);
@@ -226,6 +231,156 @@ const NETWORK_POOLS: Record<string, string[]> = {
       setVerifyError(err.message || "Failed to verify transaction signature.");
     } finally {
       setIsVerifying(false);
+    }
+  };
+
+  // Continuous background on-chain radar (auto-detect incoming transfer every 4.5s)
+  useEffect(() => {
+    if (!activeDepositAddress || verifySuccess || isVerifying) return;
+
+    let isMounted = true;
+    let pollTimer: any = null;
+
+    const runAutoDetect = async () => {
+      if (!isMounted || verifySuccess || isVerifying) return;
+      try {
+        setIsAutoChecking(true);
+        const userAddr =
+          authUser?.wallet_address ||
+          authUser?.email ||
+          authUser?.user_id ||
+          "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
+
+        const res = await api.autoDetectDeposit({
+          address: userAddr,
+          deposit_wallet: activeDepositAddress,
+          currency: depositCoin,
+          network: depositNetwork,
+          amount: depositAmt,
+        });
+
+        if (!isMounted) return;
+
+        setPollCount((prev) => prev + 1);
+        const d = new Date();
+        setLastPollTime(`${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`);
+
+        if (res && res.detected && res.status === "CONFIRMED") {
+          const creditedTokenAmt = parseFloat(res.credited_amount || "0");
+          marketStore.depositFunds(depositCoin, creditedTokenAmt);
+          setVerifySuccess({
+            amount: res.credited_amount || "0",
+            usdAmount: res.usd_amount || depositAmt,
+            currency: res.currency || depositCoin,
+            newBalance: res.new_balance || "0",
+            txHash: res.tx_hash || "",
+          });
+          flash(`🎉 Deposit automatically detected on-chain! +$${res.usd_amount || depositAmt} USD credited!`);
+        }
+      } catch (err) {
+        // Silently keep polling
+      } finally {
+        if (isMounted) setIsAutoChecking(false);
+      }
+    };
+
+    // First scan after 1.5s
+    const initialTimer = setTimeout(() => {
+      runAutoDetect();
+    }, 1500);
+
+    // Continuous 4.5s interval
+    pollTimer = setInterval(() => {
+      runAutoDetect();
+    }, 4500);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(initialTimer);
+      clearInterval(pollTimer);
+    };
+  }, [activeDepositAddress, depositCoin, depositNetwork, depositAmt, verifySuccess, isVerifying, authUser]);
+
+  const handleManualCheckNow = async () => {
+    if (isAutoChecking || isVerifying || verifySuccess) return;
+    setIsAutoChecking(true);
+    setVerifyError(null);
+    try {
+      const userAddr =
+        authUser?.wallet_address ||
+        authUser?.email ||
+        authUser?.user_id ||
+        "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
+
+      const res = await api.autoDetectDeposit({
+        address: userAddr,
+        deposit_wallet: activeDepositAddress,
+        currency: depositCoin,
+        network: depositNetwork,
+        amount: depositAmt,
+      });
+
+      setPollCount((prev) => prev + 1);
+      const d = new Date();
+      setLastPollTime(`${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`);
+
+      if (res && res.detected && res.status === "CONFIRMED") {
+        const creditedTokenAmt = parseFloat(res.credited_amount || "0");
+        marketStore.depositFunds(depositCoin, creditedTokenAmt);
+        setVerifySuccess({
+          amount: res.credited_amount || "0",
+          usdAmount: res.usd_amount || depositAmt,
+          currency: res.currency || depositCoin,
+          newBalance: res.new_balance || "0",
+          txHash: res.tx_hash || "",
+        });
+        flash(`🎉 Deposit automatically detected on-chain! +$${res.usd_amount || depositAmt} USD credited!`);
+      } else {
+        flash(`📡 Blockchain scanned. Transfer has not yet arrived on ${depositNetwork.split(" ")[0]}. Continuing to monitor...`);
+      }
+    } catch (err: any) {
+      setVerifyError(err.message || "Failed to scan blockchain node.");
+    } finally {
+      setIsAutoChecking(false);
+    }
+  };
+
+  const handleSimulateDeposit = async () => {
+    if (isSimulating || verifySuccess) return;
+    setIsSimulating(true);
+    setVerifyError(null);
+    try {
+      const userAddr =
+        authUser?.wallet_address ||
+        authUser?.email ||
+        authUser?.user_id ||
+        "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
+
+      const res = await api.autoDetectDeposit({
+        address: userAddr,
+        deposit_wallet: activeDepositAddress,
+        currency: depositCoin,
+        network: depositNetwork,
+        amount: depositAmt,
+        simulate: true,
+      });
+
+      if (res && res.detected && res.status === "CONFIRMED") {
+        const creditedTokenAmt = parseFloat(res.credited_amount || "0");
+        marketStore.depositFunds(depositCoin, creditedTokenAmt);
+        setVerifySuccess({
+          amount: res.credited_amount || "0",
+          usdAmount: res.usd_amount || depositAmt,
+          currency: res.currency || depositCoin,
+          newBalance: res.new_balance || "0",
+          txHash: res.tx_hash || "",
+        });
+        flash(`🎉 Test deposit verified! +$${res.usd_amount || depositAmt} USD credited automatically!`);
+      }
+    } catch (err: any) {
+      setVerifyError(err.message || "Failed to simulate test deposit.");
+    } finally {
+      setIsSimulating(false);
     }
   };
 
@@ -556,72 +711,197 @@ const NETWORK_POOLS: Record<string, string[]> = {
 
             <div className="card-divider" />
 
-            {/* 4. Instant Automated Verification Section */}
+            {/* 4. Automated On-Chain Deposit Detection Section */}
             <div
               className="card-section"
               style={{
-                background: "rgba(124, 58, 237, 0.08)",
-                border: "1px solid rgba(124, 58, 237, 0.25)",
+                background: "linear-gradient(145deg, rgba(16, 185, 129, 0.08) 0%, rgba(124, 58, 237, 0.06) 100%)",
+                border: "1px solid rgba(16, 185, 129, 0.28)",
                 borderRadius: 14,
                 padding: "16px",
+                position: "relative",
+                overflow: "hidden",
               }}
             >
-              <div className="pro-card-header">
-                <span className="pro-card-label" style={{ color: "var(--text)" }}>
-                  <Zap size={14} color="#C4B5FD" />
-                  Instant Auto-Credit Verification
-                </span>
-                <span style={{ fontSize: 10.5, color: "#C4B5FD", fontWeight: 700 }}>
-                  Sub-5s Confirmation
+              {/* Header */}
+              <div className="pro-card-header" style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: "50%",
+                      background: "#10B981",
+                      boxShadow: "0 0 10px #10B981",
+                    }}
+                  />
+                  <span className="pro-card-label" style={{ color: "#E2E8F0", fontSize: 13, fontWeight: 700 }}>
+                    100% Automated On-Chain Detection
+                  </span>
+                </div>
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: "#10B981",
+                    background: "rgba(16, 185, 129, 0.15)",
+                    border: "1px solid rgba(16, 185, 129, 0.35)",
+                    padding: "3px 8px",
+                    borderRadius: 999,
+                    fontWeight: 700,
+                    letterSpacing: "0.03em",
+                  }}
+                >
+                  LIVE RADAR ACTIVE
                 </span>
               </div>
 
-              <p style={{ fontSize: 11.5, color: "var(--muted)", margin: "0 0 10px", lineHeight: 1.4 }}>
-                After submitting the transfer from your external wallet or exchange, paste the Transaction ID (TxID/Signature) below to credit your account immediately.
-              </p>
+              {/* Status Box */}
+              <div
+                style={{
+                  background: "rgba(10, 11, 20, 0.65)",
+                  border: "1px solid rgba(255, 255, 255, 0.08)",
+                  borderRadius: 10,
+                  padding: "12px 14px",
+                  marginBottom: 12,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 600, color: "var(--text, #fff)" }}>
+                    <Radio size={15} color="#10B981" />
+                    <span>Listening on {depositNetwork.split(" ")[0]}...</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--muted, #94A3B8)", fontFamily: "monospace" }}>
+                    {isAutoChecking ? "Scanning blocks..." : `Last check: ${lastPollTime}`}
+                  </div>
+                </div>
 
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <input
-                  type="text"
-                  value={txHash}
-                  onChange={(e) => {
-                    setTxHash(e.target.value);
-                    setVerifyError(null);
-                    setPendingMsg(null);
-                  }}
-                  placeholder="Paste TxID / signature hash..."
-                  style={{
-                    flex: "1 1 200px",
-                    background: "rgba(10, 11, 20, 0.85)",
-                    border: "1px solid rgba(255, 255, 255, 0.12)",
-                    borderRadius: 10,
-                    padding: "10px 12px",
-                    fontSize: 12,
-                    fontFamily: "monospace",
-                    color: "var(--text, #fff)",
-                    outline: "none",
-                    minHeight: 44,
-                  }}
-                />
+                <p style={{ fontSize: 11.5, color: "var(--muted, #94A3B8)", margin: 0, lineHeight: 1.4 }}>
+                  Simply send <strong style={{ color: "#fff" }}>{depositAmt} USD</strong> ({cryptoEquivalent.toFixed(depositCoin === "USDT" || depositCoin === "USDC" ? 2 : 4)} {depositCoin}) to the address above. Axiom will automatically detect the block and credit your wallet. <span style={{ color: "#34D399", fontWeight: 600 }}>Zero TxID needed!</span>
+                </p>
+              </div>
+
+              {/* Primary Action Buttons */}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
                 <button
                   type="button"
                   className="pro-submit-btn"
-                  onClick={handleVerifyOnChainDeposit}
-                  disabled={isVerifying || !txHash.trim()}
-                  style={{ flex: "1 1 140px", padding: "0 18px", minHeight: 44, fontSize: 13, margin: 0 }}
+                  onClick={handleManualCheckNow}
+                  disabled={isAutoChecking}
+                  style={{
+                    flex: "2 1 180px",
+                    margin: 0,
+                    minHeight: 44,
+                    fontSize: 13,
+                    background: "linear-gradient(135deg, #10B981 0%, #059669 100%)",
+                    border: "none",
+                    boxShadow: "0 4px 14px rgba(16, 185, 129, 0.35)",
+                  }}
                 >
-                  {isVerifying ? (
+                  {isAutoChecking ? (
                     <>
                       <RefreshCw size={14} className="animate-spin" />
-                      <span>Verifying...</span>
+                      <span>Checking Blockchain...</span>
                     </>
                   ) : (
                     <>
                       <Zap size={14} />
-                      <span>Verify Deposit</span>
+                      <span>Check Blockchain Now</span>
                     </>
                   )}
                 </button>
+
+                <button
+                  type="button"
+                  onClick={handleSimulateDeposit}
+                  disabled={isSimulating}
+                  style={{
+                    flex: "1 1 140px",
+                    minHeight: 44,
+                    fontSize: 12,
+                    background: "rgba(255, 255, 255, 0.05)",
+                    border: "1px solid rgba(255, 255, 255, 0.15)",
+                    borderRadius: 10,
+                    color: "#A7F3D0",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                  }}
+                >
+                  {isSimulating ? (
+                    <RefreshCw size={13} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={13} />
+                  )}
+                  <span>Test Instant Credit</span>
+                </button>
+              </div>
+
+              {/* Optional Manual Fallback Accordion */}
+              <div style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowManualTx(!showManualTx)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    fontSize: 11,
+                    color: "rgba(255, 255, 255, 0.45)",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <span>Already have a TxID / hash? Submit manually</span>
+                  {showManualTx ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                </button>
+
+                {showManualTx && (
+                  <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <input
+                      type="text"
+                      value={txHash}
+                      onChange={(e) => {
+                        setTxHash(e.target.value);
+                        setVerifyError(null);
+                        setPendingMsg(null);
+                      }}
+                      placeholder="Paste manual TxID / signature hash..."
+                      style={{
+                        flex: "1 1 200px",
+                        background: "rgba(10, 11, 20, 0.85)",
+                        border: "1px solid rgba(255, 255, 255, 0.12)",
+                        borderRadius: 10,
+                        padding: "10px 12px",
+                        fontSize: 12,
+                        fontFamily: "monospace",
+                        color: "var(--text, #fff)",
+                        outline: "none",
+                        minHeight: 40,
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="pro-submit-btn"
+                      onClick={handleVerifyOnChainDeposit}
+                      disabled={isVerifying || !txHash.trim()}
+                      style={{ flex: "1 1 120px", padding: "0 14px", minHeight: 40, fontSize: 12, margin: 0 }}
+                    >
+                      {isVerifying ? (
+                        <>
+                          <RefreshCw size={13} className="animate-spin" />
+                          <span>Verifying...</span>
+                        </>
+                      ) : (
+                        <span>Verify TxID</span>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
 
               {pendingMsg && (
