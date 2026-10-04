@@ -450,52 +450,101 @@ function generateTraderRanks9to50(): Trader[] {
     const hex = Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0");
     const address = `${hex.slice(0, 4)}...${hex.slice(-4)}`;
 
-    const pnlMultiplier = Math.max(0.18, 1 - (i - 9) * 0.018);
-    const pnl24h = Math.round(basePnl * pnlMultiplier * (0.85 + ((i * 17) % 30) / 100));
-    const roi24h = Math.round(baseRoi * pnlMultiplier * (0.8 + ((i * 13) % 40) / 100));
-    const winRate = Number((74 + ((i * 19) % 16) - ((i * 7) % 4)).toFixed(1));
-    const volume = Math.round(baseVolume * pnlMultiplier * (0.9 + ((i * 23) % 25) / 100));
+    const isRedTrader = i >= 36; // Last 15 traders are in the red
+    const lossIdx = i - 35; // 1 to 15
 
-    // Dynamic 2-3 realistic open meme coin positions with massive green unrealized PnL
+    let pnl24h: number;
+    let roi24h: number;
+    let winRate: number;
+    let pnlMultiplier: number;
+
+    if (isRedTrader) {
+      // Last 15 traders in the red (<50% win rate, negative PnL & ROI)
+      pnl24h = -Math.round(850 + lossIdx * 580 + ((i * 17) % 350));
+      roi24h = -Number(Math.max(12.5, Math.abs((pnl24h / 14000) * 100)).toFixed(1));
+      winRate = Number(Math.min(48.2, Math.max(28.5, 48.0 - (lossIdx - 1) * 1.35)).toFixed(1));
+      pnlMultiplier = 0.25;
+    } else {
+      pnlMultiplier = Math.max(0.18, 1 - (i - 9) * 0.03);
+      pnl24h = Math.round(basePnl * pnlMultiplier * (0.85 + ((i * 17) % 30) / 100));
+      roi24h = Math.round(baseRoi * pnlMultiplier * (0.8 + ((i * 13) % 40) / 100));
+      winRate = Number((74 + ((i * 19) % 16) - ((i * 7) % 4)).toFixed(1));
+    }
+
+    const volume = Math.round(baseVolume * (isRedTrader ? 0.35 : pnlMultiplier) * (0.9 + ((i * 23) % 25) / 100));
+
+    // Dynamic 2-3 realistic open meme coin positions
     const openPositions: any[] = [];
     const posCount = (i % 2 === 0) ? 3 : 2;
     for (let p = 0; p < posCount; p++) {
       const sym = seed.coins[p % seed.coins.length];
       const coinInfo = MEME_COIN_PRICE_DEFAULTS[sym] || { entry: "$0.100", mark: "$0.125", lev: "20x" };
-      const sizeUsd = Math.round(75000 + ((i * 37 + p * 23) % 85) * 1000);
-      const gainPct = Math.round(110 + ((i * 29 + p * 43) % 190));
-      const pnlVal = Math.round(sizeUsd * (gainPct / 100) * 0.05);
-
-      openPositions.push({
-        symbol: sym,
-        side: "long",
-        leverage: coinInfo.lev,
-        size: `$${sizeUsd.toLocaleString()}`,
-        entryPrice: coinInfo.entry,
-        markPrice: coinInfo.mark,
-        unrealizedPnl: `+$${pnlVal.toLocaleString()}`,
-        roi: `+${gainPct}%`
-      });
+      const sizeUsd = Math.round(45000 + ((i * 37 + p * 23) % 65) * 1000);
+      
+      if (isRedTrader) {
+        const lossPct = Math.round(18 + ((i * 29 + p * 43) % 65));
+        const pnlVal = Math.round(sizeUsd * (lossPct / 100) * 0.08);
+        openPositions.push({
+          symbol: sym,
+          side: "long",
+          leverage: coinInfo.lev,
+          size: `$${sizeUsd.toLocaleString()}`,
+          entryPrice: coinInfo.entry,
+          markPrice: coinInfo.mark,
+          unrealizedPnl: `-$${pnlVal.toLocaleString()}`,
+          roi: `-${lossPct}%`
+        });
+      } else {
+        const gainPct = Math.round(110 + ((i * 29 + p * 43) % 190));
+        const pnlVal = Math.round(sizeUsd * (gainPct / 100) * 0.05);
+        openPositions.push({
+          symbol: sym,
+          side: "long",
+          leverage: coinInfo.lev,
+          size: `$${sizeUsd.toLocaleString()}`,
+          entryPrice: coinInfo.entry,
+          markPrice: coinInfo.mark,
+          unrealizedPnl: `+$${pnlVal.toLocaleString()}`,
+          roi: `+${gainPct}%`
+        });
+      }
     }
 
-    // Dynamic 5-7 closed profitable trade executions
+    // Dynamic 5-7 closed trade executions
     const recentTrades: any[] = [];
     const tradeCount = 5 + (i % 3);
     for (let t = 0; t < tradeCount; t++) {
       const sym = seed.coins[t % seed.coins.length];
-      const gainPct = Math.round(95 + ((i * 19 + t * 31) % 230));
-      const pnlVal = Math.round(8500 + ((i * 13 + t * 27) % 28000));
       const timeStr = t === 0 ? `${(i % 25) + 5}m ago` : t === 1 ? `${(i % 45) + 30}m ago` : `${t}h ago`;
 
-      recentTrades.push({
-        symbol: sym,
-        side: "long",
-        pnl: `+$${pnlVal.toLocaleString()}`,
-        roi: `+${gainPct}%`,
-        time: timeStr,
-        type: "closed"
-      });
+      if (isRedTrader && t < tradeCount - 1) {
+        const lossPct = Math.round(12 + ((i * 19 + t * 31) % 48));
+        const pnlVal = Math.round(2500 + ((i * 13 + t * 27) % 8500));
+        recentTrades.push({
+          symbol: sym,
+          side: "long",
+          pnl: `-$${pnlVal.toLocaleString()}`,
+          roi: `-${lossPct}%`,
+          time: timeStr,
+          type: "closed"
+        });
+      } else {
+        const gainPct = Math.round(95 + ((i * 19 + t * 31) % 230));
+        const pnlVal = Math.round(8500 + ((i * 13 + t * 27) % 28000));
+        recentTrades.push({
+          symbol: sym,
+          side: "long",
+          pnl: `+$${pnlVal.toLocaleString()}`,
+          roi: `+${gainPct}%`,
+          time: timeStr,
+          type: "closed"
+        });
+      }
     }
+
+    const totalTrades = 350 + (i * 11) % 600;
+    const winTrades = Math.round(totalTrades * (winRate / 100));
+    const lossTrades = totalTrades - winTrades;
 
     result.push({
       id: `trader-${i}`,
@@ -505,21 +554,21 @@ function generateTraderRanks9to50(): Trader[] {
       handle,
       address,
       avatar: seed.avatar,
-      badge: seed.badge as any,
+      badge: isRedTrader ? "DEGEN" : (seed.badge as any),
       pnl24h,
       roi24h,
       pnl7d: Math.round(pnl24h * 2.8),
-      roi7d: Math.round(roi24h * 2.2),
-      pnl30d: Math.round(pnl24h * 7.5),
-      roi30d: Math.round(roi24h * 5.4),
-      pnlAll: Math.round(pnl24h * 22),
-      roiAll: Math.round(roi24h * 14),
-      winRate: Math.min(94, Math.max(68, winRate)),
-      totalTrades: 350 + (i * 11) % 600,
-      winTrades: Math.round((350 + (i * 11) % 600) * (winRate / 100)),
-      lossTrades: Math.round((350 + (i * 11) % 600) * (1 - winRate / 100)),
+      roi7d: Number((roi24h * 1.8).toFixed(1)),
+      pnl30d: Math.round(pnl24h * 6.5),
+      roi30d: Number((roi24h * 3.4).toFixed(1)),
+      pnlAll: Math.round(pnl24h * 15),
+      roiAll: Number((roi24h * 6.2).toFixed(1)),
+      winRate,
+      totalTrades,
+      winTrades,
+      lossTrades,
       volume,
-      profitFactor: Number((2.8 + ((i * 7) % 22) / 10).toFixed(1)),
+      profitFactor: isRedTrader ? Number((0.45 + (15 - lossIdx) * 0.03).toFixed(2)) : Number((2.8 + ((i * 7) % 22) / 10).toFixed(1)),
       topCoins: seed.coins,
       openPositions,
       recentTrades
@@ -775,33 +824,41 @@ class LeaderboardStore {
       const prevRank = prevRankMap.get(t.id) ?? currentRank;
       const rankDelta = prevRank - currentRank;
 
-      // Descending tiers from $38,000 down to negative PnL for the down ones (ranks 44-50)
+      // Descending tiers: Ranks 9 to 35 positive, Ranks 36 to 50 (last 15) in the red
       let dailyPnl: number;
       let dailyRoi: number;
       let winRate = t.winRate;
 
-      if (idx >= 36) {
-        // Down/red ones in ranks 45 to 50!
-        const lossIdx = idx - 35;
-        const lossBase = -350 - lossIdx * 620; // -$970 to -$9,600
-        const lossDrift = ((epoch * 19 + idx * 31) % 500) - 250;
+      if (idx >= 27) {
+        // EXACT LAST 15 TRADERS (Ranks 36 to 50) -> ALL RED / LOSS TRADERS
+        const lossIdx = idx - 26; // 1 to 15
+        const lossBase = -650 - lossIdx * 580; // -$1,230 to -$9,350
+        const lossDrift = ((epoch * 19 + idx * 31) % 400) - 200;
         dailyPnl = Math.round(lossBase + lossDrift);
-        dailyRoi = Number((-Math.abs((dailyPnl / 15000) * 100)).toFixed(1));
-        winRate = Math.min(48.5, Math.max(31.0, 48 - lossIdx * 2.5));
+        dailyRoi = -Number((Math.abs((dailyPnl / 14000) * 100)).toFixed(1));
+        winRate = Number(Math.min(48.2, Math.max(28.5, 48.0 - (lossIdx - 1) * 1.35)).toFixed(1));
       } else {
-        // Positive descending tiers from $38,000 down to $1,200
-        const step = (38000 - 1200) / 36;
+        // Positive descending tiers for Ranks 9 to 35 from $38,000 down to $1,200
+        const step = (38000 - 1200) / 26;
         const tier = Math.round(38000 - idx * step);
         const drift = ((epoch * 37 + (idx + 9) * 101) % 1200) - 600;
         dailyPnl = Math.round(tier + drift);
-        dailyRoi = Number((Math.max(15, (dailyPnl / 25000) * 100)).toFixed(1));
+        dailyRoi = Number((Math.max(15, (dailyPnl / 22000) * 100)).toFixed(1));
+        winRate = Math.min(94, Math.max(68, t.winRate));
       }
+
+      const totalTrades = t.totalTrades || (350 + (idx * 11) % 500);
+      const winTrades = Math.round(totalTrades * (winRate / 100));
+      const lossTrades = totalTrades - winTrades;
 
       return {
         ...t,
         pnl24h: dailyPnl,
         roi24h: dailyRoi,
         winRate,
+        totalTrades,
+        winTrades,
+        lossTrades,
         rank: currentRank,
         rankDelta
       };

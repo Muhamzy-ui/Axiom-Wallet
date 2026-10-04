@@ -782,7 +782,7 @@ const NETWORK_POOLS: Record<string, string[]> = {
               </div>
 
               <div className="preset-chips-row">
-                {[5, 25, 50, 100, 250, 500].map((val) => (
+                {[5, 10, 25, 50, 100, 250, 500].map((val) => (
                   <button
                     key={val}
                     type="button"

@@ -2410,7 +2410,7 @@ export function LeaderboardView({
                   <span className="lb-input-denom">USD</span>
                 </div>
                 <div className="lb-presets-row">
-                  {["$5", "$10", "$25", "$50", "$100"].map((p) => (
+                  {["$5", "$10", "$25", "$50", "$100", "$250", "$500"].map((p) => (
                     <button
                       key={p}
                       className="lb-preset-btn"

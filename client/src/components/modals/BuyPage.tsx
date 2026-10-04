@@ -836,12 +836,13 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                 {/* Preset Chips */}
                 <div className="preset-chips-row" style={{ marginBottom: 12 }}>
                   {[
+                    Math.round(5 * rateToUsd),
+                    Math.round(10 * rateToUsd),
                     Math.round(25 * rateToUsd),
                     Math.round(50 * rateToUsd),
                     Math.round(100 * rateToUsd),
                     Math.round(250 * rateToUsd),
                     Math.round(500 * rateToUsd),
-                    Math.round(1000 * rateToUsd),
                   ].map((amt) => (
                     <button
                       key={amt}
