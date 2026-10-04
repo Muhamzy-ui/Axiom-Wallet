@@ -111,6 +111,27 @@ export function getAvailableUsdBalance(): number {
   return usdt + usdc + sol * solPrice;
 }
 
+export function ProgressBarWithLiveDot({
+  percent,
+  isLoss,
+  isWarn
+}: {
+  percent: number;
+  isLoss?: boolean;
+  isWarn?: boolean;
+}) {
+  const clamped = Math.max(0, Math.min(100, isNaN(percent) ? 0 : percent));
+  const variantClass = isLoss ? "red" : isWarn ? "warn" : "";
+
+  return (
+    <div className="lb-progress-track">
+      <div className={`lb-progress-fill ${variantClass}`} style={{ width: `${clamped}%` }}>
+        <span className="lb-progress-head-dot" />
+      </div>
+    </div>
+  );
+}
+
 const INITIAL_TRADERS: Trader[] = leaderboardStore.getAll50Traders();
 // Traders loaded dynamically from leaderboardStore (Top 50 traders with 24-hour daily epoch drift)
 /*
@@ -898,16 +919,18 @@ export function LeaderboardView({
     const totalTradesCount = userOrders.length;
     let winTradesCount = 0;
     let lossTradesCount = 0;
+    let realWinRate = 0;
+
     if (totalTradesCount > 0) {
       winTradesCount = userOrders.filter((o: any) => o.side === "Sell" || (metrics.isPositive && o.side === "Buy")).length;
       lossTradesCount = Math.max(0, totalTradesCount - winTradesCount);
+      realWinRate = Number(((winTradesCount / totalTradesCount) * 100).toFixed(1));
     } else {
-      winTradesCount = metrics.isPositive ? 1 : 0;
-      lossTradesCount = metrics.diffUsd < 0 ? 1 : 0;
+      // New user starts loading from beginning (0 trades -> 0% progress)
+      winTradesCount = 0;
+      lossTradesCount = 0;
+      realWinRate = 0;
     }
-    const realWinRate = totalTradesCount > 0
-      ? Number(((winTradesCount / totalTradesCount) * 100).toFixed(1))
-      : (metrics.isPositive ? 100 : metrics.diffUsd < 0 ? 33.3 : 75.0);
 
     const userTopCoins = Array.from(
       new Set([
@@ -935,11 +958,11 @@ export function LeaderboardView({
       pnlAll: Number((metrics.diffUsd * 12.0).toFixed(2)),
       roiAll: Number((metrics.diffPct * 5.0).toFixed(1)),
       winRate: realWinRate,
-      totalTrades: Math.max(1, totalTradesCount),
+      totalTrades: totalTradesCount,
       winTrades: winTradesCount,
       lossTrades: lossTradesCount,
       volume: metrics.totalValue,
-      profitFactor: metrics.diffUsd > 0 ? Number((1 + Math.abs(metrics.diffPct) / 80).toFixed(1)) : 0.8,
+      profitFactor: totalTradesCount > 0 && lossTradesCount === 0 ? 3.5 : lossTradesCount > 0 ? Number(((winTradesCount * 1.5) / lossTradesCount).toFixed(1)) : 0,
       topCoins: userTopCoins,
       openPositions: realOpenPositions,
       recentTrades: realRecentTrades,
@@ -1379,6 +1402,21 @@ export function LeaderboardView({
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              {/* User Live Trading Progress Bar */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 125 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#9CA3AF", fontWeight: 700 }}>
+                  <span>WIN RATE</span>
+                  <span style={{ color: currentUserTrader.winRate < 50 && currentUserTrader.totalTrades > 0 ? "#EF4444" : "#34D399" }}>
+                    {currentUserTrader.totalTrades === 0 ? "0.0% (0 Trades)" : `${currentUserTrader.winRate}%`}
+                  </span>
+                </div>
+                <ProgressBarWithLiveDot
+                  percent={currentUserTrader.winRate}
+                  isLoss={currentUserTrader.winRate < 50 && currentUserTrader.totalTrades > 0}
+                  isWarn={currentUserTrader.winRate >= 50 && currentUserTrader.winRate < 70}
+                />
+              </div>
+
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 700, textTransform: "uppercase" }}>Your 24h P&L</div>
                 <div style={{ fontSize: 14, fontWeight: 800, color: isPnlZero ? "#9CA3AF" : (metrics.isPositive ? "#10B981" : "#EF4444") }}>
@@ -1447,15 +1485,14 @@ export function LeaderboardView({
 
               <div className="lb-winrate-container">
                 <div className="lb-winrate-labels">
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                    <span className={`lb-live-pulse-dot ${top2.winRate < 50 ? "red" : ""}`} />
-                    Win Rate
-                  </span>
+                  <span>Win Rate</span>
                   <b style={{ color: top2.winRate < 50 ? "#EF4444" : "#FFFFFF" }}>{top2.winRate}% ({top2.winTrades.toLocaleString()}/{top2.totalTrades.toLocaleString()} Wins)</b>
                 </div>
-                <div className="lb-progress-track">
-                  <div className={`lb-progress-fill ${top2.winRate < 50 ? "red" : top2.winRate < 70 ? "warn" : ""}`} style={{ width: `${top2.winRate}%` }} />
-                </div>
+                <ProgressBarWithLiveDot
+                  percent={top2.winRate}
+                  isLoss={top2.winRate < 50}
+                  isWarn={top2.winRate >= 50 && top2.winRate < 70}
+                />
               </div>
             </div>
 
@@ -1543,15 +1580,14 @@ export function LeaderboardView({
 
               <div className="lb-winrate-container">
                 <div className="lb-winrate-labels">
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                    <span className={`lb-live-pulse-dot ${top1.winRate < 50 ? "red" : ""}`} />
-                    Win Rate
-                  </span>
+                  <span>Win Rate</span>
                   <b style={{ color: top1.winRate < 50 ? "#EF4444" : "#FFFFFF" }}>{top1.winRate}% ({top1.winTrades.toLocaleString()}/{top1.totalTrades.toLocaleString()} Wins)</b>
                 </div>
-                <div className="lb-progress-track">
-                  <div className={`lb-progress-fill ${top1.winRate < 50 ? "red" : top1.winRate < 70 ? "warn" : ""}`} style={{ width: `${top1.winRate}%` }} />
-                </div>
+                <ProgressBarWithLiveDot
+                  percent={top1.winRate}
+                  isLoss={top1.winRate < 50}
+                  isWarn={top1.winRate >= 50 && top1.winRate < 70}
+                />
               </div>
             </div>
 
@@ -1637,15 +1673,14 @@ export function LeaderboardView({
 
               <div className="lb-winrate-container">
                 <div className="lb-winrate-labels">
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                    <span className={`lb-live-pulse-dot ${top3.winRate < 50 ? "red" : ""}`} />
-                    Win Rate
-                  </span>
+                  <span>Win Rate</span>
                   <b style={{ color: top3.winRate < 50 ? "#EF4444" : "#FFFFFF" }}>{top3.winRate}% ({top3.winTrades.toLocaleString()}/{top3.totalTrades.toLocaleString()} Wins)</b>
                 </div>
-                <div className="lb-progress-track">
-                  <div className={`lb-progress-fill ${top3.winRate < 50 ? "red" : top3.winRate < 70 ? "warn" : ""}`} style={{ width: `${top3.winRate}%` }} />
-                </div>
+                <ProgressBarWithLiveDot
+                  percent={top3.winRate}
+                  isLoss={top3.winRate < 50}
+                  isWarn={top3.winRate >= 50 && top3.winRate < 70}
+                />
               </div>
             </div>
 
@@ -2004,22 +2039,22 @@ export function LeaderboardView({
                     <td>
                       <div className="lb-table-wr-cell">
                         <div className="lb-wr-text">
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                            <span className={`lb-live-pulse-dot ${t.winRate < 50 ? "red" : ""}`} />
-                            <span style={{ color: t.winRate < 50 ? "#EF4444" : "inherit", fontWeight: t.winRate < 50 ? 800 : "normal" }}>
-                              {t.winRate}%
-                            </span>
+                          <span style={{ color: t.winRate < 50 ? "#EF4444" : "inherit", fontWeight: t.winRate < 50 ? 800 : "normal" }}>
+                            {t.winRate}%
                           </span>
                           <span style={{ fontSize: "10.5px", color: "var(--muted)" }}>
-                            {(t as any).isGrinder === false ? "Spot HODL" : `${t.winTrades}W / ${t.lossTrades}L`}
+                            {(t as any).isCurrentUser && t.totalTrades === 0
+                              ? "0 Trades"
+                              : (t as any).isGrinder === false
+                              ? "Spot HODL"
+                              : `${t.winTrades}W / ${t.lossTrades}L`}
                           </span>
                         </div>
-                        <div className="lb-progress-track">
-                          <div
-                            className={`lb-progress-fill ${t.winRate < 50 ? "red" : t.winRate < 70 ? "warn" : ""}`}
-                            style={{ width: `${t.winRate}%` }}
-                          />
-                        </div>
+                        <ProgressBarWithLiveDot
+                          percent={t.winRate}
+                          isLoss={t.winRate < 50}
+                          isWarn={t.winRate >= 50 && t.winRate < 70}
+                        />
                       </div>
                     </td>
                     <td>
@@ -2185,13 +2220,17 @@ export function LeaderboardView({
                   </div>
                 </div>
                 <div>
-                  <small style={{ color: "var(--muted)", fontSize: "10.5px", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                    <span className={`lb-live-pulse-dot ${inspectTrader.winRate < 50 ? "red" : ""}`} />
+                  <small style={{ color: "var(--muted)", fontSize: "10.5px" }}>
                     WIN RATE
                   </small>
-                  <div style={{ fontWeight: 850, color: inspectTrader.winRate < 50 ? "#EF4444" : "#fff", fontSize: "15px" }}>
+                  <div style={{ fontWeight: 850, color: inspectTrader.winRate < 50 ? "#EF4444" : "#fff", fontSize: "15px", marginBottom: 3 }}>
                     {inspectTrader.winRate}%
                   </div>
+                  <ProgressBarWithLiveDot
+                    percent={inspectTrader.winRate}
+                    isLoss={inspectTrader.winRate < 50}
+                    isWarn={inspectTrader.winRate >= 50 && inspectTrader.winRate < 70}
+                  />
                 </div>
                 <div>
                   <small style={{ color: "var(--muted)", fontSize: "10.5px" }}>PROFIT FACTOR</small>

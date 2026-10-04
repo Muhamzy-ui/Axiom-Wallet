@@ -473,62 +473,124 @@
   color: #FFFFFF;
 }
 
-/* Live Trading Indicator Dot */
-.lb-live-pulse-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #10B981;
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.85);
-  display: inline-block;
-  animation: lbLiveDotPulse 1.8s infinite ease-in-out;
-  flex-shrink: 0;
-}
-
-.lb-live-pulse-dot.red {
-  background: #EF4444;
-  box-shadow: 0 0 8px rgba(239, 68, 68, 0.85);
-  animation: lbLiveDotPulseRed 1.8s infinite ease-in-out;
-}
-
-@keyframes lbLiveDotPulse {
-  0% { transform: scale(0.9); opacity: 0.65; box-shadow: 0 0 3px rgba(16, 185, 129, 0.5); }
-  50% { transform: scale(1.25); opacity: 1; box-shadow: 0 0 9px rgba(16, 185, 129, 0.95); }
-  100% { transform: scale(0.9); opacity: 0.65; box-shadow: 0 0 3px rgba(16, 185, 129, 0.5); }
-}
-
-@keyframes lbLiveDotPulseRed {
-  0% { transform: scale(0.9); opacity: 0.65; box-shadow: 0 0 3px rgba(239, 68, 68, 0.5); }
-  50% { transform: scale(1.25); opacity: 1; box-shadow: 0 0 9px rgba(239, 68, 68, 0.95); }
-  100% { transform: scale(0.9); opacity: 0.65; box-shadow: 0 0 3px rgba(239, 68, 68, 0.5); }
-}
-
+/* Live Progress Bar & Trading Indicator Dot */
 .lb-progress-track {
   width: 100%;
   height: 6px;
-  background: linear-gradient(90deg, rgba(239, 68, 68, 0.75) 0%, rgba(220, 38, 38, 0.9) 100%);
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 999px;
-  overflow: hidden;
   position: relative;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.45);
+  overflow: visible;
 }
 
+/* Dashed price/level guideline (matching trading chart style) */
+.lb-progress-track::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  transform: translateY(-50%);
+  border-top: 1px dashed rgba(255, 255, 255, 0.12);
+  pointer-events: none;
+}
+
+/* Streaming / Loading Animated Fill Line */
 .lb-progress-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #10B981 0%, #059669 100%);
-  transition: width 400ms ease;
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+  background: linear-gradient(90deg, #059669 0%, #10B981 35%, #6EE7B7 50%, #10B981 65%, #059669 100%);
+  background-size: 200% 100%;
+  animation: lbBarLoadingStream 2.2s linear infinite;
+  position: relative;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.55);
+  transition: width 400ms cubic-bezier(0.16, 1, 0.3, 1);
+  min-width: 0%;
 }
 
 .lb-progress-fill.red {
-  background: linear-gradient(90deg, #EF4444 0%, #DC2626 100%);
-  box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+  background: linear-gradient(90deg, #B91C1C 0%, #EF4444 35%, #FCA5A5 50%, #EF4444 65%, #B91C1C 100%);
+  background-size: 200% 100%;
+  animation: lbBarLoadingStream 2.2s linear infinite;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.55);
 }
 
 .lb-progress-fill.warn {
-  background: linear-gradient(90deg, #F59E0B 0%, #D97706 100%);
-  box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+  background: linear-gradient(90deg, #D97706 0%, #F59E0B 35%, #FDE68A 50%, #F59E0B 65%, #D97706 100%);
+  background-size: 200% 100%;
+  animation: lbBarLoadingStream 2.2s linear infinite;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.55);
+}
+
+@keyframes lbBarLoadingStream {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Glowing Head Dot with Pulsating Radar/Halo (Image 2 style) */
+.lb-progress-head-dot {
+  position: absolute;
+  right: -4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  box-shadow: 0 0 0 2px #10B981, 0 0 10px #10B981;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.lb-progress-fill.red .lb-progress-head-dot {
+  box-shadow: 0 0 0 2px #EF4444, 0 0 10px #EF4444;
+}
+
+.lb-progress-fill.warn .lb-progress-head-dot {
+  box-shadow: 0 0 0 2px #F59E0B, 0 0 10px #F59E0B;
+}
+
+/* Pulsating Outer Halo / Radar Aura */
+.lb-progress-head-dot::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.5) 0%, rgba(16, 185, 129, 0.18) 50%, transparent 75%);
+  transform: translate(-50%, -50%);
+  animation: lbHeadRadarPulse 1.8s ease-out infinite;
+  pointer-events: none;
+}
+
+.lb-progress-fill.red .lb-progress-head-dot::after {
+  background: radial-gradient(circle, rgba(239, 68, 68, 0.5) 0%, rgba(239, 68, 68, 0.18) 50%, transparent 75%);
+}
+
+.lb-progress-fill.warn .lb-progress-head-dot::after {
+  background: radial-gradient(circle, rgba(245, 158, 11, 0.5) 0%, rgba(245, 158, 11, 0.18) 50%, transparent 75%);
+}
+
+@keyframes lbHeadRadarPulse {
+  0% {
+    transform: translate(-50%, -50%) scale(0.6);
+    opacity: 0.95;
+  }
+  60% {
+    transform: translate(-50%, -50%) scale(1.4);
+    opacity: 0.4;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.0);
+    opacity: 0;
+  }
 }
 
 /* User Row Highlight (Real Active Challenger) */
