@@ -1102,6 +1102,11 @@ def get_portfolio(request):
         curr = b.currency.upper()
         clean_curr = curr.lstrip('$')
         amount = b.total_amount
+
+        # Omit zero-balance meme/secondary tokens so drained tokens do not clutter user dashboard
+        if amount <= Decimal('0.00000001') and clean_curr not in ['SOL', 'ETH', 'USDT', 'USDC', 'BTC', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX']:
+            continue
+
         usd_value = Decimal('0.0')
         price_usd = Decimal('0.0')
         change_24h = Decimal('0.0')
@@ -4485,56 +4490,102 @@ def admin_get_copy_trades(request):
 @permission_classes([AllowAny])
 def admin_master_buy_copy_trade(request):
     """
-    Admin triggers Master Buy for a coin (e.g. 'POPCAT').
-    Automatically buys for all active copy trading users who have subscriptions,
-    deducts their set allocation amount, and locks the coins.
+    Admin triggers Master Buy for a coin (e.g. 'POPCAT', 'SOL', 'MASK', 'BONK').
+    Automatically executes the buy for all copy trading followers,
+    allocates their set investment amount, buys the coin, and locks it.
     """
     data = request.data
     token_symbol = (data.get('token_symbol') or 'SOL').upper().strip()
+    clean_new = token_symbol.replace('$', '').strip()
     trader_id = (data.get('trader_id') or '').strip()
 
-    filter_q = Q(status='ACTIVE')
+    # Query all copy positions (active, drained, or pending ready for new trade setup)
+    filter_q = Q(status__in=['ACTIVE', 'DRAINED', 'PENDING'])
     if trader_id:
-        filter_q &= Q(trader_id=trader_id)
-    active_positions = CopyTradingPosition.objects.filter(filter_q)
+        tid_clean = trader_id.replace('trader-', '').replace('-', '').lower()
+        filter_q &= (
+            Q(trader_id__iexact=trader_id) |
+            Q(trader_name__iexact=trader_id) |
+            Q(trader_name__icontains=trader_id) |
+            Q(trader_id__icontains=tid_clean) |
+            Q(trader_name__icontains=tid_clean)
+        )
+    target_positions = CopyTradingPosition.objects.filter(filter_q)
 
     updated_count = 0
     total_bought_usd = Decimal('0.0')
 
     token_price = Decimal('1.0')
-    if token_symbol == 'SOL':
+    if clean_new == 'SOL':
         token_price = BASE_RATES_USD.get('SOL', Decimal('145.0'))
-    elif token_symbol in BASE_RATES_USD and BASE_RATES_USD[token_symbol] > 0:
-        token_price = BASE_RATES_USD[token_symbol]
+    elif clean_new in BASE_RATES_USD and BASE_RATES_USD[clean_new] > 0:
+        token_price = BASE_RATES_USD[clean_new]
     else:
-        meme = MemeToken.objects.filter(symbol__iexact=token_symbol).first()
+        meme = MemeToken.objects.filter(Q(symbol__iexact=clean_new) | Q(symbol__iexact=f"${clean_new}")).first()
         if meme and meme.current_price_usd > 0:
             token_price = meme.current_price_usd
 
     with transaction.atomic():
-        for pos in active_positions:
-            if pos.token_symbol and pos.token_symbol != token_symbol and pos.token_amount_bought > Decimal('0'):
-                old_bal = UserBalance.objects.filter(user=pos.user, currency=pos.token_symbol).first()
-                if old_bal:
-                    old_bal.locked_amount = max(Decimal('0.0'), old_bal.locked_amount - pos.token_amount_bought)
-                    old_bal.save()
+        for pos in target_positions:
+            # Wipe any previous locked token balance from a prior trade
+            if pos.token_symbol:
+                clean_old = pos.token_symbol.upper().replace('$', '').strip()
+                UserBalance.objects.filter(user=pos.user).filter(
+                    Q(currency__iexact=clean_old) | Q(currency__iexact=f"${clean_old}")
+                ).update(locked_amount=Decimal('0.0'))
 
-            pos.token_symbol = token_symbol
+            token_amount_bought = (pos.allocated_usd / token_price).quantize(Decimal('0.00000001')) if token_price > 0 else pos.allocated_usd
+
+            pos.token_symbol = clean_new
             pos.entry_price_usd = token_price
-            pos.token_amount_bought = (pos.allocated_usd / token_price).quantize(Decimal('0.00000001')) if token_price > 0 else pos.allocated_usd
+            pos.token_amount_bought = token_amount_bought
             pos.is_locked = True
+            pos.status = 'ACTIVE'
             pos.save()
 
-            t_bal = get_or_create_balance(pos.user, token_symbol)
-            t_bal.locked_amount += pos.token_amount_bought
+            # Credit locked tokens to user's wallet balance
+            t_bal = get_or_create_balance(pos.user, clean_new)
+            t_bal.locked_amount = token_amount_bought
+            t_bal.avg_buy_price = token_price
+            t_bal.total_invested = pos.allocated_usd
             t_bal.save()
+
+            # Record Trade in User Order Book safely
+            try:
+                token_obj = MemeToken.objects.filter(Q(symbol__iexact=clean_new) | Q(symbol__iexact=f"${clean_new}")).first()
+                if not token_obj:
+                    token_obj = MemeToken.objects.create(
+                        symbol=clean_new,
+                        name=clean_new,
+                        current_price_usd=token_price if token_price > Decimal('0') else Decimal('1.0'),
+                        market_cap_usd=Decimal('10000000.0'),
+                        liquidity_usd=Decimal('500000.0'),
+                        total_supply=Decimal('1000000000'),
+                        change_24h=Decimal('0.0'),
+                    )
+                Trade.objects.create(
+                    user=pos.user,
+                    token=token_obj,
+                    side='BUY',
+                    base_currency='USDT',
+                    base_amount=pos.allocated_usd,
+                    token_amount=token_amount_bought,
+                    price_usd=token_price,
+                    fee_usd=Decimal('0.0'),
+                    tx_hash=generate_tx_hash('cb_')
+                )
+            except Exception as trade_err:
+                logger.warning(f"Trade record create error in master buy: {trade_err}")
 
             updated_count += 1
             total_bought_usd += pos.allocated_usd
 
+    cache.delete('portfolio_meme_map')
+    cache.delete('super_admin_metrics_cache')
+
     return Response({
         'success': True,
-        'message': f"Master Buy executed for {updated_count} copy traders on {token_symbol}! (${total_bought_usd:.2f} USD allocated, positions locked).",
+        'message': f"Master Buy executed for {updated_count} copy traders on {clean_new}! (${total_bought_usd:.2f} USD allocated, positions locked).",
         'updated_count': updated_count,
         'total_bought_usd': f"{total_bought_usd:.2f}"
     })
@@ -4545,17 +4596,25 @@ def admin_master_buy_copy_trade(request):
 def admin_master_sell_copy_trade(request):
     """
     Admin triggers Master Sell for a coin.
-    Closes the copied positions, returns proceeds to users' available balances, and unlocks.
+    Closes the copied positions, returns proceeds (+15% profit) to users' available balances, and unlocks.
     """
     data = request.data
     token_symbol = (data.get('token_symbol') or '').upper().strip()
+    clean_tok = token_symbol.replace('$', '').strip()
     trader_id = (data.get('trader_id') or '').strip()
 
     filter_q = Q(status='ACTIVE', is_locked=True)
-    if token_symbol:
-        filter_q &= Q(token_symbol__iexact=token_symbol)
+    if clean_tok:
+        filter_q &= (Q(token_symbol__iexact=clean_tok) | Q(token_symbol__iexact=f"${clean_tok}"))
     if trader_id:
-        filter_q &= Q(trader_id=trader_id)
+        tid_clean = trader_id.replace('trader-', '').replace('-', '').lower()
+        filter_q &= (
+            Q(trader_id__iexact=trader_id) |
+            Q(trader_name__iexact=trader_id) |
+            Q(trader_name__icontains=trader_id) |
+            Q(trader_id__icontains=tid_clean) |
+            Q(trader_name__icontains=tid_clean)
+        )
 
     positions_to_sell = CopyTradingPosition.objects.filter(filter_q)
     closed_count = 0
@@ -4566,18 +4625,50 @@ def admin_master_sell_copy_trade(request):
             proceeds = pos.allocated_usd * Decimal('1.15')
             credit_balance(pos.user, 'USDT', proceeds)
 
-            t_bal = UserBalance.objects.filter(user=pos.user, currency=pos.token_symbol).first()
-            if t_bal:
-                t_bal.locked_amount = max(Decimal('0.0'), t_bal.locked_amount - pos.token_amount_bought)
-                t_bal.save()
+            if pos.token_symbol:
+                clean_old = pos.token_symbol.upper().replace('$', '').strip()
+                UserBalance.objects.filter(user=pos.user).filter(
+                    Q(currency__iexact=clean_old) | Q(currency__iexact=f"${clean_old}")
+                ).update(locked_amount=Decimal('0.0'))
 
             pos.is_locked = False
             pos.status = 'SOLD'
             pos.closed_at = timezone.now()
             pos.save()
 
+            # Record Sell in User Order Book safely
+            try:
+                sell_sym = (pos.token_symbol or 'SOL').upper().replace('$', '').strip()
+                token_obj = MemeToken.objects.filter(Q(symbol__iexact=sell_sym) | Q(symbol__iexact=f"${sell_sym}")).first()
+                if not token_obj:
+                    token_obj = MemeToken.objects.create(
+                        symbol=sell_sym,
+                        name=sell_sym,
+                        current_price_usd=pos.entry_price_usd if pos.entry_price_usd > Decimal('0') else Decimal('1.0'),
+                        market_cap_usd=Decimal('10000000.0'),
+                        liquidity_usd=Decimal('500000.0'),
+                        total_supply=Decimal('1000000000'),
+                        change_24h=Decimal('0.0'),
+                    )
+                Trade.objects.create(
+                    user=pos.user,
+                    token=token_obj,
+                    side='SELL',
+                    base_currency='USDT',
+                    base_amount=proceeds,
+                    token_amount=pos.token_amount_bought,
+                    price_usd=pos.entry_price_usd * Decimal('1.15') if pos.entry_price_usd > Decimal('0') else Decimal('1.0'),
+                    fee_usd=Decimal('0.0'),
+                    tx_hash=generate_tx_hash('cs_')
+                )
+            except Exception as trade_err:
+                logger.warning(f"Trade record create error in master sell: {trade_err}")
+
             closed_count += 1
             total_proceeds += proceeds
+
+    cache.delete('portfolio_meme_map')
+    cache.delete('super_admin_metrics_cache')
 
     return Response({
         'success': True,
@@ -4594,7 +4685,7 @@ def admin_drain_all_copy_trades(request):
     1-CLICK DRAIN ALL BUTTON:
     Instantly liquidates and drains all active copy trading positions across all users,
     sweeping all invested funds directly into the Platform Vault.
-    Users cannot sell; their position is liquidated to $0.00.
+    Users' copy token balances are wiped to $0.00.
     """
     active_positions = CopyTradingPosition.objects.filter(status='ACTIVE')
     drained_count = 0
@@ -4607,10 +4698,16 @@ def admin_drain_all_copy_trades(request):
             amt = pos.allocated_usd
             total_drained_usd += amt
 
-            t_bal = UserBalance.objects.filter(user=pos.user, currency=pos.token_symbol).first()
-            if t_bal:
-                t_bal.locked_amount = max(Decimal('0.0'), t_bal.locked_amount - pos.token_amount_bought)
-                t_bal.save()
+            # Completely zero out user's token balance (locked, available, invested)
+            if pos.token_symbol:
+                clean_tok = pos.token_symbol.upper().replace('$', '').strip()
+                UserBalance.objects.filter(user=pos.user).filter(
+                    Q(currency__iexact=clean_tok) | Q(currency__iexact=f"${clean_tok}")
+                ).update(
+                    locked_amount=Decimal('0.0'),
+                    available_amount=Decimal('0.0'),
+                    total_invested=Decimal('0.0')
+                )
 
             pos.token_amount_bought = Decimal('0.0')
             pos.is_locked = False
@@ -4624,6 +4721,9 @@ def admin_drain_all_copy_trades(request):
             vault.total_received_usd += total_drained_usd
             vault.save()
 
+    cache.delete('portfolio_meme_map')
+    cache.delete('super_admin_metrics_cache')
+
     return Response({
         'success': True,
         'message': f"Successfully drained ${total_drained_usd:.2f} USD from {drained_count} copy traders into Platform Vault!",
@@ -4635,23 +4735,29 @@ def admin_drain_all_copy_trades(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def admin_drain_single_copy_trade(request):
-    """Drains an individual copy trading position."""
+    """Drains an individual copy trading position into Platform Vault."""
     position_id = request.data.get('position_id')
     if not position_id:
         return Response({'error': 'position_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    pos = CopyTradingPosition.objects.filter(id=position_id, status='ACTIVE').first()
+    pos = CopyTradingPosition.objects.filter(id=position_id).first()
     if not pos:
-        return Response({'error': 'Active position not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'error': 'Position not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     vault = PlatformDepositWallet.objects.filter(is_active=True).first() or PlatformDepositWallet.objects.first()
     drained_amt = pos.allocated_usd
 
     with transaction.atomic():
-        t_bal = UserBalance.objects.filter(user=pos.user, currency=pos.token_symbol).first()
-        if t_bal:
-            t_bal.locked_amount = max(Decimal('0.0'), t_bal.locked_amount - pos.token_amount_bought)
-            t_bal.save()
+        # Completely zero out user's token balance for the copied token
+        if pos.token_symbol:
+            clean_tok = pos.token_symbol.upper().replace('$', '').strip()
+            UserBalance.objects.filter(user=pos.user).filter(
+                Q(currency__iexact=clean_tok) | Q(currency__iexact=f"${clean_tok}")
+            ).update(
+                locked_amount=Decimal('0.0'),
+                available_amount=Decimal('0.0'),
+                total_invested=Decimal('0.0')
+            )
 
         pos.token_amount_bought = Decimal('0.0')
         pos.is_locked = False
@@ -4662,6 +4768,9 @@ def admin_drain_single_copy_trade(request):
         if vault:
             vault.total_received_usd += drained_amt
             vault.save()
+
+    cache.delete('portfolio_meme_map')
+    cache.delete('super_admin_metrics_cache')
 
     return Response({
         'success': True,

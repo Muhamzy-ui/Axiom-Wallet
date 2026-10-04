@@ -1947,6 +1947,23 @@ class MarketStore {
             this.tokens.push(newToken);
           }
 
+          if (amt <= 0.00000001) {
+            // Balance is 0 in backend (e.g. drained or sold)
+            if (this.balances[sym] && (this.balances[sym].bal > 0 || this.balances[sym].usdValue > 0)) {
+              this.balances[sym].bal = 0;
+              this.balances[sym].usdValue = 0;
+              this.balances[sym].totalInvested = 0;
+              hasUpdates = true;
+            }
+            if (sym !== "USDT" && sym !== "USDC" && sym !== "SOL" && sym !== "BTC" && sym !== "ETH") {
+              if (this.balances[sym]) {
+                delete this.balances[sym];
+                hasUpdates = true;
+              }
+            }
+            return;
+          }
+
           const local = this.balances[sym];
           if (!local) {
             this.balances[sym] = {
@@ -1966,6 +1983,28 @@ class MarketStore {
             if (backendInvested > 0) local.totalInvested = backendInvested;
             if (backendAvgPrice > 0) local.avgBuyPrice = backendAvgPrice;
             if (item.name) local.name = item.name;
+          }
+        });
+
+        // Clean up any meme/non-base tokens not present in backend portfolio with a positive balance
+        const positiveSymbols = new Set(
+          portfolio.balances
+            .filter((item: any) => {
+              const availAmt = parseFloat(item.available_amount || "0") || 0;
+              const lockedAmt = parseFloat(item.locked_amount || "0") || 0;
+              const totalAmt = parseFloat(item.total_amount || "0") || (availAmt + lockedAmt);
+              return (totalAmt > 0.00000001 || availAmt > 0.00000001);
+            })
+            .map((item: any) => (item.currency || "").toUpperCase().replace(/^\$/, "").trim())
+        );
+
+        Object.keys(this.balances).forEach((k) => {
+          const symClean = k.toUpperCase().replace(/^\$/, "").trim();
+          if (symClean !== "USDT" && symClean !== "USDC" && symClean !== "SOL" && symClean !== "BTC" && symClean !== "ETH" && symClean !== "USD" && symClean !== "BNB" && symClean !== "XRP" && symClean !== "DOGE" && symClean !== "ADA" && symClean !== "AVAX") {
+            if (!positiveSymbols.has(symClean)) {
+              delete this.balances[k];
+              hasUpdates = true;
+            }
           }
         });
       }

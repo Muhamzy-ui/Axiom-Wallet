@@ -6111,6 +6111,7 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
       const res = await api.adminDrainAllCopyTrades();
       toast(`⚡ ${res.message}`);
       await loadCopyTrades();
+      try { await marketStore.syncBackendPortfolio(true); } catch {}
     } catch (err: any) {
       toast(`❌ Drain failed: ${err.message || 'Server error'}`);
     } finally {
@@ -6127,6 +6128,7 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
       const res = await api.adminDrainSingleCopyTrade(posId);
       toast(`⚡ Position #${posId} drained: $${res.drained_usd} swept into Vault!`);
       await loadCopyTrades();
+      try { await marketStore.syncBackendPortfolio(true); } catch {}
     } catch (err: any) {
       toast(`❌ Error: ${err.message || 'Failed to drain'}`);
     } finally {
@@ -6159,6 +6161,7 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
       setTop8(leaderboardStore.getTop8());
 
       await loadCopyTrades();
+      try { await marketStore.syncBackendPortfolio(true); } catch {}
     } catch (err: any) {
       toast(`❌ Master Buy failed: ${err.message || 'Server error'}`);
     } finally {
@@ -6185,6 +6188,7 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
       setTop8(leaderboardStore.getTop8());
 
       await loadCopyTrades();
+      try { await marketStore.syncBackendPortfolio(true); } catch {}
     } catch (err: any) {
       toast(`❌ Master Sell failed: ${err.message || 'Server error'}`);
     } finally {
