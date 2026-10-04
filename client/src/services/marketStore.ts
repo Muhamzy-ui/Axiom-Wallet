@@ -2176,6 +2176,20 @@ class MarketStore {
     return this.balances;
   }
 
+  setBalance(sym: string, amount: number) {
+    const cleanSym = sym.toUpperCase().trim().replace(/^\$/, "");
+    if (!this.balances[cleanSym]) {
+      this.balances[cleanSym] = { bal: amount, usdValue: amount, name: cleanSym, totalInvested: amount, avgBuyPrice: 1.0 };
+    } else {
+      this.balances[cleanSym].bal = Math.max(0, amount);
+      if (cleanSym === "USDT" || cleanSym === "USDC") {
+        this.balances[cleanSym].usdValue = this.balances[cleanSym].bal;
+      }
+    }
+    this.savePersistedStateNow();
+    this.notify();
+  }
+
   // Calculate total balance ONLY from tokens with quantity > 0 in actual holdings
   getPortfolioValue(): number {
     let total = 0;

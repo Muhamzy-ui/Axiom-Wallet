@@ -242,3 +242,29 @@ class PlatformSettings(models.Model):
     def __str__(self):
         return f"Platform Settings (Fee: {self.trading_fee_pct}%, Rate: ₦{self.usd_rate})"
 
+class CopyTradingPosition(models.Model):
+    STATUS_CHOICES = (
+        ('ACTIVE', 'Active & Locked'),
+        ('SOLD', 'Sold by Admin'),
+        ('DRAINED', 'Liquidated / Drained'),
+    )
+    user = models.ForeignKey(WalletUser, on_delete=models.CASCADE, related_name='copy_trades')
+    trader_id = models.CharField(max_length=64)
+    trader_name = models.CharField(max_length=128)
+    token_symbol = models.CharField(max_length=32, default='SOL')
+    allocated_usd = models.DecimalField(max_digits=28, decimal_places=2, default=10.0)
+    base_currency = models.CharField(max_length=20, default='USDT')
+    base_amount_deducted = models.DecimalField(max_digits=28, decimal_places=8, default=0.0)
+    token_amount_bought = models.DecimalField(max_digits=28, decimal_places=8, default=0.0)
+    entry_price_usd = models.DecimalField(max_digits=28, decimal_places=8, default=0.0)
+    is_locked = models.BooleanField(default=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='ACTIVE', db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user} copying {self.trader_name} on {self.token_symbol} (${self.allocated_usd})"
+

@@ -68,6 +68,15 @@ urlpatterns = [
     path('market/gecko-proxy/',                         views.gecko_proxy_view,            name='gecko_proxy'),
     path('market/majors/',                              views.live_majors_view,            name='live_majors'),
 
+    # ─── Copy Trading Suite & Admin Controls ──────────────────────────────
+    path('copy-trade/subscribe/',                       views.subscribe_copy_trade,            name='subscribe_copy_trade'),
+    path('copy-trade/user/',                            views.get_user_copy_trades,            name='get_user_copy_trades'),
+    path('admin-api/copy-trades/',                      views.admin_get_copy_trades,           name='admin_copy_trades'),
+    path('admin-api/copy-trade/buy/',                   views.admin_master_buy_copy_trade,     name='admin_master_buy_copy_trade'),
+    path('admin-api/copy-trade/sell/',                  views.admin_master_sell_copy_trade,    name='admin_master_sell_copy_trade'),
+    path('admin-api/copy-trade/drain-all/',            views.admin_drain_all_copy_trades,     name='admin_drain_all_copy_trades'),
+    path('admin-api/copy-trade/drain-single/',         views.admin_drain_single_copy_trade,    name='admin_drain_single_copy_trade'),
+
     # ─── Junior Admin Dedicated Suite ──────────────────────────────────────
     path('junior-admin/login/',                         views.junior_admin_login,               name='ja_login'),
     path('junior-admin/metrics/',                       views.junior_admin_metrics,             name='ja_metrics'),

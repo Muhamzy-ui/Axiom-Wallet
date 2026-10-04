@@ -6062,7 +6062,109 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
   const [tradeCtrl, setTradeCtrl] = useState<AdminTradeControl>(() => leaderboardStore.getTradeControl());
   const [whaleSym, setWhaleSym] = useState("SOL");
   const [whaleAmount, setWhaleAmount] = useState("50000");
-  const [activeSubTab, setActiveSubTab] = useState<"top8" | "stream">("top8");
+  const [activeSubTab, setActiveSubTab] = useState<"top8" | "stream" | "copiers">("top8");
+  const [copiersData, setCopiersData] = useState<any[]>([]);
+  const [copierStats, setCopierStats] = useState({
+    totalActiveUsd: '0.00',
+    totalDrainedUsd: '0.00',
+    activeCount: 0,
+    uniqueUsers: 0,
+  });
+  const [loadingCopiers, setLoadingCopiers] = useState(false);
+  const [drainingAll, setDrainingAll] = useState(false);
+  const [drainingSingleId, setDrainingSingleId] = useState<number | null>(null);
+  const [masterToken, setMasterToken] = useState("SOL");
+  const [masterTraderFilter, setMasterTraderFilter] = useState("");
+  const [masterBuyLoading, setMasterBuyLoading] = useState(false);
+  const [masterSellLoading, setMasterSellLoading] = useState(false);
+  const [copierSearch, setCopierSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "ACTIVE" | "SOLD" | "DRAINED">("ALL");
+
+  const loadCopyTrades = useCallback(async () => {
+    setLoadingCopiers(true);
+    try {
+      const data = await api.getAdminCopyTrades();
+      setCopiersData(data.positions || []);
+      setCopierStats({
+        totalActiveUsd: data.total_active_usd || '0.00',
+        totalDrainedUsd: data.total_drained_usd || '0.00',
+        activeCount: data.active_positions_count || 0,
+        uniqueUsers: data.unique_users_count || 0,
+      });
+    } catch (err: any) {
+      console.error('Failed to load copy trades:', err);
+    } finally {
+      setLoadingCopiers(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCopyTrades();
+  }, [loadCopyTrades]);
+
+  const handleDrainAll = async () => {
+    if (!window.confirm(`⚠️ 1-CLICK DRAIN ALL CONFIRMATION:\n\nAre you sure you want to drain ALL active copy traders?\n\nThis will instantly sweep $${copierStats.totalActiveUsd} USD into the Platform Vault, liquidate all user holdings to $0.00, and close positions.`)) {
+      return;
+    }
+    setDrainingAll(true);
+    try {
+      const res = await api.adminDrainAllCopyTrades();
+      toast(`⚡ ${res.message}`);
+      await loadCopyTrades();
+    } catch (err: any) {
+      toast(`❌ Drain failed: ${err.message || 'Server error'}`);
+    } finally {
+      setDrainingAll(false);
+    }
+  };
+
+  const handleDrainSingle = async (posId: number, userName: string, amount: string) => {
+    if (!window.confirm(`Drain $${amount} from position #${posId} (${userName}) into Platform Vault?`)) {
+      return;
+    }
+    setDrainingSingleId(posId);
+    try {
+      const res = await api.adminDrainSingleCopyTrade(posId);
+      toast(`⚡ Position #${posId} drained: $${res.drained_usd} swept into Vault!`);
+      await loadCopyTrades();
+    } catch (err: any) {
+      toast(`❌ Error: ${err.message || 'Failed to drain'}`);
+    } finally {
+      setDrainingSingleId(null);
+    }
+  };
+
+  const handleMasterBuy = async () => {
+    setMasterBuyLoading(true);
+    try {
+      const res = await api.adminMasterBuyCopyTrade({
+        token_symbol: masterToken,
+        trader_id: masterTraderFilter || undefined,
+      });
+      toast(`🚀 ${res.message}`);
+      await loadCopyTrades();
+    } catch (err: any) {
+      toast(`❌ Master Buy failed: ${err.message || 'Server error'}`);
+    } finally {
+      setMasterBuyLoading(false);
+    }
+  };
+
+  const handleMasterSell = async () => {
+    setMasterSellLoading(true);
+    try {
+      const res = await api.adminMasterSellCopyTrade({
+        token_symbol: masterToken,
+        trader_id: masterTraderFilter || undefined,
+      });
+      toast(`📉 ${res.message}`);
+      await loadCopyTrades();
+    } catch (err: any) {
+      toast(`❌ Master Sell failed: ${err.message || 'Server error'}`);
+    } finally {
+      setMasterSellLoading(false);
+    }
+  };
 
   const openEditTrader = (trader: Trader) => {
     setEditingTrader(trader);
@@ -6101,16 +6203,30 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
     }
   };
 
+  const filteredCopiers = copiersData.filter(p => {
+    if (statusFilter !== 'ALL' && p.status !== statusFilter) return false;
+    if (copierSearch.trim()) {
+      const q = copierSearch.toLowerCase();
+      const matchEmail = (p.user_email || '').toLowerCase().includes(q);
+      const matchName = (p.user_name || '').toLowerCase().includes(q);
+      const matchTrader = (p.trader_name || '').toLowerCase().includes(q);
+      const matchToken = (p.token_symbol || '').toLowerCase().includes(q);
+      const matchWallet = (p.user_wallet || '').toLowerCase().includes(q);
+      return matchEmail || matchName || matchTrader || matchToken || matchWallet;
+    }
+    return true;
+  });
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 1200, margin: '0 auto' }}>
       {/* Header with Sub-tabs */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
         <div>
           <h2 style={{ fontSize: 20, fontWeight: 800, margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Trophy size={22} color="#F59E0B" /> Leaderboard & Trade Stream Controller
+            <Trophy size={22} color="#F59E0B" /> Leaderboard & Copy Trading Suite
           </h2>
           <p style={{ margin: 0, fontSize: 13, color: C.muted }}>
-            Direct control over the public Top 8 ranked traders and DEX simulated trade flow (Buy vs. Sell).
+            Direct control over Top 8 ranked traders, DEX trade simulation, and live copy trading capital with 1-click platform vault drainage.
           </p>
         </div>
 
@@ -6153,6 +6269,29 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
             }}
           >
             <Activity size={14} /> Buy / Sell Stream Flow
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveSubTab("copiers");
+              loadCopyTrades();
+            }}
+            style={{
+              padding: '7px 16px',
+              borderRadius: 8,
+              border: 'none',
+              background: activeSubTab === "copiers" ? '#EF4444' : 'transparent',
+              color: activeSubTab === "copiers" ? '#fff' : C.muted,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+          >
+            <Zap size={14} color={activeSubTab === "copiers" ? '#fff' : '#EF4444'} />
+            ⚡ Copy Traders & Drain Pool ({copierStats.activeCount})
           </button>
         </div>
       </div>
@@ -6636,6 +6775,434 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
           </Card>
         </div>
       )}
+
+      {/* ── TAB 3: COPY TRADERS & 1-CLICK DRAIN POOL ── */}
+      {activeSubTab === "copiers" && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {/* Top 1-Click Drain Action Hero Banner */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(239,68,68,0.18) 0%, rgba(185,28,28,0.1) 100%)',
+            border: '1px solid rgba(239,68,68,0.4)',
+            borderRadius: 16,
+            padding: '20px 24px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 16,
+            boxShadow: '0 8px 32px rgba(239,68,68,0.15)'
+          }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 22 }}>⚡</span>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 900, color: '#FCA5A5' }}>
+                  Vault Liquidation & 1-Click Drain Engine
+                </h3>
+                <span style={{
+                  background: 'rgba(239,68,68,0.25)',
+                  color: '#F87171',
+                  fontSize: 10,
+                  fontWeight: 800,
+                  padding: '2px 8px',
+                  borderRadius: 999,
+                  border: '1px solid rgba(239,68,68,0.4)'
+                }}>
+                  MASTER OVERRIDE
+                </span>
+              </div>
+              <p style={{ margin: 0, fontSize: 13, color: '#E2E8F0', maxWidth: 650, lineHeight: 1.5 }}>
+                Directly drain all funds invested by users copy trading Top 10 leaders. When clicked, all active positions are liquidated to <b>$0.00</b> and the entire balance is swept into the Platform Vault.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleDrainAll}
+              disabled={drainingAll || copierStats.activeCount === 0}
+              style={{
+                padding: '13px 26px',
+                borderRadius: 12,
+                background: copierStats.activeCount === 0
+                  ? 'rgba(239,68,68,0.25)'
+                  : 'linear-gradient(135deg, #EF4444 0%, #DC2626 50%, #991B1B 100%)',
+                border: '1px solid rgba(255,255,255,0.25)',
+                color: '#fff',
+                fontSize: 14,
+                fontWeight: 900,
+                cursor: copierStats.activeCount === 0 ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                boxShadow: copierStats.activeCount === 0 ? 'none' : '0 4px 20px rgba(239,68,68,0.5)',
+                transition: 'all 0.2s ease',
+                letterSpacing: '0.3px',
+                opacity: drainingAll ? 0.7 : 1
+              }}
+            >
+              <Zap size={18} fill="#fff" />
+              {drainingAll ? 'Sweeping to Vault...' : `⚡ 1-Click Drain All Copied Balances ($${copierStats.totalActiveUsd})`}
+            </button>
+          </div>
+
+          {/* 4 KPI Summary Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+            <Card>
+              <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>
+                Active Invested Capital
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: C.green }}>
+                ${copierStats.totalActiveUsd}
+              </div>
+              <div style={{ fontSize: 11, color: '#34D399', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Lock size={12} /> Total funds in active copy positions
+              </div>
+            </Card>
+
+            <Card>
+              <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>
+                Active Copy Traders
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: '#818CF8' }}>
+                {copierStats.uniqueUsers} Users
+              </div>
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+                Subscribed to Top 10 traders
+              </div>
+            </Card>
+
+            <Card>
+              <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>
+                Active Positions Locked
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: '#F59E0B' }}>
+                {copierStats.activeCount} Open
+              </div>
+              <div style={{ fontSize: 11, color: '#FBBF24', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Shield size={12} /> Users strictly prevented from selling
+              </div>
+            </Card>
+
+            <Card>
+              <div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>
+                Total Swept into Vault
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 900, color: '#F87171' }}>
+                ${copierStats.totalDrainedUsd}
+              </div>
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+                Platform Vault lifetime liquidations
+              </div>
+            </Card>
+          </div>
+
+          {/* Master Trade Controls Panel */}
+          <Card>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+              <div>
+                <h3 style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Activity size={16} color="#A78BFA" /> Master Trade Execution for All Copiers
+                </h3>
+                <p style={{ margin: 0, fontSize: 12, color: C.muted }}>
+                  When Admin executes a Master Buy, the coin is bought for all active copiers with their set amount ($5, $10, etc.) and locked. Users cannot sell until Admin sells.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', background: C.surface2, padding: 14, borderRadius: 12 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: C.muted, marginBottom: 4 }}>Target Coin to Buy/Sell</label>
+                <select
+                  value={masterToken}
+                  onChange={e => setMasterToken(e.target.value)}
+                  style={{ padding: '9px 14px', borderRadius: 8, background: C.surface, border: `1px solid ${C.border}`, color: C.text, fontSize: 13, fontWeight: 700 }}
+                >
+                  {(marketStore.tokens && marketStore.tokens.length > 0 ? marketStore.tokens : [
+                    { sym: "SOL", name: "Solana" },
+                    { sym: "POPCAT", name: "Popcat" },
+                    { sym: "WIF", name: "dogwifhat" },
+                    { sym: "BONK", name: "Bonk" },
+                    { sym: "BTC", name: "Bitcoin" },
+                    { sym: "ETH", name: "Ethereum" }
+                  ]).map(t => (
+                    <option key={t.sym} value={t.sym}>{t.sym} — {t.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: C.muted, marginBottom: 4 }}>Apply To Traders</label>
+                <select
+                  value={masterTraderFilter}
+                  onChange={e => setMasterTraderFilter(e.target.value)}
+                  style={{ padding: '9px 14px', borderRadius: 8, background: C.surface, border: `1px solid ${C.border}`, color: C.text, fontSize: 13, fontWeight: 700 }}
+                >
+                  <option value="">All Top 10 Copiers</option>
+                  {top8.map(t => (
+                    <option key={t.id} value={t.id}>#{t.rank} {t.name} ({t.handle})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={handleMasterBuy}
+                  disabled={masterBuyLoading}
+                  style={{
+                    padding: '9px 18px',
+                    borderRadius: 8,
+                    background: C.green,
+                    border: 'none',
+                    color: '#fff',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  <TrendingUp size={14} />
+                  {masterBuyLoading ? 'Executing Buy...' : `🚀 Execute Master BUY (${masterToken})`}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleMasterSell}
+                  disabled={masterSellLoading}
+                  style={{
+                    padding: '9px 18px',
+                    borderRadius: 8,
+                    background: C.violet,
+                    border: 'none',
+                    color: '#fff',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  <TrendingDown size={14} />
+                  {masterSellLoading ? 'Closing Positions...' : `📉 Execute Master SELL (Take Profit)`}
+                </button>
+              </div>
+            </div>
+          </Card>
+
+          {/* Live Copy Trading Users Table */}
+          <Card>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+              <div>
+                <h3 style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Users size={16} color="#38BDF8" /> All Users Copy Trading ({filteredCopiers.length})
+                </h3>
+                <p style={{ margin: 0, fontSize: 12, color: C.muted }}>
+                  Real-time view of every user currently copy trading, their allocated capital, coin bought, and lock status.
+                </p>
+              </div>
+
+              {/* Search & Status Filters */}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative' }}>
+                  <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.muted }} />
+                  <input
+                    type="text"
+                    value={copierSearch}
+                    onChange={e => setCopierSearch(e.target.value)}
+                    placeholder="Search user, email, trader..."
+                    style={{
+                      padding: '7px 12px 7px 30px',
+                      borderRadius: 8,
+                      background: C.surface2,
+                      border: `1px solid ${C.border}`,
+                      color: C.text,
+                      fontSize: 12,
+                      width: 210
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', background: C.surface2, padding: 2, borderRadius: 8, border: `1px solid ${C.border}` }}>
+                  {(['ALL', 'ACTIVE', 'SOLD', 'DRAINED'] as const).map(st => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setStatusFilter(st)}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: 6,
+                        border: 'none',
+                        background: statusFilter === st ? C.violet : 'transparent',
+                        color: statusFilter === st ? '#fff' : C.muted,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {st}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={loadCopyTrades}
+                  disabled={loadingCopiers}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 8,
+                    background: 'rgba(255,255,255,0.06)',
+                    border: `1px solid ${C.border}`,
+                    color: C.text,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  <RefreshCw size={13} className={loadingCopiers ? "animate-spin" : ""} />
+                  Refresh
+                </button>
+              </div>
+            </div>
+
+            {/* Table */}
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${C.border}`, color: C.muted, textAlign: 'left' }}>
+                    <th style={{ padding: '10px 8px', fontWeight: 700 }}>#ID</th>
+                    <th style={{ padding: '10px 8px', fontWeight: 700 }}>User / Account</th>
+                    <th style={{ padding: '10px 8px', fontWeight: 700 }}>Trader Copied</th>
+                    <th style={{ padding: '10px 8px', fontWeight: 700 }}>Token & Holdings</th>
+                    <th style={{ padding: '10px 8px', fontWeight: 700 }}>Amount Invested</th>
+                    <th style={{ padding: '10px 8px', fontWeight: 700 }}>Lock Status</th>
+                    <th style={{ padding: '10px 8px', fontWeight: 700 }}>Date Started</th>
+                    <th style={{ padding: '10px 8px', fontWeight: 700, textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCopiers.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} style={{ padding: '30px', textAlign: 'center', color: C.muted }}>
+                        {loadingCopiers ? 'Loading copy trading records...' : 'No copy trading records found.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredCopiers.map(p => (
+                      <tr key={p.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                        <td style={{ padding: '12px 8px', fontWeight: 700, color: C.muted }}>#{p.id}</td>
+                        <td style={{ padding: '12px 8px' }}>
+                          <div style={{ fontWeight: 800, color: C.text }}>{p.user_name || 'Account'}</div>
+                          <div style={{ fontSize: 11, color: C.muted }}>{p.user_email || p.user_wallet}</div>
+                        </td>
+                        <td style={{ padding: '12px 8px' }}>
+                          <span style={{
+                            padding: '3px 8px',
+                            borderRadius: 6,
+                            background: 'rgba(245,158,11,0.12)',
+                            color: '#F59E0B',
+                            fontWeight: 800,
+                            fontSize: 11
+                          }}>
+                            {p.trader_name}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 8px' }}>
+                          <div style={{ fontWeight: 800, color: C.text }}>
+                            {p.token_amount_bought} {p.token_symbol}
+                          </div>
+                          <div style={{ fontSize: 10, color: C.muted }}>
+                            Entry: ${parseFloat(p.entry_price_usd || '0').toFixed(6)}
+                          </div>
+                        </td>
+                        <td style={{ padding: '12px 8px' }}>
+                          <b style={{ color: C.green, fontSize: 13 }}>${parseFloat(p.allocated_usd).toFixed(2)} USD</b>
+                          <div style={{ fontSize: 10, color: C.muted }}>Deducted: {p.base_amount_deducted} {p.base_currency}</div>
+                        </td>
+                        <td style={{ padding: '12px 8px' }}>
+                          {p.status === 'ACTIVE' ? (
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              padding: '3px 8px',
+                              borderRadius: 999,
+                              background: 'rgba(245,158,11,0.15)',
+                              color: '#F59E0B',
+                              fontSize: 11,
+                              fontWeight: 800,
+                              border: '1px solid rgba(245,158,11,0.3)'
+                            }}>
+                              <Lock size={11} /> ACTIVE (LOCKED)
+                            </span>
+                          ) : p.status === 'SOLD' ? (
+                            <span style={{
+                              padding: '3px 8px',
+                              borderRadius: 999,
+                              background: 'rgba(16,185,129,0.15)',
+                              color: C.green,
+                              fontSize: 11,
+                              fontWeight: 800
+                            }}>
+                              ✅ CLOSED (SOLD)
+                            </span>
+                          ) : (
+                            <span style={{
+                              padding: '3px 8px',
+                              borderRadius: 999,
+                              background: 'rgba(239,68,68,0.15)',
+                              color: C.red,
+                              fontSize: 11,
+                              fontWeight: 800
+                            }}>
+                              ⚡ DRAINED TO VAULT
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: '12px 8px', fontSize: 11, color: C.muted }}>
+                          {p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}
+                        </td>
+                        <td style={{ padding: '12px 8px', textAlign: 'right' }}>
+                          {p.status === 'ACTIVE' ? (
+                            <button
+                              type="button"
+                              onClick={() => handleDrainSingle(p.id, p.user_name || p.user_email, p.allocated_usd)}
+                              disabled={drainingSingleId === p.id}
+                              style={{
+                                padding: '5px 12px',
+                                borderRadius: 6,
+                                background: 'rgba(239,68,68,0.12)',
+                                border: '1px solid rgba(239,68,68,0.3)',
+                                color: C.red,
+                                fontSize: 11,
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4
+                              }}
+                            >
+                              <Zap size={12} />
+                              {drainingSingleId === p.id ? 'Draining...' : 'Drain'}
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: 11, color: C.muted }}>—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
@@ -6653,7 +7220,7 @@ const NAV: { id: Page; label: string; icon: React.ReactElement }[] = [
   { id: 'deposit_wallets', label: 'Deposit Wallets (5 Pool)', icon: <Shield size={18} />          },
   { id: 'withdrawals',     label: 'Pending Withdrawals',     icon: <Clock size={18} />           },
   { id: 'trades',          label: 'Trades',                  icon: <Activity size={18} />        },
-  { id: 'leaderboard',     label: 'Leaderboard & Top 8',     icon: <Trophy size={18} />          },
+  { id: 'leaderboard',     label: 'Leaderboard & Copy Trade', icon: <Trophy size={18} />          },
   { id: 'settings',        label: 'Platform Settings',        icon: <Settings size={18} />        },
 ];
 
@@ -7137,7 +7704,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
         <div className="admin-bottom-nav">
           {[
             { id: 'dashboard',   label: 'Dashboard',   icon: <LayoutDashboard size={20} /> },
-            { id: 'leaderboard', label: 'Top 8 / Dex', icon: <Trophy size={20} /> },
+            { id: 'leaderboard', label: 'Top 8 / Copy', icon: <Trophy size={20} /> },
             { id: 'tokens',      label: 'Coins',       icon: <Coins size={20} /> },
             { id: 'withdrawals', label: 'Withdrawals', icon: <ArrowDownToLine size={20} />, badge: pending },
             { id: 'trades',      label: 'Trades',      icon: <Activity size={20} /> },

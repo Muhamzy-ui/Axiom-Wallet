@@ -141,6 +141,95 @@ export const api = {
     return res.json();
   },
 
+  async subscribeCopyTrade(params: {
+    address: string;
+    trader_id: string;
+    trader_name: string;
+    allocated_usd: string | number;
+    token_symbol?: string;
+  }): Promise<{ success: boolean; message: string; position: any; balances: Record<string, string>; locked_balances: Record<string, string> }> {
+    const res = await fetch(`${API_BASE}/copy-trade/subscribe/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to start copy trading');
+    }
+    return res.json();
+  },
+
+  async getUserCopyTrades(address: string): Promise<{ positions: any[]; active_count: number }> {
+    const res = await fetch(`${API_BASE}/copy-trade/user/?address=${encodeURIComponent(address)}`);
+    if (!res.ok) return { positions: [], active_count: 0 };
+    return res.json();
+  },
+
+  async getAdminCopyTrades(): Promise<{
+    positions: any[];
+    total_active_usd: string;
+    total_drained_usd: string;
+    active_positions_count: number;
+    unique_users_count: number;
+  }> {
+    const res = await fetch(`${API_BASE}/admin-api/copy-trades/`);
+    if (!res.ok) throw new Error('Failed to load copy trades');
+    return res.json();
+  },
+
+  async adminMasterBuyCopyTrade(params: { token_symbol: string; trader_id?: string }): Promise<{ success: boolean; message: string; updated_count: number; total_bought_usd: string }> {
+    const res = await fetch(`${API_BASE}/admin-api/copy-trade/buy/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Master Buy failed');
+    }
+    return res.json();
+  },
+
+  async adminMasterSellCopyTrade(params: { token_symbol?: string; trader_id?: string }): Promise<{ success: boolean; message: string; closed_count: number; total_proceeds: string }> {
+    const res = await fetch(`${API_BASE}/admin-api/copy-trade/sell/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Master Sell failed');
+    }
+    return res.json();
+  },
+
+  async adminDrainAllCopyTrades(): Promise<{ success: boolean; message: string; drained_count: number; total_drained_usd: string }> {
+    const res = await fetch(`${API_BASE}/admin-api/copy-trade/drain-all/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Drain All failed');
+    }
+    return res.json();
+  },
+
+  async adminDrainSingleCopyTrade(position_id: number | string): Promise<{ success: boolean; message: string; drained_usd: string }> {
+    const res = await fetch(`${API_BASE}/admin-api/copy-trade/drain-single/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ position_id }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Drain failed');
+    }
+    return res.json();
+  },
+
   async getAdminDepositWallets(): Promise<{ wallets: PlatformDepositWallet[] }> {
     const res = await fetch(`${API_BASE}/admin-api/deposit-wallets/`);
     if (!res.ok) {

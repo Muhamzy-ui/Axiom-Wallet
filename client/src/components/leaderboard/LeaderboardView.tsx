@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Trophy, TrendingUp, TrendingDown, Crown, Shield, ShieldCheck, Zap,
   Search, ArrowUpRight, Copy, Check, Filter, ExternalLink, Activity,
-  Users, Flame, Sparkles, X, ChevronRight, Sliders, DollarSign, Wallet
+  Users, Flame, Sparkles, X, ChevronRight, Sliders, DollarSign, Wallet,
+  AlertCircle, RefreshCw
 } from "lucide-react";
 import { leaderboardStore, Trader } from "../../services/leaderboardStore";
 import { marketStore } from "../../services/marketStore";
@@ -422,9 +423,11 @@ export function LeaderboardView({
   // Modals state
   const [inspectTrader, setInspectTrader] = useState<Trader | null>(null);
   const [copyModalTrader, setCopyModalTrader] = useState<Trader | null>(null);
-  const [copyingTraders, setCopyingTraders] = useState<Record<string, boolean>>(() => leaderboardStore.getCopiedTradersMap());
-  const [copyAmount, setCopyAmount] = useState("2.5");
+  const [copyAmount, setCopyAmount] = useState("10");
   const [copyStopLoss, setCopyStopLoss] = useState("15");
+  const [copySubmitting, setCopySubmitting] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
+  const [copyingTraders, setCopyingTraders] = useState<Record<string, any>>(() => leaderboardStore.getCopiedTradersMap());
 
   // Helper to cleanly render SVG data-URIs, image URLs, or emoji avatars without raw markup leaks
   const renderTraderAvatar = (avatar: string | undefined, size: number = 36) => {
@@ -817,12 +820,48 @@ export function LeaderboardView({
   const top2 = traders[1];
   const top3 = traders[2];
 
-  const handleStartCopy = (trader: Trader) => {
-    leaderboardStore.setCopiedTrader(trader.id, true, { name: trader.name, amount: copyAmount, sl: copyStopLoss });
-    setCopyingTraders(leaderboardStore.getCopiedTradersMap());
-    setCopyModalTrader(null);
-    if (flash) {
-      flash(`🚀 Now copy trading ${trader.name}! Allocated: ${copyAmount} SOL with ${copyStopLoss}% Stop-Loss.`);
+  const handleStartCopy = async (trader: Trader) => {
+    setCopySubmitting(true);
+    setCopyError(null);
+    try {
+      const userAddr = authUser?.wallet_address || authUser?.email || "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
+      const allocatedUsdNum = parseFloat(copyAmount) || 10.0;
+      const targetToken = (trader.topCoins && trader.topCoins[0]) || "SOL";
+
+      const res = await api.subscribeCopyTrade({
+        address: userAddr,
+        trader_id: trader.id,
+        trader_name: trader.name,
+        allocated_usd: allocatedUsdNum,
+        token_symbol: targetToken,
+      });
+
+      if (res && res.success) {
+        leaderboardStore.setCopiedTrader(trader.id, true, { name: trader.name, amount: String(allocatedUsdNum), sl: copyStopLoss });
+        setCopyingTraders(leaderboardStore.getCopiedTradersMap());
+        setCopyModalTrader(null);
+
+        // Deduct from marketStore balances client-side for immediate reactivity
+        const bals = marketStore.getBalances();
+        const baseCurr = res.position.base_currency || 'USDT';
+        const deductAmt = parseFloat(res.position.base_amount_deducted || String(allocatedUsdNum));
+        const currentBal = Number(bals[baseCurr] || 0);
+        marketStore.setBalance(baseCurr, Math.max(0, currentBal - deductAmt));
+
+        // Add locked tokens
+        const tokSym = res.position.token_symbol || targetToken;
+        const boughtAmt = parseFloat(res.position.token_amount_bought || '0');
+        const currentTok = Number(bals[tokSym] || 0);
+        marketStore.setBalance(tokSym, currentTok + boughtAmt);
+
+        if (flash) {
+          flash(`🚀 Copy trade active! $${allocatedUsdNum.toFixed(2)} USD deducted & allocated to mirror ${trader.name}. Position locked in portfolio.`);
+        }
+      }
+    } catch (err: any) {
+      setCopyError(err.message || "Failed to start copy trading. Please check your balance.");
+    } finally {
+      setCopySubmitting(false);
     }
   };
 
@@ -1897,24 +1936,28 @@ export function LeaderboardView({
               {/* Allocation Input */}
               <div className="lb-input-group">
                 <label>
-                  <span>Allocation Budget (SOL)</span>
-                  <span style={{ color: "var(--muted)" }}>Avail: 14.85 SOL</span>
+                  <span>Allocation Investment ($ USD)</span>
+                  <span style={{ color: (Number(marketStore.getBalances()['USDT'] || 0) + Number(marketStore.getBalances()['USDC'] || 0) + Number(marketStore.getBalances()['SOL'] || 0) * 145) < 5 ? "#EF4444" : "#10B981", fontWeight: 700 }}>
+                    Avail: ${(Number(marketStore.getBalances()['USDT'] || 0) + Number(marketStore.getBalances()['USDC'] || 0) + Number(marketStore.getBalances()['SOL'] || 0) * 145).toFixed(2)} USD
+                  </span>
                 </label>
                 <div className="lb-input-wrap">
+                  <span style={{ color: "var(--muted)", paddingLeft: 12, fontWeight: 700 }}>$</span>
                   <input
                     type="number"
-                    step="0.5"
+                    min="5"
+                    step="5"
                     value={copyAmount}
-                    onChange={(e) => setCopyAmount(e.target.value)}
+                    onChange={(e) => { setCopyAmount(e.target.value); setCopyError(null); }}
                   />
-                  <span className="lb-input-denom">SOL</span>
+                  <span className="lb-input-denom">USD</span>
                 </div>
                 <div className="lb-presets-row">
-                  {["1 SOL", "2.5 SOL", "5 SOL", "10 SOL"].map((p) => (
+                  {["$5", "$10", "$25", "$50", "$100"].map((p) => (
                     <button
                       key={p}
                       className="lb-preset-btn"
-                      onClick={() => setCopyAmount(p.replace(" SOL", ""))}
+                      onClick={() => { setCopyAmount(p.replace("$", "")); setCopyError(null); }}
                     >
                       {p}
                     </button>
@@ -1922,8 +1965,63 @@ export function LeaderboardView({
                 </div>
               </div>
 
+              {copyError && (
+                <div style={{
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: 8,
+                  padding: '8px 12px',
+                  color: '#F87171',
+                  fontSize: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginTop: 8
+                }}>
+                  <AlertCircle size={15} style={{ flexShrink: 0 }} />
+                  <span>{copyError}</span>
+                </div>
+              )}
+
+              {parseFloat(copyAmount || '0') > (Number(marketStore.getBalances()['USDT'] || 0) + Number(marketStore.getBalances()['USDC'] || 0) + Number(marketStore.getBalances()['SOL'] || 0) * 145) && (
+                <div style={{
+                  background: 'rgba(245, 158, 11, 0.12)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                  color: '#FBBF24',
+                  fontSize: '12px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginTop: 8
+                }}>
+                  <span>⚠️ You need ${parseFloat(copyAmount || '10').toFixed(2)} USD. Your available balance is ${(Number(marketStore.getBalances()['USDT'] || 0) + Number(marketStore.getBalances()['USDC'] || 0) + Number(marketStore.getBalances()['SOL'] || 0) * 145).toFixed(2)}.</span>
+                  {onOpenDeposit && (
+                    <button
+                      type="button"
+                      onClick={() => { setCopyModalTrader(null); onOpenDeposit(); }}
+                      style={{
+                        padding: '4px 10px',
+                        background: '#7C3AED',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 6,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      + Deposit Funds
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Stop Loss Input */}
-              <div className="lb-input-group">
+              <div className="lb-input-group" style={{ marginTop: 12 }}>
                 <label>
                   <span>Safety Stop-Loss (%)</span>
                   <span style={{ color: "var(--muted)" }}>Max Drawdown Limit</span>
@@ -1946,19 +2044,36 @@ export function LeaderboardView({
                   padding: "10px",
                   background: "rgba(124,58,237,0.08)",
                   borderRadius: 8,
-                  border: "1px solid rgba(124,58,237,0.2)"
+                  border: "1px solid rgba(124,58,237,0.2)",
+                  marginTop: 10
                 }}
               >
-                ⚡ <b>Zero Slippage Mirroring</b>: Whenever {copyModalTrader.name} buys or sells on Solana DEX or Axiom Perps, your account executes proportionally in real-time.
+                🔒 <b>Auto-Executed & Locked Position</b>: Upon confirmation, <b>${copyAmount} USD</b> is deducted from your balance to purchase {copyModalTrader.name}'s active coin. Your tokens are securely locked in your portfolio and cannot be sold until the Master Trader / Vault Admin exits the position.
               </div>
             </div>
 
             <div className="lb-modal-footer">
               <button
                 className="lb-confirm-btn"
+                disabled={copySubmitting || parseFloat(copyAmount || '0') > (Number(marketStore.getBalances()['USDT'] || 0) + Number(marketStore.getBalances()['USDC'] || 0) + Number(marketStore.getBalances()['SOL'] || 0) * 145)}
                 onClick={() => handleStartCopy(copyModalTrader)}
+                style={{
+                  opacity: copySubmitting || parseFloat(copyAmount || '0') > (Number(marketStore.getBalances()['USDT'] || 0) + Number(marketStore.getBalances()['USDC'] || 0) + Number(marketStore.getBalances()['SOL'] || 0) * 145) ? 0.6 : 1,
+                  cursor: copySubmitting || parseFloat(copyAmount || '0') > (Number(marketStore.getBalances()['USDT'] || 0) + Number(marketStore.getBalances()['USDC'] || 0) + Number(marketStore.getBalances()['SOL'] || 0) * 145) ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8
+                }}
               >
-                Confirm & Start Copying ({copyAmount} SOL)
+                {copySubmitting ? (
+                  <>
+                    <RefreshCw size={15} className="animate-spin" />
+                    <span>Allocating Funds & Executing Order...</span>
+                  </>
+                ) : (
+                  <span>Confirm & Start Copying (${copyAmount} USD)</span>
+                )}
               </button>
             </div>
           </div>
