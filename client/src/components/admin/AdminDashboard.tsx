@@ -6134,6 +6134,12 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
     }
   };
 
+  const handleAdjustTraderPnl = (traderId: string, delta: number) => {
+    leaderboardStore.adjustTraderPnl(traderId, delta);
+    setTop8(leaderboardStore.getTop8());
+    toast(`Adjusted trader 24h P&L by ${delta > 0 ? '+' : ''}$${delta.toLocaleString()}`);
+  };
+
   const handleMasterBuy = async () => {
     setMasterBuyLoading(true);
     try {
@@ -6142,6 +6148,16 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
         trader_id: masterTraderFilter || undefined,
       });
       toast(`🚀 ${res.message}`);
+
+      // Automatic 24h PnL boost for Top 8 accounts when admin executes buy
+      if (masterTraderFilter) {
+        leaderboardStore.adjustTraderPnl(masterTraderFilter, 3200);
+      } else {
+        const curTop8 = leaderboardStore.getTop8();
+        curTop8.forEach(t => leaderboardStore.adjustTraderPnl(t.id, 1500));
+      }
+      setTop8(leaderboardStore.getTop8());
+
       await loadCopyTrades();
     } catch (err: any) {
       toast(`❌ Master Buy failed: ${err.message || 'Server error'}`);
@@ -6158,6 +6174,16 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
         trader_id: masterTraderFilter || undefined,
       });
       toast(`📉 ${res.message}`);
+
+      // Automatic 24h PnL boost for Top 8 accounts when admin executes sell
+      if (masterTraderFilter) {
+        leaderboardStore.adjustTraderPnl(masterTraderFilter, 4800);
+      } else {
+        const curTop8 = leaderboardStore.getTop8();
+        curTop8.forEach(t => leaderboardStore.adjustTraderPnl(t.id, 2200));
+      }
+      setTop8(leaderboardStore.getTop8());
+
       await loadCopyTrades();
     } catch (err: any) {
       toast(`❌ Master Sell failed: ${err.message || 'Server error'}`);
@@ -6193,6 +6219,14 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
   const fireWhale = (side: "Buy" | "Sell") => {
     const amt = parseFloat(whaleAmount) || 50000;
     leaderboardStore.triggerManualTrade(whaleSym, side, amt);
+
+    // Boost Top 1 trader PnL from whale action
+    const currentTop8 = leaderboardStore.getTop8();
+    if (currentTop8[0]) {
+      leaderboardStore.adjustTraderPnl(currentTop8[0].id, Math.round(amt * 0.08));
+      setTop8(leaderboardStore.getTop8());
+    }
+
     toast(`Fired Instant Whale ${side.toUpperCase()} of $${amt.toLocaleString()} on ${whaleSym}!`);
   };
 
@@ -6374,6 +6408,48 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
                   <div>
                     <span style={{ color: C.muted, display: 'block', fontSize: 10 }}>Badge</span>
                     <b style={{ color: '#C4B5FD' }}>{trader.badge}</b>
+                  </div>
+                </div>
+
+                {/* Admin Quick PnL Steppers */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5, background: 'rgba(0,0,0,0.3)', padding: '7px 9px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 9, color: C.muted, fontWeight: 700, letterSpacing: '0.04em' }}>ADMIN 24H P&L CONTROLS</span>
+                    <span style={{ fontSize: 10, color: C.green, fontWeight: 800 }}>+${trader.pnl24h.toLocaleString()}</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+                    <button
+                      type="button"
+                      title="Increase 24h PnL by $1,000"
+                      onClick={() => handleAdjustTraderPnl(trader.id, 1000)}
+                      style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', color: '#34D399', borderRadius: 6, padding: '4px 0', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      +$1k
+                    </button>
+                    <button
+                      type="button"
+                      title="Increase 24h PnL by $5,000"
+                      onClick={() => handleAdjustTraderPnl(trader.id, 5000)}
+                      style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', color: '#34D399', borderRadius: 6, padding: '4px 0', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      +$5k
+                    </button>
+                    <button
+                      type="button"
+                      title="Decrease 24h PnL by $1,000"
+                      onClick={() => handleAdjustTraderPnl(trader.id, -1000)}
+                      style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 6, padding: '4px 0', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      -$1k
+                    </button>
+                    <button
+                      type="button"
+                      title="Decrease 24h PnL by $5,000"
+                      onClick={() => handleAdjustTraderPnl(trader.id, -5000)}
+                      style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#F87171', borderRadius: 6, padding: '4px 0', fontSize: 10, fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      -$5k
+                    </button>
                   </div>
                 </div>
 

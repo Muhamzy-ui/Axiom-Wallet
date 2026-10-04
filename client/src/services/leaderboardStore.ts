@@ -436,24 +436,24 @@ const MEME_COIN_PRICE_DEFAULTS: Record<string, { entry: string; mark: string; le
   PEPE: { entry: "$0.0000085", mark: "$0.0000098", lev: "20x" }
 };
 
-function generateTraderRanks9to100(): Trader[] {
+function generateTraderRanks9to50(): Trader[] {
   const result: Trader[] = [];
   const basePnl = 34000;
   const baseRoi = 380;
   const baseVolume = 8500000;
 
-  for (let i = 9; i <= 100; i++) {
+  for (let i = 9; i <= 50; i++) {
     const seed = TRADER_SEEDS[(i - 9) % TRADER_SEEDS.length];
-    const suffix = i > 58 ? `_${i}` : "";
+    const suffix = i > 40 ? `_${i}` : "";
     const name = `${seed.name}${suffix}`;
     const handle = `${seed.handle}${suffix}`;
     const hex = Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0");
     const address = `${hex.slice(0, 4)}...${hex.slice(-4)}`;
 
-    const pnlMultiplier = Math.max(0.12, 1 - (i - 9) * 0.0095);
+    const pnlMultiplier = Math.max(0.18, 1 - (i - 9) * 0.018);
     const pnl24h = Math.round(basePnl * pnlMultiplier * (0.85 + ((i * 17) % 30) / 100));
     const roi24h = Math.round(baseRoi * pnlMultiplier * (0.8 + ((i * 13) % 40) / 100));
-    const winRate = Number((72 + ((i * 19) % 18) - ((i * 7) % 5)).toFixed(1));
+    const winRate = Number((74 + ((i * 19) % 16) - ((i * 7) % 4)).toFixed(1));
     const volume = Math.round(baseVolume * pnlMultiplier * (0.9 + ((i * 23) % 25) / 100));
 
     // Dynamic 2-3 realistic open meme coin positions with massive green unrealized PnL
@@ -546,7 +546,7 @@ function seededShuffle<T>(arr: T[], seed: number): T[] {
 }
 
 class LeaderboardStore {
-  private baseRanks9to100: Trader[] = generateTraderRanks9to100();
+  private baseRanks9to50: Trader[] = generateTraderRanks9to50();
   private listeners: Set<() => void> = new Set();
   private cachedTop8: Trader[] | null = null;
   private liveTickerTimer: any = null;
@@ -578,7 +578,7 @@ class LeaderboardStore {
     // 2. Sync Top 8 with backend server so admin edits reflect for all users
     this.syncBackendTop8();
 
-    // 3. Start live micro-movements ticker so leaderboard profits breathe and update realistically
+    // 3. Start gentle live ticker: calm organic micro-movement every ~20s
     this.startLiveTicker();
   }
 
@@ -608,20 +608,38 @@ class LeaderboardStore {
     if (typeof window === "undefined") return;
     if (this.liveTickerTimer) clearInterval(this.liveTickerTimer);
 
+    // Subtle, calm live market micro-movement every 20 seconds (gentle, not jumpy)
     this.liveTickerTimer = setInterval(() => {
-      // Pick 1-2 traders from ranks 9 to 100 to make a realistic micro trade gain
-      const rIdx = Math.floor(Math.random() * this.baseRanks9to100.length);
-      const trader = this.baseRanks9to100[rIdx];
-      if (trader) {
-        const deltaUsd = Math.round(15 + Math.random() * 85);
-        trader.pnl24h += deltaUsd;
-        trader.volume += deltaUsd * 2;
-        trader.totalTrades += 1;
-        trader.winTrades += 1;
-        trader.winRate = Math.min(99.4, Number(((trader.winTrades / trader.totalTrades) * 100).toFixed(1)));
-        this.notify();
+      const isTop8Target = Math.random() < 0.35;
+      if (isTop8Target) {
+        // Nudge one of the Top 8 traders slightly
+        const top8 = [...this.getTop8()];
+        const idx = Math.floor(Math.random() * top8.length);
+        const t = top8[idx];
+        if (t) {
+          const winDrift = Math.random() > 0.45 ? 0.1 : -0.1;
+          const pnlDelta = Math.round(40 + Math.random() * 120);
+          t.winRate = Math.min(99.2, Math.max(76.5, Number((t.winRate + winDrift).toFixed(1))));
+          t.pnl24h = Math.round(t.pnl24h + pnlDelta);
+          t.volume += pnlDelta * 2;
+          this.saveTop8(top8);
+        }
+      } else {
+        // Nudge one of ranks 9 to 50
+        const rIdx = Math.floor(Math.random() * this.baseRanks9to50.length);
+        const trader = this.baseRanks9to50[rIdx];
+        if (trader) {
+          const winDrift = Math.random() > 0.45 ? 0.1 : -0.1;
+          const deltaUsd = Math.round(25 + Math.random() * 95);
+          trader.winRate = Math.min(98.5, Math.max(72.0, Number((trader.winRate + winDrift).toFixed(1))));
+          trader.pnl24h += deltaUsd;
+          trader.volume += deltaUsd * 2;
+          trader.totalTrades += 1;
+          trader.winTrades += 1;
+          this.notify();
+        }
       }
-    }, 2800);
+    }, 20000);
   }
 
   // ── Top 8 Admin Controls ──────────────────────────────────────────────────
@@ -658,6 +676,19 @@ class LeaderboardStore {
     }
   }
 
+  public async adjustTraderPnl(traderId: string, deltaUsd: number): Promise<void> {
+    const top8 = this.getTop8();
+    const updated = top8.map((t) => {
+      if (t.id === traderId) {
+        const newPnl = Math.max(0, Math.round(t.pnl24h + deltaUsd));
+        const newRoi = Number(Math.max(0, t.roi24h + (deltaUsd / 200)).toFixed(1));
+        return { ...t, pnl24h: newPnl, roi24h: newRoi };
+      }
+      return t;
+    });
+    await this.saveTop8(updated);
+  }
+
   public async resetTop8ToDefault(): Promise<void> {
     this.cachedTop8 = [...DEFAULT_TOP_8];
     if (typeof window !== "undefined") {
@@ -681,28 +712,59 @@ class LeaderboardStore {
     return { hours, minutes, seconds, formatted };
   }
 
-  // ── 100 Traders with 24-Hour Daily Epoch Rotation ──────────────────────────
-  public getAll100Traders(): Trader[] {
+  // ── Top 50 Traders with 24-Hour Daily Epoch Rotation ───────────────────────
+  // Top 8 Accounts: ALWAYS stay at the top (never leave ranks 1-8), but change positions and 24h P&L every 24h
+  // Ranks 9 to 50: Deterministically shuffle positions and 24h P&L every 24h
+  public getAll50Traders(): Trader[] {
     const top8 = this.getTop8();
     const epoch = getDailyEpoch();
     const prevEpoch = epoch - 1;
 
-    // Deterministically shuffle ranks 9 to 100 for current epoch & previous epoch
-    const currentShifted = seededShuffle(this.baseRanks9to100, epoch * 7919);
-    const prevShifted = seededShuffle(this.baseRanks9to100, prevEpoch * 7919);
+    // 1. Top 8 Accounts: Deterministically shuffle among ranks 1..8 every 24 hours
+    // INVARIANT: They NEVER leave top 8!
+    const currentTop8Shifted = seededShuffle(top8, epoch * 1337);
+    const prevTop8Shifted = seededShuffle(top8, prevEpoch * 1337);
 
-    // Map previous rank index for delta computation
+    const prevTop8RankMap = new Map<string, number>();
+    prevTop8Shifted.forEach((trader, idx) => {
+      prevTop8RankMap.set(trader.id, idx + 1);
+    });
+
+    const shiftedTop8: Trader[] = currentTop8Shifted.map((t, idx) => {
+      const currentRank = idx + 1; // Always 1 to 8
+      const prevRank = prevTop8RankMap.get(t.id) ?? currentRank;
+      const rankDelta = prevRank - currentRank; // positive = climbed, negative = dropped
+
+      // Deterministic 24-hour PnL & ROI drift so stats change naturally every 24 hours
+      const topHash = (epoch * 29 + (idx + 1) * 73) % 1000;
+      const topFactor = 0.95 + (topHash % 11) / 100; // 0.95x to 1.05x drift
+      const dailyPnl = Number((t.pnl24h * topFactor).toFixed(2));
+      const dailyRoi = Number((t.roi24h * topFactor).toFixed(1));
+
+      return {
+        ...t,
+        rank: currentRank,
+        rankDelta,
+        pnl24h: dailyPnl,
+        roi24h: dailyRoi
+      };
+    });
+
+    // 2. Deterministically shuffle ranks 9 to 50 for current epoch & previous epoch
+    const currentShifted = seededShuffle(this.baseRanks9to50, epoch * 7919);
+    const prevShifted = seededShuffle(this.baseRanks9to50, prevEpoch * 7919);
+
     const prevRankMap = new Map<string, number>();
     prevShifted.forEach((trader, idx) => {
       prevRankMap.set(trader.id, 9 + idx);
     });
 
-    const ranks9to100: Trader[] = currentShifted.map((t, idx) => {
-      const currentRank = 9 + idx;
+    const ranks9to50: Trader[] = currentShifted.map((t, idx) => {
+      const currentRank = 9 + idx; // 9 to 50
       const prevRank = prevRankMap.get(t.id) ?? currentRank;
       const rankDelta = prevRank - currentRank; // positive = moved up in rank
 
-      // Realistic 24-hour deterministic daily performance drift so stats change every day
+      // Realistic 24-hour deterministic daily performance drift
       const dayHash = (epoch * 37 + (idx + 9) * 101) % 1000;
       const pnlFactor = 0.90 + (dayHash % 22) / 100; // 0.90x to 1.11x
       const dailyPnl = Number((t.pnl24h * pnlFactor).toFixed(2));
@@ -717,18 +779,12 @@ class LeaderboardStore {
       };
     });
 
-    // Subtly evolve Top 8 24h stats across epochs so daily readers see active 24h market movement
-    const evolvedTop8 = top8.map((t, idx) => {
-      const topHash = (epoch * 19 + (idx + 1) * 73) % 1000;
-      const topFactor = 0.96 + (topHash % 9) / 100; // 0.96x to 1.04x
-      return {
-        ...t,
-        pnl24h: Number((t.pnl24h * topFactor).toFixed(2)),
-        roi24h: Number((t.roi24h * topFactor).toFixed(1))
-      };
-    });
+    return [...shiftedTop8, ...ranks9to50];
+  }
 
-    return [...evolvedTop8, ...ranks9to100];
+  // Alias for backward compatibility
+  public getAll100Traders(): Trader[] {
+    return this.getAll50Traders();
   }
 
   // ── Active Copy Trading System ────────────────────────────────────────────

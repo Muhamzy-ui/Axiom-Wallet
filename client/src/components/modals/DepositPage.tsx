@@ -75,6 +75,34 @@ export const DepositPage: React.FC<DepositPageProps> = ({
   const [pollCount, setPollCount] = useState<number>(0);
   const [lastPollTime, setLastPollTime] = useState<string>("Just now");
   const [showManualTx, setShowManualTx] = useState<boolean>(false);
+  const [timeLeft, setTimeLeft] = useState<number>(300); // 5 minutes window
+
+  useEffect(() => {
+    if (timeLeft <= 0) return;
+    const timer = setInterval(() => {
+      setTimeLeft((t) => Math.max(0, t - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [timeLeft]);
+
+  const handleRefreshOrder = () => {
+    setTimeLeft(300);
+    setVerifyError(null);
+    setPendingMsg(null);
+    api
+      .getDepositWallets(userIdentifier, depositNetwork, depositCoin)
+      .then((res) => {
+        if (res?.assigned_wallet) setAssignedWallet(res.assigned_wallet);
+      })
+      .catch(() => {});
+    flash("🔄 Generated new 5-minute deposit order window!");
+  };
+
+  const formatTimer = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  };
 
   const handleSelectCoin = (sym: DepositCoin) => {
     setDepositCoin(sym);
@@ -712,93 +740,95 @@ const NETWORK_POOLS: Record<string, string[]> = {
                 overflow: "hidden",
               }}
             >
-              {/* Header */}
-              <div className="pro-card-header" style={{ marginBottom: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div
+              {/* 5-Minute Expiration Order Card */}
+              {timeLeft > 0 ? (
+                <div
+                  style={{
+                    background: "rgba(10, 11, 20, 0.65)",
+                    border: "1px solid rgba(245, 158, 11, 0.25)",
+                    borderRadius: 12,
+                    padding: "14px 16px",
+                    marginBottom: 10,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <Clock size={16} color="#F59E0B" />
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text, #fff)" }}>
+                        Order Expires In:
+                      </span>
+                    </div>
+                    <span
+                      style={{
+                        fontFamily: "monospace",
+                        color: timeLeft <= 60 ? "#EF4444" : "#F59E0B",
+                        fontSize: 16,
+                        fontWeight: 900,
+                        background: timeLeft <= 60 ? "rgba(239, 68, 68, 0.15)" : "rgba(245, 158, 11, 0.15)",
+                        padding: "2px 8px",
+                        borderRadius: 6,
+                        border: `1px solid ${timeLeft <= 60 ? "rgba(239, 68, 68, 0.3)" : "rgba(245, 158, 11, 0.3)"}`,
+                      }}
+                    >
+                      {formatTimer(timeLeft)}
+                    </span>
+                  </div>
+
+                  <p style={{ fontSize: 11.5, color: "var(--muted, #94A3B8)", margin: "0 0 10px 0", lineHeight: 1.4 }}>
+                    Send <strong style={{ color: "#fff" }}>{depositAmt} USD</strong> ({cryptoEquivalent.toFixed(depositCoin === "USDT" || depositCoin === "USDC" ? 2 : 4)} {depositCoin}) to your dedicated address. Transfers are automatically credited upon block confirmation within this 5-minute window.
+                  </p>
+
+                  {/* Progress bar */}
+                  <div style={{ width: "100%", height: 4, background: "rgba(255, 255, 255, 0.08)", borderRadius: 999, overflow: "hidden" }}>
+                    <div
+                      style={{
+                        width: `${(timeLeft / 300) * 100}%`,
+                        height: "100%",
+                        background: timeLeft <= 60 ? "#EF4444" : "#F59E0B",
+                        transition: "width 1s linear",
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    background: "rgba(239, 68, 68, 0.08)",
+                    border: "1px solid rgba(239, 68, 68, 0.3)",
+                    borderRadius: 12,
+                    padding: "16px",
+                    textAlign: "center",
+                    marginBottom: 10,
+                  }}
+                >
+                  <div style={{ color: "#F87171", fontSize: 13, fontWeight: 800, marginBottom: 4 }}>
+                    ⚠️ Deposit Order Expired
+                  </div>
+                  <p style={{ color: "#94A3B8", fontSize: 11.5, margin: "0 0 12px 0" }}>
+                    No payment was detected within the 5-minute window. Please generate a new deposit order before sending.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleRefreshOrder}
                     style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: "50%",
-                      background: "#10B981",
-                      boxShadow: "0 0 10px #10B981",
+                      padding: "8px 18px",
+                      borderRadius: 8,
+                      background: "linear-gradient(135deg, #7C3AED 0%, #6366F1 100%)",
+                      border: "none",
+                      color: "#fff",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
                     }}
-                  />
-                  <span className="pro-card-label" style={{ color: "#E2E8F0", fontSize: 13, fontWeight: 700 }}>
-                    100% Automated On-Chain Detection
-                  </span>
+                  >
+                    <RefreshCw size={13} />
+                    <span>Generate New Order (5:00)</span>
+                  </button>
                 </div>
-                <span
-                  style={{
-                    fontSize: 10,
-                    color: "#10B981",
-                    background: "rgba(16, 185, 129, 0.15)",
-                    border: "1px solid rgba(16, 185, 129, 0.35)",
-                    padding: "3px 8px",
-                    borderRadius: 999,
-                    fontWeight: 700,
-                    letterSpacing: "0.03em",
-                  }}
-                >
-                  LIVE RADAR ACTIVE
-                </span>
-              </div>
-
-              {/* Status Box */}
-              <div
-                style={{
-                  background: "rgba(10, 11, 20, 0.65)",
-                  border: "1px solid rgba(255, 255, 255, 0.08)",
-                  borderRadius: 10,
-                  padding: "12px 14px",
-                  marginBottom: 12,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 600, color: "var(--text, #fff)" }}>
-                    <Radio size={15} color="#10B981" />
-                    <span>Listening on {depositNetwork.split(" ")[0]}...</span>
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--muted, #94A3B8)", fontFamily: "monospace" }}>
-                    {isAutoChecking ? "Scanning blocks..." : `Last check: ${lastPollTime}`}
-                  </div>
-                </div>
-
-                <p style={{ fontSize: 11.5, color: "var(--muted, #94A3B8)", margin: 0, lineHeight: 1.4 }}>
-                  Simply send <strong style={{ color: "#fff" }}>{depositAmt} USD</strong> ({cryptoEquivalent.toFixed(depositCoin === "USDT" || depositCoin === "USDC" ? 2 : 4)} {depositCoin}) to the address above. Axiom will automatically detect the block and credit your wallet. <span style={{ color: "#34D399", fontWeight: 600 }}>Zero TxID needed!</span>
-                </p>
-              </div>
-
-              {/* Primary Action Button */}
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
-                <button
-                  type="button"
-                  className="pro-submit-btn"
-                  onClick={handleManualCheckNow}
-                  disabled={isAutoChecking}
-                  style={{
-                    flex: "1 1 180px",
-                    margin: 0,
-                    minHeight: 44,
-                    fontSize: 13,
-                    background: "linear-gradient(135deg, #10B981 0%, #059669 100%)",
-                    border: "none",
-                    boxShadow: "0 4px 14px rgba(16, 185, 129, 0.35)",
-                  }}
-                >
-                  {isAutoChecking ? (
-                    <>
-                      <RefreshCw size={14} className="animate-spin" />
-                      <span>Checking Blockchain...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Zap size={14} />
-                      <span>Check Blockchain Now</span>
-                    </>
-                  )}
-                </button>
-              </div>
+              )}
 
               {/* Optional Manual Fallback Accordion */}
               <div style={{ marginTop: 8 }}>

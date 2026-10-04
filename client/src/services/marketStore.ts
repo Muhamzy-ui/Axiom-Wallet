@@ -2272,17 +2272,21 @@ class MarketStore {
         diffPct = 0;
       }
     } else if (this.realizedProfit24h > 0) {
-      // User took profit and holds only cash/stablecoins: retain realized 24h gain
-      diffUsd = Number(this.realizedProfit24h.toFixed(2));
-      const baseCost = Math.max(1, totalValue - diffUsd);
-      diffPct = Number(((diffUsd / baseCost) * 100).toFixed(2));
-    } else if (totalValue > 0) {
-      // User only holds cash/stablecoins: reflect gentle positive market momentum (+2.4%)
-      const solToken = this.getToken("SOL");
-      const btcToken = this.getToken("BTC");
-      const avgChg = Math.max(0.5, ((solToken?.changeNum || 4.2) + (btcToken?.changeNum || 3.1)) / 2);
-      diffPct = Number(avgChg.toFixed(2));
-      diffUsd = Number(((totalValue * diffPct) / 100).toFixed(2));
+      // Check if 24 hours have elapsed since the user's last trade
+      const has24hElapsed = (Date.now() - (this.lastTradeOrSwapTime || 0)) > 24 * 3600 * 1000;
+      if (has24hElapsed) {
+        this.realizedProfit24h = 0;
+        diffUsd = 0;
+        diffPct = 0;
+      } else {
+        diffUsd = Number(this.realizedProfit24h.toFixed(2));
+        const baseCost = Math.max(1, totalValue - diffUsd);
+        diffPct = Number(((diffUsd / baseCost) * 100).toFixed(2));
+      }
+    } else {
+      // User holds cash or has had no closed trades in the last 24h: 24h PnL clears to 0.00
+      diffUsd = 0;
+      diffPct = 0;
     }
 
     // Instant Hydration on Reload: If calculated total is zero or lower than cached metrics, immediately return cached metrics!

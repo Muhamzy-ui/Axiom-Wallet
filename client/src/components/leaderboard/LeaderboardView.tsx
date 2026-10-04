@@ -12,8 +12,8 @@ import { generatePhantomAvatar } from "../../utils/avatar";
 import "./LeaderboardView.css";
 
 
-const INITIAL_TRADERS: Trader[] = leaderboardStore.getAll100Traders();
-// Traders loaded dynamically from leaderboardStore (100 traders with 2-day epoch drift)
+const INITIAL_TRADERS: Trader[] = leaderboardStore.getAll50Traders();
+// Traders loaded dynamically from leaderboardStore (Top 50 traders with 24-hour daily epoch drift)
 /*
     name: "SatoshiGems",
     handle: "@satoshigems",
@@ -397,7 +397,7 @@ export function LeaderboardView({
   // Subscribe to live leaderboardStore updates (Admin Top 8 / 2-Day Epoch rotation)
   useEffect(() => {
     const unsub = leaderboardStore.subscribe(() => {
-      setTraders(leaderboardStore.getAll100Traders());
+      setTraders(leaderboardStore.getAll50Traders());
     });
     return unsub;
   }, []);
@@ -982,8 +982,13 @@ export function LeaderboardView({
         const uName = (typeof localStorage !== "undefined" ? localStorage.getItem("axiom_user_username") : null) || authUser?.username || authUser?.full_name || "Axiom Trader";
         const uAvatar = (typeof localStorage !== "undefined" ? localStorage.getItem("axiom_user_avatar") : null) || authUser?.avatar_url || generatePhantomAvatar(uName);
         const metrics = marketStore.getPortfolioMetrics();
-        const pnlStr = `${metrics.isPositive ? "+" : "-"}$${Math.abs(metrics.diffUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-        const pnlPctStr = `${metrics.isPositive ? "+" : "-"}${Math.abs(metrics.diffPct).toFixed(2)}%`;
+        const isPnlZero = metrics.diffUsd === 0 || Math.abs(metrics.diffUsd) < 0.001;
+        const pnlStr = isPnlZero
+          ? "$0.00"
+          : `${metrics.isPositive ? "+" : "-"}$${Math.abs(metrics.diffUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const pnlPctStr = isPnlZero
+          ? "0.00%"
+          : `${metrics.isPositive ? "+" : "-"}${Math.abs(metrics.diffPct).toFixed(2)}%`;
         const walletTrunc = authUser?.wallet_address ? `${authUser.wallet_address.slice(0, 4)}...${authUser.wallet_address.slice(-4)}` : "Connected";
 
         return (
@@ -1052,7 +1057,7 @@ export function LeaderboardView({
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 700, textTransform: "uppercase" }}>Your 24h P&L</div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: metrics.isPositive ? "#10B981" : "#EF4444" }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: isPnlZero ? "#9CA3AF" : (metrics.isPositive ? "#10B981" : "#EF4444") }}>
                   {pnlStr} <span style={{ fontSize: 11 }}>({pnlPctStr})</span>
                 </div>
               </div>
@@ -1716,7 +1721,7 @@ export function LeaderboardView({
           </table>
         </div>
 
-        {/* Top 100 Pagination & Expansion Bar */}
+        {/* Top 50 Pagination & Expansion Bar */}
         {filteredTraders.length > 25 && (
           <div className="lb-pagination-bar">
             <span>
@@ -1727,7 +1732,7 @@ export function LeaderboardView({
                 <button
                   type="button"
                   className="lb-show-more-btn"
-                  onClick={() => setDisplayCount((prev) => Math.min(100, prev + 25))}
+                  onClick={() => setDisplayCount((prev) => Math.min(50, prev + 25))}
                 >
                   Load Next 25 Traders
                 </button>
@@ -1736,9 +1741,9 @@ export function LeaderboardView({
                 <button
                   type="button"
                   className="lb-show-all-btn"
-                  onClick={() => setDisplayCount(100)}
+                  onClick={() => setDisplayCount(50)}
                 >
-                  Show All Top 100
+                  Show All Top 50
                 </button>
               ) : (
                 <button

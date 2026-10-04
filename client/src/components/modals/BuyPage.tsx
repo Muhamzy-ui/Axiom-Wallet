@@ -738,78 +738,10 @@ export const BuyPage: React.FC<BuyPageProps> = ({
           /* Step 1: Form View — ONE SINGLE UNIFIED PRO-CARD (Exact match with DepositPage) */
           <>
             <div className="pro-card">
-              {/* 1. Country & Fiat Currency (Account Locked) */}
+              {/* 1. Crypto Asset Selector */}
               <div className="card-section">
                 <div className="pro-card-header">
-                  <span className="pro-card-label">
-                    <Globe size={13} />
-                    1. Country & Fiat Currency
-                  </span>
-                  <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
-                    <ShieldCheck size={12} /> Verified Region
-                  </span>
-                </div>
-
-                {/* Selectable Country Display */}
-                <div
-                  onClick={() => setIsCountryModalOpen(true)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "12px 14px",
-                    borderRadius: 12,
-                    background: "rgba(255, 255, 255, 0.03)",
-                    border: "1px solid rgba(255, 255, 255, 0.08)",
-                    marginTop: 8,
-                    cursor: "pointer",
-                    transition: "all 0.2s ease",
-                  }}
-                >
-                  <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={28} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
-                      {selectedCountry.name}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>
-                      {selectedCountry.currency} ({selectedCountry.currencySymbol}) · 1 USD ≈ {selectedCountry.rateToUsd >= 100 ? selectedCountry.rateToUsd.toLocaleString() : selectedCountry.rateToUsd} {selectedCountry.currency}
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsCountryModalOpen(true);
-                      }}
-                      style={{
-                        padding: "5px 12px",
-                        borderRadius: 8,
-                        background: "rgba(124, 58, 237, 0.16)",
-                        border: "1px solid rgba(167, 139, 250, 0.3)",
-                        fontSize: 11.5,
-                        fontWeight: 700,
-                        color: "#C4B5FD",
-                        cursor: "pointer",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 4,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      <span>Change</span>
-                      <ChevronDown size={13} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="card-divider" />
-
-              {/* 2. Crypto Asset Selector */}
-              <div className="card-section">
-                <div className="pro-card-header">
-                  <span className="pro-card-label">2. Select Crypto to Buy</span>
+                  <span className="pro-card-label">1. Select Crypto to Buy</span>
                   <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>
                     Vault Delivery
                   </span>
@@ -867,10 +799,10 @@ export const BuyPage: React.FC<BuyPageProps> = ({
 
               <div className="card-divider" />
 
-              {/* 3. Dual Converter (You Pay Fiat ⟷ You Receive Crypto) */}
+              {/* 2. Dual Converter (You Pay Fiat ⟷ You Receive Crypto) */}
               <div className="card-section">
                 <div className="pro-card-header">
-                  <span className="pro-card-label">3. Purchase Amount</span>
+                  <span className="pro-card-label">2. Purchase Amount</span>
                   <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>
                     Min: $5.00 USD
                   </span>
@@ -946,10 +878,10 @@ export const BuyPage: React.FC<BuyPageProps> = ({
 
               <div className="card-divider" />
 
-              {/* 4. Payment Method Selection */}
+              {/* 3. Payment Method Selection */}
               <div className="card-section">
                 <div className="pro-card-header">
-                  <span className="pro-card-label">4. Payment Method</span>
+                  <span className="pro-card-label">3. Payment Method</span>
                   <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>Instant</span>
                 </div>
 
