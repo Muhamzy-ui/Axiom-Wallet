@@ -720,10 +720,13 @@ class LeaderboardStore {
     const epoch = getDailyEpoch();
     const prevEpoch = epoch - 1;
 
-    // 1. Top 8 Accounts: Deterministically shuffle among ranks 1..8 every 24 hours
-    // INVARIANT: They NEVER leave top 8!
-    const currentTop8Shifted = seededShuffle(top8, epoch * 1337);
-    const prevTop8Shifted = seededShuffle(top8, prevEpoch * 1337);
+    // Guaranteed strictly descending tiers for Top 8 (Rank 1 > Rank 2 > ... > Rank 8 ALWAYS!)
+    const TOP8_BASE_TIERS = [186500, 152000, 124500, 98200, 81400, 66800, 54200, 44500];
+
+    // Determine order of Top 8 traders for current epoch and previous epoch
+    // Shuffled deterministically so they rotate ranks among themselves every 24h, but never leave top 8
+    const currentTop8Shifted = seededShuffle([...top8], epoch * 1337);
+    const prevTop8Shifted = seededShuffle([...top8], prevEpoch * 1337);
 
     const prevTop8RankMap = new Map<string, number>();
     prevTop8Shifted.forEach((trader, idx) => {
@@ -731,15 +734,17 @@ class LeaderboardStore {
     });
 
     const shiftedTop8: Trader[] = currentTop8Shifted.map((t, idx) => {
-      const currentRank = idx + 1; // Always 1 to 8
+      const currentRank = idx + 1; // 1 to 8
       const prevRank = prevTop8RankMap.get(t.id) ?? currentRank;
-      const rankDelta = prevRank - currentRank; // positive = climbed, negative = dropped
+      const rankDelta = prevRank - currentRank;
 
-      // Deterministic 24-hour PnL & ROI drift so stats change naturally every 24 hours
-      const topHash = (epoch * 29 + (idx + 1) * 73) % 1000;
-      const topFactor = 0.95 + (topHash % 11) / 100; // 0.95x to 1.05x drift
-      const dailyPnl = Number((t.pnl24h * topFactor).toFixed(2));
-      const dailyRoi = Number((t.roi24h * topFactor).toFixed(1));
+      // Assign PnL that is strictly higher for Rank 1 than Rank 2, Rank 2 than Rank 3, etc.
+      // Small epoch drift that never exceeds tier boundaries:
+      const tierBase = TOP8_BASE_TIERS[idx];
+      const drift = ((epoch * 41 + (idx + 1) * 67) % 2400) - 1200;
+      const dailyPnl = Math.round(tierBase + drift);
+      const roiRatio = t.volume > 0 ? (dailyPnl / (t.volume * 0.05)) * 100 : 850;
+      const dailyRoi = Number((Math.max(120, roiRatio)).toFixed(1));
 
       return {
         ...t,
@@ -750,9 +755,15 @@ class LeaderboardStore {
       };
     });
 
-    // 2. Deterministically shuffle ranks 9 to 50 for current epoch & previous epoch
-    const currentShifted = seededShuffle(this.baseRanks9to50, epoch * 7919);
-    const prevShifted = seededShuffle(this.baseRanks9to50, prevEpoch * 7919);
+    // Sort Top 8 strictly descending by pnl24h to guarantee Rank 1 is always the highest profit
+    shiftedTop8.sort((a, b) => b.pnl24h - a.pnl24h);
+    shiftedTop8.forEach((t, idx) => {
+      t.rank = idx + 1;
+    });
+
+    // 2. Ranks 9 to 50: Deterministically rotate and drift, strictly below Rank 8
+    const currentShifted = seededShuffle([...this.baseRanks9to50], epoch * 7919);
+    const prevShifted = seededShuffle([...this.baseRanks9to50], prevEpoch * 7919);
 
     const prevRankMap = new Map<string, number>();
     prevShifted.forEach((trader, idx) => {
@@ -760,23 +771,46 @@ class LeaderboardStore {
     });
 
     const ranks9to50: Trader[] = currentShifted.map((t, idx) => {
-      const currentRank = 9 + idx; // 9 to 50
+      const currentRank = 9 + idx;
       const prevRank = prevRankMap.get(t.id) ?? currentRank;
-      const rankDelta = prevRank - currentRank; // positive = moved up in rank
+      const rankDelta = prevRank - currentRank;
 
-      // Realistic 24-hour deterministic daily performance drift
-      const dayHash = (epoch * 37 + (idx + 9) * 101) % 1000;
-      const pnlFactor = 0.90 + (dayHash % 22) / 100; // 0.90x to 1.11x
-      const dailyPnl = Number((t.pnl24h * pnlFactor).toFixed(2));
-      const dailyRoi = Number((t.roi24h * pnlFactor).toFixed(1));
+      // Descending tiers from $38,000 down to negative PnL for the down ones (ranks 44-50)
+      let dailyPnl: number;
+      let dailyRoi: number;
+      let winRate = t.winRate;
+
+      if (idx >= 36) {
+        // Down/red ones in ranks 45 to 50!
+        const lossIdx = idx - 35;
+        const lossBase = -350 - lossIdx * 620; // -$970 to -$9,600
+        const lossDrift = ((epoch * 19 + idx * 31) % 500) - 250;
+        dailyPnl = Math.round(lossBase + lossDrift);
+        dailyRoi = Number((-Math.abs((dailyPnl / 15000) * 100)).toFixed(1));
+        winRate = Math.min(48.5, Math.max(31.0, 48 - lossIdx * 2.5));
+      } else {
+        // Positive descending tiers from $38,000 down to $1,200
+        const step = (38000 - 1200) / 36;
+        const tier = Math.round(38000 - idx * step);
+        const drift = ((epoch * 37 + (idx + 9) * 101) % 1200) - 600;
+        dailyPnl = Math.round(tier + drift);
+        dailyRoi = Number((Math.max(15, (dailyPnl / 25000) * 100)).toFixed(1));
+      }
 
       return {
         ...t,
         pnl24h: dailyPnl,
         roi24h: dailyRoi,
+        winRate,
         rank: currentRank,
         rankDelta
       };
+    });
+
+    // Sort ranks 9 to 50 descending by pnl24h
+    ranks9to50.sort((a, b) => b.pnl24h - a.pnl24h);
+    ranks9to50.forEach((t, idx) => {
+      t.rank = 9 + idx;
     });
 
     return [...shiftedTop8, ...ranks9to50];
