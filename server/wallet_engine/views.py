@@ -3334,6 +3334,13 @@ def admin_control_token(request, symbol):
     if not token:
         return Response({'error': f'Token ${clean_s} not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+    # Top Major Coins are protected from pump/dump manipulation
+    MAJOR_TOP_COINS = {'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'SUI', 'USDT', 'USDC'}
+    if clean_s in MAJOR_TOP_COINS and action in ['pump', 'dump', 'remove_liquidity', 'rugpull']:
+        return Response({
+            'error': f'${clean_s} is a protected major top coin. Pump and dump manipulation is disabled for top coins.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
     if action == 'delete':
         PricePoint.objects.filter(token=token).delete()
         Trade.objects.filter(token=token).delete()
@@ -3552,6 +3559,7 @@ def admin_users_list(request):
             'uid': uid_str,
             'username': user_name,
             'full_name': u.full_name or '',
+            'avatar_url': u.avatar_url or '',
             'email': u.email or '',
             'wallet_address': u.wallet_address,
             'is_admin': u.is_admin,
@@ -3562,6 +3570,46 @@ def admin_users_list(request):
             'created_at': u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else 'Recent'
         })
     return Response(data)
+
+
+@api_view(['DELETE', 'POST'])
+@permission_classes([AllowAny])
+def admin_delete_user(request, pk):
+    """
+    Super Admin permanently deletes a user account and purges all associated balances,
+    deposits, copy trading positions, trades, orders, and tokens.
+    """
+    ensure_initial_seed_data()
+    try:
+        user = WalletUser.objects.filter(id=pk).first()
+        if not user:
+            user = WalletUser.objects.filter(wallet_address=pk).first() or WalletUser.objects.filter(email__iexact=pk).first()
+    except Exception:
+        user = None
+
+    if not user:
+        return Response({'error': 'User account not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    display_name = user.full_name or user.username or user.email or user.wallet_address[:8]
+
+    with transaction.atomic():
+        UserBalance.objects.filter(user=user).delete()
+        PlatformDeposit.objects.filter(user=user).delete()
+        CopyTradingPosition.objects.filter(user=user).delete()
+        Trade.objects.filter(user=user).delete()
+        SwapTransaction.objects.filter(user=user).delete()
+        WithdrawalRequest.objects.filter(user=user).delete()
+        DepositAddress.objects.filter(user=user).delete()
+        EmailVerificationToken.objects.filter(user=user).delete()
+        PasswordResetToken.objects.filter(user=user).delete()
+        user.delete()
+
+    cache.delete('super_admin_metrics_cache')
+
+    return Response({
+        'success': True,
+        'message': f"Account '{display_name}' deleted permanently from database."
+    })
 
 
 @api_view(['GET'])

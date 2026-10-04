@@ -1294,6 +1294,10 @@ function MemeCoinsPage({ search }: { search: string }) {
 
   // Dollar pump/dump controls
   const handlePumpDollar = (sym: string, dollars: number) => {
+    if (marketStore.isMajorToken(sym)) {
+      toast_(`🛡️ Major top coin $${sym} is protected. Pump/dump manipulation is disabled for major market coins.`);
+      return;
+    }
     if (!dollars || dollars <= 0) return;
     const tok = marketStore.getToken(sym);
     if (tok?.is_rugged) {
@@ -1308,6 +1312,10 @@ function MemeCoinsPage({ search }: { search: string }) {
   };
 
   const handleDumpDollar = (sym: string, dollars: number) => {
+    if (marketStore.isMajorToken(sym)) {
+      toast_(`🛡️ Major top coin $${sym} is protected. Pump/dump manipulation is disabled for major market coins.`);
+      return;
+    }
     if (!dollars || dollars <= 0) return;
     const tok = marketStore.getToken(sym);
     if (tok?.is_rugged) {
@@ -1323,6 +1331,10 @@ function MemeCoinsPage({ search }: { search: string }) {
 
   // Target price direct set
   const handleSetTargetPrice = (sym: string, targetPrice: number) => {
+    if (marketStore.isMajorToken(sym)) {
+      toast_(`🛡️ Major top coin $${sym} is protected. Price targeting is disabled for major market coins.`);
+      return;
+    }
     if (targetPrice <= 0) return;
     const tok = marketStore.getToken(sym);
     if (tok?.is_rugged) {
@@ -1338,6 +1350,10 @@ function MemeCoinsPage({ search }: { search: string }) {
 
   // Percentage pump/dump controls
   const handlePump = (sym: string, pct: number) => {
+    if (marketStore.isMajorToken(sym)) {
+      toast_(`🛡️ Major top coin $${sym} is protected. Pump/dump manipulation is disabled for major market coins.`);
+      return;
+    }
     if (!pct || pct <= 0) return;
     const tok = marketStore.getToken(sym);
     if (tok?.is_rugged) {
@@ -1352,6 +1368,10 @@ function MemeCoinsPage({ search }: { search: string }) {
   };
 
   const handleDump = (sym: string, pct: number) => {
+    if (marketStore.isMajorToken(sym)) {
+      toast_(`🛡️ Major top coin $${sym} is protected. Pump/dump manipulation is disabled for major market coins.`);
+      return;
+    }
     if (!pct || pct <= 0) return;
     const tok = marketStore.getToken(sym);
     if (tok?.is_rugged) {
@@ -1663,549 +1683,570 @@ function MemeCoinsPage({ search }: { search: string }) {
           </div>
         )}
 
-        {/* MODE SELECTOR: Dollars ($ USD) vs Percentage (%) vs Exact Target ($) */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 16, background: 'rgba(255,255,255,0.02)', padding: '8px 12px', borderRadius: 12, border: `1px solid ${C.border}` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: C.text }}>
-            <DollarSign size={15} color={C.violet} />
-            <span>Pump / Dump Control Method:</span>
+        {/* PUMP/DUMP CONTROLS OR PROTECTED MAJOR COIN NOTICE */}
+        {marketStore.isMajorToken(activeToken.sym) ? (
+          <div style={{ background: 'rgba(59, 130, 246, 0.05)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: 14, padding: '32px 20px', textAlign: 'center', margin: '6px 0' }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(59, 130, 246, 0.15)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#60A5FA', marginBottom: 14 }}>
+              <Shield size={28} />
+            </div>
+            <div style={{ fontWeight: 900, fontSize: 18, color: C.text }}>
+              🛡️ Protected Top Market Coin ({activeToken.name} - ${activeToken.sym})
+            </div>
+            <div style={{ fontSize: 13, color: C.muted, maxWidth: 540, margin: '8px auto 0', lineHeight: 1.6 }}>
+              This is one of the top major market cryptocurrencies governed by real-time blockchain &amp; global market pricing. Direct pump and dump manipulation controls are strictly locked and disabled for top market assets.
+            </div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 16, padding: '6px 14px', borderRadius: 20, background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)', color: C.green, fontSize: 12, fontWeight: 700 }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: C.green, display: 'inline-block' }} />
+              <span>Live Global Price Feed Active: {activeToken.price}</span>
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 4, background: C.surface2, padding: 3, borderRadius: 8 }}>
-            <button
-              onClick={() => setControlMode('dollars')}
-              style={{
-                padding: '6px 14px',
-                borderRadius: 6,
-                border: 'none',
-                background: controlMode === 'dollars' ? C.violet : 'transparent',
-                color: controlMode === 'dollars' ? '#fff' : C.muted,
-                fontWeight: 800,
-                fontSize: 12,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                transition: 'all 150ms'
-              }}
-            >
-              <span>💵 Dollar ($ USD) Mode</span>
-            </button>
-            <button
-              onClick={() => setControlMode('percent')}
-              style={{
-                padding: '6px 14px',
-                borderRadius: 6,
-                border: 'none',
-                background: controlMode === 'percent' ? C.violet : 'transparent',
-                color: controlMode === 'percent' ? '#fff' : C.muted,
-                fontWeight: 800,
-                fontSize: 12,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                transition: 'all 150ms'
-              }}
-            >
-              <span>% Percentage Mode</span>
-            </button>
-            <button
-              onClick={() => setControlMode('target')}
-              style={{
-                padding: '6px 14px',
-                borderRadius: 6,
-                border: 'none',
-                background: controlMode === 'target' ? C.violet : 'transparent',
-                color: controlMode === 'target' ? '#fff' : C.muted,
-                fontWeight: 800,
-                fontSize: 12,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                transition: 'all 150ms'
-              }}
-            >
-              <span>🎯 Exact Target Price</span>
-            </button>
-          </div>
-        </div>
+        ) : (
+          <>
+            {/* MODE SELECTOR: Dollars ($ USD) vs Percentage (%) vs Exact Target ($) */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 16, background: 'rgba(255,255,255,0.02)', padding: '8px 12px', borderRadius: 12, border: `1px solid ${C.border}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: C.text }}>
+                <DollarSign size={15} color={C.violet} />
+                <span>Pump / Dump Control Method:</span>
+              </div>
+              <div style={{ display: 'flex', gap: 4, background: C.surface2, padding: 3, borderRadius: 8 }}>
+                <button
+                  onClick={() => setControlMode('dollars')}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: 6,
+                    border: 'none',
+                    background: controlMode === 'dollars' ? C.violet : 'transparent',
+                    color: controlMode === 'dollars' ? '#fff' : C.muted,
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    transition: 'all 150ms'
+                  }}
+                >
+                  <span>💵 Dollar ($ USD) Mode</span>
+                </button>
+                <button
+                  onClick={() => setControlMode('percent')}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: 6,
+                    border: 'none',
+                    background: controlMode === 'percent' ? C.violet : 'transparent',
+                    color: controlMode === 'percent' ? '#fff' : C.muted,
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    transition: 'all 150ms'
+                  }}
+                >
+                  <span>% Percentage Mode</span>
+                </button>
+                <button
+                  onClick={() => setControlMode('target')}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: 6,
+                    border: 'none',
+                    background: controlMode === 'target' ? C.violet : 'transparent',
+                    color: controlMode === 'target' ? '#fff' : C.muted,
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    transition: 'all 150ms'
+                  }}
+                >
+                  <span>🎯 Exact Target Price</span>
+                </button>
+              </div>
+            </div>
 
-        {/* Action Grids: DOLLAR MODE vs PERCENTAGE MODE vs TARGET PRICE */}
-        {controlMode === 'dollars' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 16 }}>
-            {/* DOLLAR PUMP CONTROLS */}
-            <div style={{ background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: 14, padding: 18 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <TrendingUp size={18} color={C.green} />
-                  <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>Pump by Dollar Amount ($)</div>
+            {/* Action Grids: DOLLAR MODE vs PERCENTAGE MODE vs TARGET PRICE */}
+            {controlMode === 'dollars' && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 16 }}>
+                {/* DOLLAR PUMP CONTROLS */}
+                <div style={{ background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: 14, padding: 18 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <TrendingUp size={18} color={C.green} />
+                      <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>Pump by Dollar Amount ($)</div>
+                    </div>
+                    <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: 'rgba(16,185,129,0.15)', color: C.green, fontWeight: 700 }}>
+                      Expands Liquidity & Vol
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: C.muted, marginBottom: 14 }}>
+                    Adds exact dollar increment to unit price, dynamically expanding pool liquidity & volume.
+                  </div>
+
+                  {/* Dynamic Presets tailored to coin price magnitude */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 12 }}>
+                    {[
+                      { pct: 10, label: '+10%' },
+                      { pct: 25, label: '+25%' },
+                      { pct: 50, label: '+50%' },
+                      { pct: 100, label: '+100%' }
+                    ].map(({ pct, label }) => {
+                      const amt = Number((activeToken.numericPrice * (pct / 100)).toFixed(activeToken.numericPrice < 0.001 ? 8 : activeToken.numericPrice < 1 ? 4 : 2));
+                      return (
+                        <button
+                          key={pct}
+                          disabled={activeToken.is_rugged}
+                          onClick={() => handlePumpDollar(activeToken.sym, amt)}
+                          style={{
+                            padding: '8px 4px',
+                            background: 'rgba(16,185,129,0.15)',
+                            border: `1px solid ${C.green}44`,
+                            borderRadius: 8,
+                            color: C.green,
+                            fontSize: 11,
+                            fontWeight: 800,
+                            cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
+                            opacity: activeToken.is_rugged ? 0.4 : 1,
+                            textAlign: 'center'
+                          }}
+                          title={activeToken.is_rugged ? 'Locked: Token is rugged' : `Pump +$${amt} (${label})`}
+                        >
+                          <div>{label}</div>
+                          <div style={{ fontSize: 9, opacity: 0.85, marginTop: 2 }}>+${amt < 0.001 ? amt.toFixed(6) : amt < 1 ? amt.toFixed(3) : amt.toFixed(2)}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Custom Dollar Pump */}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: C.green, fontSize: 12, fontWeight: 800 }}>+$</span>
+                      <input
+                        type="number"
+                        step="any"
+                        disabled={activeToken.is_rugged}
+                        value={customDollarPump}
+                        onChange={e => setCustomDollarPump(e.target.value)}
+                        placeholder="0.0001"
+                        style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 10px 7px 26px', color: C.text, fontSize: 12, outline: 'none', opacity: activeToken.is_rugged ? 0.5 : 1 }}
+                      />
+                    </div>
+                    <Btn sm disabled={activeToken.is_rugged} onClick={() => handlePumpDollar(activeToken.sym, parseFloat(customDollarPump) || 0)}>
+                      <Zap size={12} />Pump 🚀
+                    </Btn>
+                  </div>
+
+                  {/* Live Impact Preview */}
+                  {(() => {
+                    const addAmt = parseFloat(customDollarPump) || 0;
+                    if (addAmt <= 0) return null;
+                    const curP = activeToken.numericPrice || 0.001;
+                    const newP = curP + addAmt;
+                    const pct = ((addAmt) / curP) * 100;
+                    const curLiq = marketStore.parseShortUsd(activeToken.liq) || ((curP * (activeToken.supply || 1e9)) * 0.18);
+                    const newLiq = curLiq * Math.sqrt(Math.max(0.01, 1 + pct / 100));
+                    return (
+                      <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(16,185,129,0.08)', borderRadius: 8, border: '1px solid rgba(16,185,129,0.22)', fontSize: 11, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ color: C.muted }}>New Price:</span>
+                          <span style={{ fontWeight: 800, color: C.text }}>${newP < 0.001 ? newP.toFixed(8) : newP < 1 ? newP.toFixed(4) : (newP >= 1000 ? newP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : newP.toFixed(2))} <span style={{ color: C.green }}>({pct >= 0 ? '+' : ''}{pct.toFixed(1)}%)</span></span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ color: C.muted }}>Projected Liquidity:</span>
+                          <span style={{ fontWeight: 800, color: '#A78BFA' }}>{marketStore.formatShortUsd(newLiq)} <span style={{ color: C.green, fontSize: 10 }}>(+{marketStore.formatShortUsd(newLiq - curLiq)})</span></span>
+                        </div>
+                        {pct > 500 && (
+                          <div style={{ fontSize: 10, color: C.amber, fontWeight: 700, marginTop: 2 }}>
+                            ⚠️ Caution: High impact (+{pct.toFixed(0)}% jump)
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
-                <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: 'rgba(16,185,129,0.15)', color: C.green, fontWeight: 700 }}>
-                  Expands Liquidity & Vol
-                </span>
-              </div>
-              <div style={{ fontSize: 11, color: C.muted, marginBottom: 14 }}>
-                Adds exact dollar increment to unit price, dynamically expanding pool liquidity & volume.
-              </div>
 
-              {/* Dynamic Presets tailored to coin price magnitude */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 12 }}>
-                {[
-                  { pct: 10, label: '+10%' },
-                  { pct: 25, label: '+25%' },
-                  { pct: 50, label: '+50%' },
-                  { pct: 100, label: '+100%' }
-                ].map(({ pct, label }) => {
-                  const amt = Number((activeToken.numericPrice * (pct / 100)).toFixed(activeToken.numericPrice < 0.001 ? 8 : activeToken.numericPrice < 1 ? 4 : 2));
+                {/* DOLLAR DUMP CONTROLS */}
+                <div style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 14, padding: 18 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <TrendingDown size={18} color={C.red} />
+                      <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>Dump by Dollar Amount ($)</div>
+                    </div>
+                    <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: 'rgba(239,68,68,0.15)', color: C.red, fontWeight: 700 }}>
+                      Contracts Liquidity
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: C.muted, marginBottom: 14 }}>
+                    Reduces token price by exact dollar value smoothly.
+                  </div>
+
+                  {/* Dynamic Presets tailored to coin price magnitude */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 12 }}>
+                    {[
+                      { pct: 10, label: '-10%' },
+                      { pct: 25, label: '-25%' },
+                      { pct: 50, label: '-50%' },
+                      { pct: 75, label: '-75%' }
+                    ].map(({ pct, label }) => {
+                      const amt = Number((activeToken.numericPrice * (pct / 100)).toFixed(activeToken.numericPrice < 0.001 ? 8 : activeToken.numericPrice < 1 ? 4 : 2));
+                      return (
+                        <button
+                          key={pct}
+                          disabled={activeToken.is_rugged}
+                          onClick={() => handleDumpDollar(activeToken.sym, amt)}
+                          style={{
+                            padding: '8px 4px',
+                            background: 'rgba(239,68,68,0.15)',
+                            border: `1px solid ${C.red}44`,
+                            borderRadius: 8,
+                            color: C.red,
+                            fontSize: 11,
+                            fontWeight: 800,
+                            cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
+                            opacity: activeToken.is_rugged ? 0.4 : 1,
+                            textAlign: 'center'
+                          }}
+                          title={activeToken.is_rugged ? 'Locked: Token is rugged' : `Dump -$${amt} (${label})`}
+                        >
+                          <div>{label}</div>
+                          <div style={{ fontSize: 9, opacity: 0.85, marginTop: 2 }}>-${amt < 0.001 ? amt.toFixed(6) : amt < 1 ? amt.toFixed(3) : amt.toFixed(2)}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Custom Dollar Dump */}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: C.red, fontSize: 12, fontWeight: 800 }}>-$</span>
+                      <input
+                        type="number"
+                        step="any"
+                        disabled={activeToken.is_rugged}
+                        value={customDollarDump}
+                        onChange={e => setCustomDollarDump(e.target.value)}
+                        placeholder="0.0001"
+                        style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 10px 7px 26px', color: C.text, fontSize: 12, outline: 'none', opacity: activeToken.is_rugged ? 0.5 : 1 }}
+                      />
+                    </div>
+                    <Btn sm danger disabled={activeToken.is_rugged} onClick={() => handleDumpDollar(activeToken.sym, parseFloat(customDollarDump) || 0)}>
+                      <ArrowDownRight size={12} />Dump 📉
+                    </Btn>
+                  </div>
+
+                  {/* Live Dump Impact Preview */}
+                  {(() => {
+                    const subAmt = parseFloat(customDollarDump) || 0;
+                    if (subAmt <= 0) return null;
+                    const curP = activeToken.numericPrice || 0.001;
+                    const newP = Math.max(0.00000001, curP - subAmt);
+                    const pct = ((subAmt) / curP) * 100;
+                    const curLiq = marketStore.parseShortUsd(activeToken.liq) || ((curP * (activeToken.supply || 1e9)) * 0.18);
+                    const newLiq = curLiq * Math.sqrt(Math.max(0.01, 1 - pct / 100));
+                    return (
+                      <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(239,68,68,0.08)', borderRadius: 8, border: '1px solid rgba(239,68,68,0.22)', fontSize: 11, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ color: C.muted }}>New Price:</span>
+                          <span style={{ fontWeight: 800, color: C.text }}>${newP < 0.001 ? newP.toFixed(8) : newP < 1 ? newP.toFixed(4) : (newP >= 1000 ? newP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : newP.toFixed(2))} <span style={{ color: C.red }}>(-{pct.toFixed(1)}%)</span></span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ color: C.muted }}>Projected Liquidity:</span>
+                          <span style={{ fontWeight: 800, color: '#A78BFA' }}>{marketStore.formatShortUsd(newLiq)} <span style={{ color: C.red, fontSize: 10 }}>(-{marketStore.formatShortUsd(curLiq - newLiq)})</span></span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* EMERGENCY DRAIN */}
+                {(() => {
+                  const isMajor = marketStore.isMajorToken(activeToken.sym);
                   return (
-                    <button
-                      key={pct}
-                      disabled={activeToken.is_rugged}
-                      onClick={() => handlePumpDollar(activeToken.sym, amt)}
+                    <div style={{ background: isMajor ? 'rgba(255, 255, 255, 0.02)' : 'rgba(185, 28, 28, 0.1)', border: `1px solid ${isMajor ? 'rgba(255, 255, 255, 0.1)' : 'rgba(239, 68, 68, 0.45)'}`, borderRadius: 14, padding: 18, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                          <Skull size={18} color={isMajor ? C.muted : '#EF4444'} />
+                          <div style={{ fontWeight: 800, fontSize: 15, color: isMajor ? C.muted : '#EF4444' }}>Emergency Liquidity Drain</div>
+                        </div>
+                        <div style={{ fontSize: 11, color: isMajor ? C.muted : '#FCA5A5', marginBottom: 14, lineHeight: 1.5 }}>
+                          {isMajor ? '🛡️ Major asset is protected and cannot be drained.' : 'Drains token pool liquidity to $0.00 and suspends further trading.'}
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => setRugModal(activeToken.sym)}
+                        disabled={isMajor || activeToken.is_rugged}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          background: (isMajor || activeToken.is_rugged) ? 'rgba(255,255,255,0.05)' : '#DC2626',
+                          border: 'none',
+                          borderRadius: 10,
+                          color: (isMajor || activeToken.is_rugged) ? C.muted : '#fff',
+                          fontSize: 13,
+                          fontWeight: 900,
+                          cursor: (isMajor || activeToken.is_rugged) ? 'not-allowed' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 8,
+                          boxShadow: (isMajor || activeToken.is_rugged) ? 'none' : '0 4px 14px rgba(220,38,38,0.4)',
+                        }}
+                      >
+                        <Skull size={16} />
+                        {isMajor ? `🛡️ $${activeToken.sym} PROTECTED` : activeToken.is_rugged ? 'LIQUIDITY DRAINED' : `DRAIN LIQUIDITY $${activeToken.sym}`}
+                      </button>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {controlMode === 'target' && (
+              <div style={{ background: 'rgba(124, 58, 237, 0.05)', border: '1px solid rgba(124, 58, 237, 0.25)', borderRadius: 14, padding: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <Sparkles size={18} color={C.violet} />
+                  <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>Set Exact Target Price for ${activeToken.sym}</div>
+                </div>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>
+                  Directly sets the price to whatever target amount you desire. The system will automatically compute whether it is a pump or dump and sync with the DEX chart immediately.
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', maxWidth: 640 }}>
+                  <div style={{ position: 'relative', flex: '1 1 200px' }}>
+                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: C.violet, fontSize: 15, fontWeight: 900 }}>$</span>
+                    <input
+                      type="number"
+                      step="any"
+                      value={targetPriceInput}
+                      onChange={e => setTargetPriceInput(e.target.value)}
+                      placeholder="0.0500"
                       style={{
-                        padding: '8px 4px',
+                        width: '100%',
+                        background: C.bg,
+                        border: `1px solid ${C.border}`,
+                        borderRadius: 10,
+                        padding: '10px 14px 10px 28px',
+                        color: C.text,
+                        fontSize: 16,
+                        fontWeight: 800,
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+
+                  {/* Quick multipliers */}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {[2, 5, 10].map(mult => {
+                      const curr = activeToken.numericPrice || 0.005;
+                      const tgt = Number((curr * mult).toFixed(4));
+                      return (
+                        <button
+                          key={mult}
+                          disabled={activeToken.is_rugged}
+                          onClick={() => {
+                            setTargetPriceInput(String(tgt));
+                            handleSetTargetPrice(activeToken.sym, tgt);
+                          }}
+                          style={{
+                            padding: '8px 12px',
+                            background: C.surface2,
+                            border: `1px solid ${C.border}`,
+                            borderRadius: 8,
+                            color: activeToken.is_rugged ? C.muted : C.text,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
+                            opacity: activeToken.is_rugged ? 0.4 : 1
+                          }}
+                        >
+                          {mult}x (${tgt})
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <Btn disabled={activeToken.is_rugged} onClick={() => handleSetTargetPrice(activeToken.sym, parseFloat(targetPriceInput) || 0.01)}>
+                    <Check size={14} />Apply Target Price Immediately 🚀
+                  </Btn>
+                </div>
+              </div>
+            )}
+
+            {controlMode === 'percent' && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: 16 }}>
+                {/* PERCENT PUMP */}
+                <div style={{ background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: 14, padding: 18 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <TrendingUp size={18} color={C.green} />
+                    <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>Percentage Pump Controls</div>
+                  </div>
+                  <div style={{ fontSize: 11, color: C.muted, marginBottom: 14 }}>
+                    Pumps price upward by exact percentage calculation.
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
+                    <button
+                      disabled={activeToken.is_rugged}
+                      onClick={() => handlePump(activeToken.sym, 10)}
+                      style={{
+                        padding: '8px 10px',
                         background: 'rgba(16,185,129,0.15)',
                         border: `1px solid ${C.green}44`,
                         borderRadius: 8,
                         color: C.green,
-                        fontSize: 11,
+                        fontSize: 12,
                         fontWeight: 800,
-                        cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
-                        opacity: activeToken.is_rugged ? 0.4 : 1,
-                        textAlign: 'center'
-                      }}
-                      title={activeToken.is_rugged ? 'Locked: Token is rugged' : `Pump +$${amt} (${label})`}
-                    >
-                      <div>{label}</div>
-                      <div style={{ fontSize: 9, opacity: 0.85, marginTop: 2 }}>+${amt < 0.001 ? amt.toFixed(6) : amt < 1 ? amt.toFixed(3) : amt.toFixed(2)}</div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Custom Dollar Pump */}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div style={{ position: 'relative', flex: 1 }}>
-                  <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: C.green, fontSize: 12, fontWeight: 800 }}>+$</span>
-                  <input
-                    type="number"
-                    step="any"
-                    disabled={activeToken.is_rugged}
-                    value={customDollarPump}
-                    onChange={e => setCustomDollarPump(e.target.value)}
-                    placeholder="0.0001"
-                    style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 10px 7px 26px', color: C.text, fontSize: 12, outline: 'none', opacity: activeToken.is_rugged ? 0.5 : 1 }}
-                  />
-                </div>
-                <Btn sm disabled={activeToken.is_rugged} onClick={() => handlePumpDollar(activeToken.sym, parseFloat(customDollarPump) || 0)}>
-                  <Zap size={12} />Pump 🚀
-                </Btn>
-              </div>
-
-              {/* Live Impact Preview */}
-              {(() => {
-                const addAmt = parseFloat(customDollarPump) || 0;
-                if (addAmt <= 0) return null;
-                const curP = activeToken.numericPrice || 0.001;
-                const newP = curP + addAmt;
-                const pct = ((addAmt) / curP) * 100;
-                const curLiq = marketStore.parseShortUsd(activeToken.liq) || ((curP * (activeToken.supply || 1e9)) * 0.18);
-                const newLiq = curLiq * Math.sqrt(Math.max(0.01, 1 + pct / 100));
-                return (
-                  <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(16,185,129,0.08)', borderRadius: 8, border: '1px solid rgba(16,185,129,0.22)', fontSize: 11, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: C.muted }}>New Price:</span>
-                      <span style={{ fontWeight: 800, color: C.text }}>${newP < 0.001 ? newP.toFixed(8) : newP < 1 ? newP.toFixed(4) : (newP >= 1000 ? newP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : newP.toFixed(2))} <span style={{ color: C.green }}>({pct >= 0 ? '+' : ''}{pct.toFixed(1)}%)</span></span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: C.muted }}>Projected Liquidity:</span>
-                      <span style={{ fontWeight: 800, color: '#A78BFA' }}>{marketStore.formatShortUsd(newLiq)} <span style={{ color: C.green, fontSize: 10 }}>(+{marketStore.formatShortUsd(newLiq - curLiq)})</span></span>
-                    </div>
-                    {pct > 500 && (
-                      <div style={{ fontSize: 10, color: C.amber, fontWeight: 700, marginTop: 2 }}>
-                        ⚠️ Caution: High impact (+{pct.toFixed(0)}% jump)
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
-
-            {/* DOLLAR DUMP CONTROLS */}
-            <div style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 14, padding: 18 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <TrendingDown size={18} color={C.red} />
-                  <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>Dump by Dollar Amount ($)</div>
-                </div>
-                <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: 'rgba(239,68,68,0.15)', color: C.red, fontWeight: 700 }}>
-                  Contracts Liquidity
-                </span>
-              </div>
-              <div style={{ fontSize: 11, color: C.muted, marginBottom: 14 }}>
-                Reduces token price by exact dollar value smoothly.
-              </div>
-
-              {/* Dynamic Presets tailored to coin price magnitude */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 12 }}>
-                {[
-                  { pct: 10, label: '-10%' },
-                  { pct: 25, label: '-25%' },
-                  { pct: 50, label: '-50%' },
-                  { pct: 75, label: '-75%' }
-                ].map(({ pct, label }) => {
-                  const amt = Number((activeToken.numericPrice * (pct / 100)).toFixed(activeToken.numericPrice < 0.001 ? 8 : activeToken.numericPrice < 1 ? 4 : 2));
-                  return (
-                    <button
-                      key={pct}
-                      disabled={activeToken.is_rugged}
-                      onClick={() => handleDumpDollar(activeToken.sym, amt)}
-                      style={{
-                        padding: '8px 4px',
-                        background: 'rgba(239,68,68,0.15)',
-                        border: `1px solid ${C.red}44`,
-                        borderRadius: 8,
-                        color: C.red,
-                        fontSize: 11,
-                        fontWeight: 800,
-                        cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
-                        opacity: activeToken.is_rugged ? 0.4 : 1,
-                        textAlign: 'center'
-                      }}
-                      title={activeToken.is_rugged ? 'Locked: Token is rugged' : `Dump -$${amt} (${label})`}
-                    >
-                      <div>{label}</div>
-                      <div style={{ fontSize: 9, opacity: 0.85, marginTop: 2 }}>-${amt < 0.001 ? amt.toFixed(6) : amt < 1 ? amt.toFixed(3) : amt.toFixed(2)}</div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Custom Dollar Dump */}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div style={{ position: 'relative', flex: 1 }}>
-                  <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: C.red, fontSize: 12, fontWeight: 800 }}>-$</span>
-                  <input
-                    type="number"
-                    step="any"
-                    disabled={activeToken.is_rugged}
-                    value={customDollarDump}
-                    onChange={e => setCustomDollarDump(e.target.value)}
-                    placeholder="0.0001"
-                    style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 10px 7px 26px', color: C.text, fontSize: 12, outline: 'none', opacity: activeToken.is_rugged ? 0.5 : 1 }}
-                  />
-                </div>
-                <Btn sm danger disabled={activeToken.is_rugged} onClick={() => handleDumpDollar(activeToken.sym, parseFloat(customDollarDump) || 0)}>
-                  <ArrowDownRight size={12} />Dump 📉
-                </Btn>
-              </div>
-
-              {/* Live Dump Impact Preview */}
-              {(() => {
-                const subAmt = parseFloat(customDollarDump) || 0;
-                if (subAmt <= 0) return null;
-                const curP = activeToken.numericPrice || 0.001;
-                const newP = Math.max(0.00000001, curP - subAmt);
-                const pct = ((subAmt) / curP) * 100;
-                const curLiq = marketStore.parseShortUsd(activeToken.liq) || ((curP * (activeToken.supply || 1e9)) * 0.18);
-                const newLiq = curLiq * Math.sqrt(Math.max(0.01, 1 - pct / 100));
-                return (
-                  <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(239,68,68,0.08)', borderRadius: 8, border: '1px solid rgba(239,68,68,0.22)', fontSize: 11, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: C.muted }}>New Price:</span>
-                      <span style={{ fontWeight: 800, color: C.text }}>${newP < 0.001 ? newP.toFixed(8) : newP < 1 ? newP.toFixed(4) : (newP >= 1000 ? newP.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : newP.toFixed(2))} <span style={{ color: C.red }}>(-{pct.toFixed(1)}%)</span></span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: C.muted }}>Projected Liquidity:</span>
-                      <span style={{ fontWeight: 800, color: '#A78BFA' }}>{marketStore.formatShortUsd(newLiq)} <span style={{ color: C.red, fontSize: 10 }}>(-{marketStore.formatShortUsd(curLiq - newLiq)})</span></span>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-
-            {/* EMERGENCY DRAIN */}
-            {(() => {
-              const isMajor = marketStore.isMajorToken(activeToken.sym);
-              return (
-                <div style={{ background: isMajor ? 'rgba(255, 255, 255, 0.02)' : 'rgba(185, 28, 28, 0.1)', border: `1px solid ${isMajor ? 'rgba(255, 255, 255, 0.1)' : 'rgba(239, 68, 68, 0.45)'}`, borderRadius: 14, padding: 18, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                      <Skull size={18} color={isMajor ? C.muted : '#EF4444'} />
-                      <div style={{ fontWeight: 800, fontSize: 15, color: isMajor ? C.muted : '#EF4444' }}>Emergency Liquidity Drain</div>
-                    </div>
-                    <div style={{ fontSize: 11, color: isMajor ? C.muted : '#FCA5A5', marginBottom: 14, lineHeight: 1.5 }}>
-                      {isMajor ? '🛡️ Major asset is protected and cannot be drained.' : 'Drains token pool liquidity to $0.00 and suspends further trading.'}
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => setRugModal(activeToken.sym)}
-                    disabled={isMajor || activeToken.is_rugged}
-                    style={{
-                      width: '100%',
-                      padding: '12px',
-                      background: (isMajor || activeToken.is_rugged) ? 'rgba(255,255,255,0.05)' : '#DC2626',
-                      border: 'none',
-                      borderRadius: 10,
-                      color: (isMajor || activeToken.is_rugged) ? C.muted : '#fff',
-                      fontSize: 13,
-                      fontWeight: 900,
-                      cursor: (isMajor || activeToken.is_rugged) ? 'not-allowed' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                      boxShadow: (isMajor || activeToken.is_rugged) ? 'none' : '0 4px 14px rgba(220,38,38,0.4)',
-                    }}
-                  >
-                    <Skull size={16} />
-                    {isMajor ? `🛡️ $${activeToken.sym} PROTECTED` : activeToken.is_rugged ? 'LIQUIDITY DRAINED' : `DRAIN LIQUIDITY $${activeToken.sym}`}
-                  </button>
-                </div>
-              );
-            })()}
-          </div>
-        )}
-
-        {controlMode === 'target' && (
-          <div style={{ background: 'rgba(124, 58, 237, 0.05)', border: '1px solid rgba(124, 58, 237, 0.25)', borderRadius: 14, padding: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <Sparkles size={18} color={C.violet} />
-              <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>Set Exact Target Price for ${activeToken.sym}</div>
-            </div>
-            <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>
-              Directly sets the price to whatever target amount you desire. The system will automatically compute whether it is a pump or dump and sync with the DEX chart immediately.
-            </div>
-
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', maxWidth: 640 }}>
-              <div style={{ position: 'relative', flex: '1 1 200px' }}>
-                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: C.violet, fontSize: 15, fontWeight: 900 }}>$</span>
-                <input
-                  type="number"
-                  step="any"
-                  value={targetPriceInput}
-                  onChange={e => setTargetPriceInput(e.target.value)}
-                  placeholder="0.0500"
-                  style={{
-                    width: '100%',
-                    background: C.bg,
-                    border: `1px solid ${C.border}`,
-                    borderRadius: 10,
-                    padding: '10px 14px 10px 28px',
-                    color: C.text,
-                    fontSize: 16,
-                    fontWeight: 800,
-                    outline: 'none',
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-
-              {/* Quick multipliers */}
-              <div style={{ display: 'flex', gap: 6 }}>
-                {[2, 5, 10].map(mult => {
-                  const curr = activeToken.numericPrice || 0.005;
-                  const tgt = Number((curr * mult).toFixed(4));
-                  return (
-                    <button
-                      key={mult}
-                      disabled={activeToken.is_rugged}
-                      onClick={() => {
-                        setTargetPriceInput(String(tgt));
-                        handleSetTargetPrice(activeToken.sym, tgt);
-                      }}
-                      style={{
-                        padding: '8px 12px',
-                        background: C.surface2,
-                        border: `1px solid ${C.border}`,
-                        borderRadius: 8,
-                        color: activeToken.is_rugged ? C.muted : C.text,
-                        fontSize: 11,
-                        fontWeight: 700,
                         cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
                         opacity: activeToken.is_rugged ? 0.4 : 1
                       }}
                     >
-                      {mult}x (${tgt})
+                      +10% Pump
                     </button>
-                  );
-                })}
-              </div>
+                    <button
+                      disabled={activeToken.is_rugged}
+                      onClick={() => handlePump(activeToken.sym, 25)}
+                      style={{
+                        padding: '8px 10px',
+                        background: 'rgba(16,185,129,0.22)',
+                        border: `1px solid ${C.green}66`,
+                        borderRadius: 8,
+                        color: C.green,
+                        fontSize: 12,
+                        fontWeight: 800,
+                        cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
+                        opacity: activeToken.is_rugged ? 0.4 : 1
+                      }}
+                    >
+                      +25% Super
+                    </button>
+                    <button
+                      disabled={activeToken.is_rugged}
+                      onClick={() => handlePump(activeToken.sym, 50)}
+                      style={{
+                        padding: '8px 10px',
+                        background: activeToken.is_rugged ? 'rgba(16,185,129,0.2)' : C.green,
+                        border: 'none',
+                        borderRadius: 8,
+                        color: '#fff',
+                        fontSize: 12,
+                        fontWeight: 900,
+                        cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
+                        opacity: activeToken.is_rugged ? 0.4 : 1
+                      }}
+                    >
+                      +50% Mega
+                    </button>
+                  </div>
 
-              <Btn disabled={activeToken.is_rugged} onClick={() => handleSetTargetPrice(activeToken.sym, parseFloat(targetPriceInput) || 0.01)}>
-                <Check size={14} />Apply Target Price Immediately 🚀
-              </Btn>
-            </div>
-          </div>
-        )}
-
-        {controlMode === 'percent' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: 16 }}>
-            {/* PERCENT PUMP */}
-            <div style={{ background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: 14, padding: 18 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <TrendingUp size={18} color={C.green} />
-                <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>Percentage Pump Controls</div>
-              </div>
-              <div style={{ fontSize: 11, color: C.muted, marginBottom: 14 }}>
-                Pumps price upward by exact percentage calculation.
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
-                <button
-                  disabled={activeToken.is_rugged}
-                  onClick={() => handlePump(activeToken.sym, 10)}
-                  style={{
-                    padding: '8px 10px',
-                    background: 'rgba(16,185,129,0.15)',
-                    border: `1px solid ${C.green}44`,
-                    borderRadius: 8,
-                    color: C.green,
-                    fontSize: 12,
-                    fontWeight: 800,
-                    cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
-                    opacity: activeToken.is_rugged ? 0.4 : 1
-                  }}
-                >
-                  +10% Pump
-                </button>
-                <button
-                  disabled={activeToken.is_rugged}
-                  onClick={() => handlePump(activeToken.sym, 25)}
-                  style={{
-                    padding: '8px 10px',
-                    background: 'rgba(16,185,129,0.22)',
-                    border: `1px solid ${C.green}66`,
-                    borderRadius: 8,
-                    color: C.green,
-                    fontSize: 12,
-                    fontWeight: 800,
-                    cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
-                    opacity: activeToken.is_rugged ? 0.4 : 1
-                  }}
-                >
-                  +25% Super
-                </button>
-                <button
-                  disabled={activeToken.is_rugged}
-                  onClick={() => handlePump(activeToken.sym, 50)}
-                  style={{
-                    padding: '8px 10px',
-                    background: activeToken.is_rugged ? 'rgba(16,185,129,0.2)' : C.green,
-                    border: 'none',
-                    borderRadius: 8,
-                    color: '#fff',
-                    fontSize: 12,
-                    fontWeight: 900,
-                    cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
-                    opacity: activeToken.is_rugged ? 0.4 : 1
-                  }}
-                >
-                  +50% Mega
-                </button>
-              </div>
-
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div style={{ position: 'relative', flex: 1 }}>
-                  <input
-                    type="number"
-                    disabled={activeToken.is_rugged}
-                    value={customPump}
-                    onChange={e => setCustomPump(e.target.value)}
-                    placeholder="Custom %"
-                    style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 24px 7px 10px', color: C.text, fontSize: 12, outline: 'none', opacity: activeToken.is_rugged ? 0.5 : 1 }}
-                  />
-                  <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: C.muted, fontSize: 11 }}>%</span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <input
+                        type="number"
+                        disabled={activeToken.is_rugged}
+                        value={customPump}
+                        onChange={e => setCustomPump(e.target.value)}
+                        placeholder="Custom %"
+                        style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 24px 7px 10px', color: C.text, fontSize: 12, outline: 'none', opacity: activeToken.is_rugged ? 0.5 : 1 }}
+                      />
+                      <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: C.muted, fontSize: 11 }}>%</span>
+                    </div>
+                    <Btn sm disabled={activeToken.is_rugged} onClick={() => handlePump(activeToken.sym, parseFloat(customPump) || 10)}>
+                      <Zap size={12} />Pump 🚀
+                    </Btn>
+                  </div>
                 </div>
-                <Btn sm disabled={activeToken.is_rugged} onClick={() => handlePump(activeToken.sym, parseFloat(customPump) || 10)}>
-                  <Zap size={12} />Pump 🚀
-                </Btn>
-              </div>
-            </div>
 
-            {/* PERCENT DUMP */}
-            <div style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 14, padding: 18 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <TrendingDown size={18} color={C.red} />
-                <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>Percentage Dump Controls</div>
-              </div>
-              <div style={{ fontSize: 11, color: C.muted, marginBottom: 14 }}>
-                Dumps price downward by exact percentage.
-              </div>
+                {/* PERCENT DUMP */}
+                <div style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 14, padding: 18 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <TrendingDown size={18} color={C.red} />
+                    <div style={{ fontWeight: 800, fontSize: 15, color: C.text }}>Percentage Dump Controls</div>
+                  </div>
+                  <div style={{ fontSize: 11, color: C.muted, marginBottom: 14 }}>
+                    Dumps price downward by exact percentage.
+                  </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
-                <button
-                  disabled={activeToken.is_rugged}
-                  onClick={() => handleDump(activeToken.sym, 10)}
-                  style={{
-                    padding: '8px 10px',
-                    background: 'rgba(239,68,68,0.15)',
-                    border: `1px solid ${C.red}44`,
-                    borderRadius: 8,
-                    color: C.red,
-                    fontSize: 12,
-                    fontWeight: 800,
-                    cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
-                    opacity: activeToken.is_rugged ? 0.4 : 1
-                  }}
-                >
-                  -10% Shake
-                </button>
-                <button
-                  disabled={activeToken.is_rugged}
-                  onClick={() => handleDump(activeToken.sym, 25)}
-                  style={{
-                    padding: '8px 10px',
-                    background: 'rgba(239,68,68,0.22)',
-                    border: `1px solid ${C.red}66`,
-                    borderRadius: 8,
-                    color: C.red,
-                    fontSize: 12,
-                    fontWeight: 800,
-                    cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
-                    opacity: activeToken.is_rugged ? 0.4 : 1
-                  }}
-                >
-                  -25% Heavy
-                </button>
-                <button
-                  disabled={activeToken.is_rugged}
-                  onClick={() => handleDump(activeToken.sym, 50)}
-                  style={{
-                    padding: '8px 10px',
-                    background: activeToken.is_rugged ? 'rgba(239,68,68,0.2)' : C.red,
-                    border: 'none',
-                    borderRadius: 8,
-                    color: '#fff',
-                    fontSize: 12,
-                    fontWeight: 900,
-                    cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
-                    opacity: activeToken.is_rugged ? 0.4 : 1
-                  }}
-                >
-                  -50% Crash
-                </button>
-              </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
+                    <button
+                      disabled={activeToken.is_rugged}
+                      onClick={() => handleDump(activeToken.sym, 10)}
+                      style={{
+                        padding: '8px 10px',
+                        background: 'rgba(239,68,68,0.15)',
+                        border: `1px solid ${C.red}44`,
+                        borderRadius: 8,
+                        color: C.red,
+                        fontSize: 12,
+                        fontWeight: 800,
+                        cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
+                        opacity: activeToken.is_rugged ? 0.4 : 1
+                      }}
+                    >
+                      -10% Shake
+                    </button>
+                    <button
+                      disabled={activeToken.is_rugged}
+                      onClick={() => handleDump(activeToken.sym, 25)}
+                      style={{
+                        padding: '8px 10px',
+                        background: 'rgba(239,68,68,0.22)',
+                        border: `1px solid ${C.red}66`,
+                        borderRadius: 8,
+                        color: C.red,
+                        fontSize: 12,
+                        fontWeight: 800,
+                        cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
+                        opacity: activeToken.is_rugged ? 0.4 : 1
+                      }}
+                    >
+                      -25% Heavy
+                    </button>
+                    <button
+                      disabled={activeToken.is_rugged}
+                      onClick={() => handleDump(activeToken.sym, 50)}
+                      style={{
+                        padding: '8px 10px',
+                        background: activeToken.is_rugged ? 'rgba(239,68,68,0.2)' : C.red,
+                        border: 'none',
+                        borderRadius: 8,
+                        color: '#fff',
+                        fontSize: 12,
+                        fontWeight: 900,
+                        cursor: activeToken.is_rugged ? 'not-allowed' : 'pointer',
+                        opacity: activeToken.is_rugged ? 0.4 : 1
+                      }}
+                    >
+                      -50% Crash
+                    </button>
+                  </div>
 
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div style={{ position: 'relative', flex: 1 }}>
-                  <input
-                    type="number"
-                    disabled={activeToken.is_rugged}
-                    value={customDump}
-                    onChange={e => setCustomDump(e.target.value)}
-                    placeholder="Custom %"
-                    style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 24px 7px 10px', color: C.text, fontSize: 12, outline: 'none', opacity: activeToken.is_rugged ? 0.5 : 1 }}
-                  />
-                  <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: C.muted, fontSize: 11 }}>%</span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <input
+                        type="number"
+                        disabled={activeToken.is_rugged}
+                        value={customDump}
+                        onChange={e => setCustomDump(e.target.value)}
+                        placeholder="Custom %"
+                        style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 24px 7px 10px', color: C.text, fontSize: 12, outline: 'none', opacity: activeToken.is_rugged ? 0.5 : 1 }}
+                      />
+                      <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: C.muted, fontSize: 11 }}>%</span>
+                    </div>
+                    <Btn sm danger disabled={activeToken.is_rugged} onClick={() => handleDump(activeToken.sym, parseFloat(customDump) || 10)}>
+                      <ArrowDownRight size={12} />Dump 📉
+                    </Btn>
+                  </div>
                 </div>
-                <Btn sm danger disabled={activeToken.is_rugged} onClick={() => handleDump(activeToken.sym, parseFloat(customDump) || 10)}>
-                  <ArrowDownRight size={12} />Dump 📉
-                </Btn>
               </div>
-            </div>
-          </div>
+            )}
+          </>
         )}
       </Card>
 
@@ -3546,6 +3587,7 @@ function UsersPage({ metrics, loading, search }: { metrics: AdminMetrics; loadin
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [sel, setSel] = useState<any | null>(null);
   const [page, setPage] = useState(1);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const PER = 10;
 
   useEffect(() => {
@@ -3563,6 +3605,85 @@ function UsersPage({ metrics, loading, search }: { metrics: AdminMetrics; loadin
     return () => { isMounted = false; };
   }, []);
 
+  const getUserDisplayName = (u: any) => {
+    if (!u) return 'Trader';
+    if (u.full_name && typeof u.full_name === 'string' && u.full_name.trim() && !u.full_name.trim().toLowerCase().startsWith('account ')) {
+      return u.full_name.trim();
+    }
+    if (u.username && typeof u.username === 'string' && u.username.trim() && u.username !== 'anon' && !u.username.trim().toLowerCase().startsWith('account ')) {
+      return u.username.trim();
+    }
+    if (u.full_name && typeof u.full_name === 'string' && u.full_name.trim()) {
+      return u.full_name.trim();
+    }
+    if (u.username && typeof u.username === 'string' && u.username.trim() && u.username !== 'anon') {
+      return u.username.trim();
+    }
+    if (u.email && typeof u.email === 'string' && u.email.trim() && u.email !== 'anon') {
+      return u.email.split('@')[0];
+    }
+    if (u.wallet_address) {
+      return `Trader ${u.wallet_address.slice(0, 6)}`;
+    }
+    return 'Trader';
+  };
+
+  const getUserSecondary = (u: any, displayName: string) => {
+    if (!u) return '';
+    if (u.email && typeof u.email === 'string' && u.email.trim() && u.email !== 'anon' && u.email !== displayName) {
+      return u.email;
+    }
+    if (u.username && typeof u.username === 'string' && u.username.trim() && u.username !== 'anon' && u.username !== displayName) {
+      return `@${u.username}`;
+    }
+    if (u.full_name && typeof u.full_name === 'string' && u.full_name.trim() && u.full_name !== displayName) {
+      return u.full_name;
+    }
+    return '';
+  };
+
+  const getUserAvatar = (u: any) => {
+    if (!u) return 'https://api.dicebear.com/7.x/identicon/svg?seed=user';
+    if (u.avatar_url && typeof u.avatar_url === 'string' && u.avatar_url.trim()) {
+      return u.avatar_url.trim();
+    }
+    const seed = encodeURIComponent(u.wallet_address || u.id || u.username || 'axiom');
+    return `https://api.dicebear.com/7.x/identicon/svg?seed=${seed}&backgroundColor=1e1b4b,311042,0f172a,172554`;
+  };
+
+  const handleDeleteUser = async (u: any) => {
+    if (!u) return;
+    const name = getUserDisplayName(u);
+    const uidStr = u.uid || `AXM-${String(u.id || '').replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+    const ok = window.confirm(
+      `⚠️ PERMANENT ACCOUNT DELETION\n\n` +
+      `Are you sure you want to permanently delete user "${name}" (${uidStr})?\n\n` +
+      `This will immediately purge:\n` +
+      `• User account and authentication records\n` +
+      `• All wallet balances, assigned vaults and keys\n` +
+      `• All trades, deposits, copy positions and transactions\n\n` +
+      `This action CANNOT be undone.`
+    );
+    if (!ok) return;
+
+    setDeletingId(u.id);
+    try {
+      const res = await api.deleteAdminUser(u.id);
+      if (res && (!res.success || res.error)) {
+        alert(`Failed to delete user: ${res.error || res.message || 'Operation failed'}`);
+      } else {
+        setUsers(prev => prev.filter(item => item.id !== u.id));
+        if (sel && sel.id === u.id) {
+          setSel(null);
+        }
+      }
+    } catch (err: any) {
+      alert(`Error deleting user: ${err?.message || 'Server error'}`);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const effectiveSearch = (localSearch || search || '').toLowerCase().trim();
   const filtered = users.filter(u => {
     if (!effectiveSearch) return true;
@@ -3570,9 +3691,10 @@ function UsersPage({ metrics, loading, search }: { metrics: AdminMetrics; loadin
     const addr = (u.wallet_address || u.address || '').toLowerCase();
     const name = (u.full_name || '').toLowerCase();
     const idStr = String(u.id || '').toLowerCase();
+    const uidStr = String(u.uid || '').toLowerCase();
     const status = (u.status || '').toLowerCase();
     const balStr = String(u.total_balance_usd || u.balance || '').toLowerCase();
-    return ident.includes(effectiveSearch) || addr.includes(effectiveSearch) || name.includes(effectiveSearch) || idStr.includes(effectiveSearch) || status.includes(effectiveSearch) || balStr.includes(effectiveSearch);
+    return ident.includes(effectiveSearch) || addr.includes(effectiveSearch) || name.includes(effectiveSearch) || idStr.includes(effectiveSearch) || uidStr.includes(effectiveSearch) || status.includes(effectiveSearch) || balStr.includes(effectiveSearch);
   });
 
   const pages = Math.max(1, Math.ceil(filtered.length / PER));
@@ -3665,27 +3787,67 @@ function UsersPage({ metrics, loading, search }: { metrics: AdminMetrics; loadin
 
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
             <thead><tr style={{ borderBottom: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.02)' }}>
               {['User Account', 'User ID (UID)', 'Total Assets', 'Joined Date', 'Status', 'Actions'].map(h => <th key={h} style={TH}>{h}</th>)}
             </tr></thead>
             <tbody>
               {slice.length === 0 ? <tr><td colSpan={6}><EmptyState message="No users found." /></td></tr> : slice.map(u => {
-                const label = (u.username && u.username !== 'anon' ? u.username : '') || u.full_name || u.email || (u.wallet_address ? `${u.wallet_address.slice(0, 6)}...` : 'User');
+                const displayName = getUserDisplayName(u);
+                const secondary = getUserSecondary(u, displayName);
+                const avatarUrl = getUserAvatar(u);
                 const addr = u.wallet_address || u.address || '0x...';
                 const bal = u.total_balance_usd !== undefined ? fmtUSD(u.total_balance_usd) : fmtUSD(u.balance);
                 const date = u.created_at || u.joined || 'Recent';
                 const uid = u.uid || `AXM-${String(u.id || '').replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+                const isDeleting = deletingId === u.id;
+
                 return (
                   <tr key={u.id} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer' }} onClick={() => setSel(u)} {...TR_HOVER}>
                     <td style={TD}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ width: 34, height: 34, borderRadius: '50%', background: `${C.violet}33`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 11, color: C.violet }}>
-                          {label.slice(0, 2).toUpperCase()}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: '50%',
+                          overflow: 'hidden',
+                          background: 'linear-gradient(135deg, rgba(124,58,237,0.3) 0%, rgba(59,130,246,0.3) 100%)',
+                          border: '1.5px solid rgba(255, 255, 255, 0.15)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+                        }}>
+                          <img
+                            src={avatarUrl}
+                            alt={displayName}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            onError={(e) => {
+                              const img = e.currentTarget as HTMLImageElement;
+                              img.onerror = null;
+                              img.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(u.id || 'axm')}`;
+                            }}
+                          />
                         </div>
-                        <div>
-                          <div style={{ fontWeight: 700 }}>{label}</div>
-                          {u.is_email_verified && <span style={{ fontSize: 9, color: C.green, fontWeight: 700 }}>Verified</span>}
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 800, fontSize: 13, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 170 }}>
+                            {displayName}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                            {secondary ? (
+                              <span style={{ fontSize: 10, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 120 }}>
+                                {secondary}
+                              </span>
+                            ) : null}
+                            {u.is_email_verified ? (
+                              <span style={{ fontSize: 9, color: C.green, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 2, background: 'rgba(16,185,129,0.1)', padding: '1px 5px', borderRadius: 4, border: '1px solid rgba(16,185,129,0.2)' }}>
+                                ✓ Verified
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: 9, color: C.muted, fontWeight: 600 }}>Unverified</span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -3701,9 +3863,36 @@ function UsersPage({ metrics, loading, search }: { metrics: AdminMetrics; loadin
                     <td style={{ ...TD, color: C.muted, fontSize: 12 }}>{date}</td>
                     <td style={TD}><Badge status={u.status || 'active'} /></td>
                     <td style={TD} onClick={e => e.stopPropagation()}>
-                      <Btn sm ghost danger={u.status === 'active'} onClick={() => toggle(u.id)}>
-                        {u.status === 'suspended' ? <><Shield size={12} />Reinstate</> : <><X size={12} />Suspend</>}
-                      </Btn>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Btn
+                          sm
+                          ghost
+                          danger={u.status === 'active'}
+                          onClick={() => toggle(u.id)}
+                          title={u.status === 'suspended' ? 'Reinstate user trading' : 'Suspend user trading'}
+                          style={{ whiteSpace: 'nowrap' }}
+                        >
+                          {u.status === 'suspended' ? <><Shield size={12} />Reinstate</> : <><X size={12} />Suspend</>}
+                        </Btn>
+                        <Btn
+                          sm
+                          ghost
+                          danger
+                          onClick={() => handleDeleteUser(u)}
+                          disabled={isDeleting}
+                          title="Permanently delete user account and purge all records"
+                          style={{
+                            background: 'rgba(239, 68, 68, 0.12)',
+                            border: '1px solid rgba(239, 68, 68, 0.35)',
+                            color: '#F87171',
+                            whiteSpace: 'nowrap',
+                            opacity: isDeleting ? 0.6 : 1
+                          }}
+                        >
+                          <Trash2 size={12} />
+                          <span>{isDeleting ? 'Deleting...' : 'Delete'}</span>
+                        </Btn>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -3722,34 +3911,66 @@ function UsersPage({ metrics, loading, search }: { metrics: AdminMetrics; loadin
 
       {sel && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 900 }} onClick={() => setSel(null)}>
-          <div style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 'min(360px, 90vw)', background: C.surface, borderLeft: `1px solid ${C.border}`, padding: 24, overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-              <div style={{ fontWeight: 800, fontSize: 16 }}>User Portfolio Detail</div>
-              <button onClick={() => setSel(null)} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer' }}><X size={18} /></button>
+          <div style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 'min(380px, 92vw)', background: C.surface, borderLeft: `1px solid ${C.border}`, padding: 24, overflowY: 'auto', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>User Account Details</div>
+              <button onClick={() => setSel(null)} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 4 }}><X size={18} /></button>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24 }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', background: `${C.violet}33`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: C.violet }}>
-                {(sel.email || sel.username || 'U').slice(0, 2).toUpperCase()}
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24, padding: '14px', background: 'rgba(255,255,255,0.03)', borderRadius: 14, border: `1px solid ${C.border}` }}>
+              <div style={{
+                width: 58,
+                height: 58,
+                borderRadius: '50%',
+                overflow: 'hidden',
+                background: 'linear-gradient(135deg, rgba(124,58,237,0.3) 0%, rgba(59,130,246,0.3) 100%)',
+                border: '2px solid rgba(255, 255, 255, 0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                boxShadow: '0 4px 14px rgba(0,0,0,0.4)'
+              }}>
+                <img
+                  src={getUserAvatar(sel)}
+                  alt={getUserDisplayName(sel)}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  onError={(e) => {
+                    const img = e.currentTarget as HTMLImageElement;
+                    img.onerror = null;
+                    img.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(sel.id || 'axm')}`;
+                  }}
+                />
               </div>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 16 }}>{sel.email || sel.username}</div>
-                <div style={{ fontSize: 11, color: C.muted, fontFamily: 'monospace', marginTop: 2 }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontWeight: 800, fontSize: 16, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {getUserDisplayName(sel)}
+                </div>
+                {getUserSecondary(sel, getUserDisplayName(sel)) && (
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {getUserSecondary(sel, getUserDisplayName(sel))}
+                  </div>
+                )}
+                <div style={{ fontSize: 11, color: '#22D3EE', fontFamily: 'monospace', marginTop: 4 }}>
                   {sel.wallet_address || sel.address}
                 </div>
               </div>
             </div>
+
             {[
               ['Axiom UID', sel.uid || `AXM-${String(sel.id || '').replace(/-/g, '').slice(0, 8).toUpperCase()}`],
               ['Net Asset Value', sel.total_balance_usd !== undefined ? fmtUSD(sel.total_balance_usd) : fmtUSD(sel.balance)],
               ['Registration Date', sel.created_at || sel.joined || 'Recent'],
-              ['Account Status', sel.status || 'Active']
+              ['Account Status', sel.status || 'Active'],
+              ['Email Verified', sel.is_email_verified ? 'Yes (Verified)' : 'No (Unverified)']
             ].map(([k, v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${C.border}` }}>
                 <span style={{ color: C.muted, fontSize: 13 }}>{k}</span>
-                <span style={{ fontWeight: 700, fontSize: 13 }}>{v}</span>
+                <span style={{ fontWeight: 700, fontSize: 13, color: k === 'Axiom UID' ? '#22D3EE' : C.text, fontFamily: k === 'Axiom UID' ? 'monospace' : 'inherit' }}>{v}</span>
               </div>
             ))}
-            <div style={{ marginTop: 20 }}>
+
+            <div style={{ marginTop: 20, flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Asset Balances</div>
               {sel.balances ? (
                 Object.entries(sel.balances).map(([curr, amt]) => (
@@ -3766,6 +3987,33 @@ function UsersPage({ metrics, loading, search }: { metrics: AdminMetrics; loadin
                   </div>
                 ))
               )}
+            </div>
+
+            <div style={{ marginTop: 24, paddingTop: 18, borderTop: `1px solid ${C.border}` }}>
+              <button
+                onClick={() => handleDeleteUser(sel)}
+                disabled={deletingId === sel.id}
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  borderRadius: 10,
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  color: '#F87171',
+                  fontWeight: 800,
+                  fontSize: 13,
+                  cursor: deletingId === sel.id ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  transition: 'all 150ms',
+                  opacity: deletingId === sel.id ? 0.6 : 1
+                }}
+              >
+                <Trash2 size={15} />
+                <span>{deletingId === sel.id ? 'Deleting User Account...' : 'Delete Account Permanently'}</span>
+              </button>
             </div>
           </div>
         </div>

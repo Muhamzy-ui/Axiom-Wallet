@@ -586,6 +586,22 @@ export const api = {
     }
   },
 
+  async deleteAdminUser(userId: string): Promise<{ success: boolean; message: string; error?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/admin-api/users/${encodeURIComponent(userId)}/delete/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to delete user');
+      }
+      return res.json();
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Failed to delete user', error: e.message || 'Failed to delete user' };
+    }
+  },
+
   async getAdminDeposits(): Promise<any[]> {
     try {
       const res = await fetch(`${API_BASE}/admin-api/deposits/`);

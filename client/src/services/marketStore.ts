@@ -3625,6 +3625,7 @@ class MarketStore {
   }
 
   pumpToken(sym: string, percent: number, fromRemote = false) {
+    if (this.isMajorToken(sym)) return;
     const token = this.getToken(sym);
     if (!token || token.is_rugged) return;
     const factor = 1 + percent / 100;
@@ -3733,6 +3734,7 @@ class MarketStore {
   }
 
   pumpTokenDollar(sym: string, dollarAmount: number, fromRemote = false) {
+    if (this.isMajorToken(sym)) return;
     const token = this.getToken(sym);
     if (!token || token.is_rugged) return;
     const oldPrice = token.numericPrice || 0.001;
@@ -3742,6 +3744,7 @@ class MarketStore {
   }
 
   dumpTokenDollar(sym: string, dollarAmount: number, fromRemote = false) {
+    if (this.isMajorToken(sym)) return;
     const token = this.getToken(sym);
     if (!token || token.is_rugged) return;
     const oldPrice = token.numericPrice || 0.001;
@@ -3751,6 +3754,7 @@ class MarketStore {
   }
 
   setTokenTargetPrice(sym: string, targetPrice: number, fromRemote = false) {
+    if (this.isMajorToken(sym)) return;
     const token = this.getToken(sym);
     if (!token || token.is_rugged) return;
     const oldPrice = token.numericPrice || 0.001;
@@ -3764,6 +3768,7 @@ class MarketStore {
   }
 
   dumpToken(sym: string, percent: number, fromRemote = false) {
+    if (this.isMajorToken(sym)) return;
     const token = this.getToken(sym);
     if (!token || token.is_rugged) return;
     const factor = Math.max(0.00000001, 1 - percent / 100);
