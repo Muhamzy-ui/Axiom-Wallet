@@ -11,6 +11,105 @@ import { api } from "../../services/api";
 import { generatePhantomAvatar } from "../../utils/avatar";
 import "./LeaderboardView.css";
 
+const STANDARD_LOGOS: Record<string, string> = {
+  BTC: "https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png",
+  ETH: "https://coin-images.coingecko.com/coins/images/279/large/ethereum.png",
+  SOL: "https://coin-images.coingecko.com/coins/images/4128/large/solana.png",
+  USDT: "https://coin-images.coingecko.com/coins/images/325/large/Tether.png",
+  USDC: "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png",
+  BNB: "https://coin-images.coingecko.com/coins/images/825/large/bnb-icon2_2x.png",
+  XRP: "https://coin-images.coingecko.com/coins/images/44/large/xrp-symbol-white-128.png",
+  DOGE: "https://coin-images.coingecko.com/coins/images/5/large/dogecoin.png",
+  ADA: "https://coin-images.coingecko.com/coins/images/975/large/cardano.png",
+  AVAX: "https://coin-images.coingecko.com/coins/images/12559/large/Avalanche_Circle_RedWhite_Trans.png",
+  SUI: "https://coin-images.coingecko.com/coins/images/26375/large/sui-ocean-square.png",
+  BONK: "https://coin-images.coingecko.com/coins/images/28600/large/bonk.jpg",
+  WIF: "https://coin-images.coingecko.com/coins/images/33566/large/dogwifhat.jpg",
+  POPCAT: "https://coin-images.coingecko.com/coins/images/33890/large/popcat.png",
+  MASK: "https://coin-images.coingecko.com/coins/images/14051/large/Mask_Network.png",
+  STONKEX: "https://coin-images.coingecko.com/coins/images/33890/large/popcat.png",
+  CATE: "https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/cat.png",
+  BREW: "https://images.unsplash.com/photo-1517976487502-5f7946f10157?w=128&auto=format&fit=crop&q=80",
+  HOOKED: "https://cryptologos.cc/logos/solana-sol-logo.png",
+  MEME: "https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=128&auto=format&fit=crop&q=80",
+};
+
+export function CoinIcon({ sym, size = 24 }: { sym: string; size?: number }) {
+  const [hasError, setHasError] = useState(false);
+  const clean = (sym || "").toUpperCase().trim().replace(/^\$/, "");
+
+  const tok = marketStore.getToken(clean);
+  const foundInList = marketStore.tokens.find(
+    (t) => (t.sym || "").toUpperCase().trim().replace(/^\$/, "") === clean
+  );
+
+  let candidateUrl = "";
+  if (tok && tok.imageUrl && !tok.imageUrl.includes("placeholder")) {
+    candidateUrl = tok.imageUrl;
+  } else if (foundInList && foundInList.imageUrl) {
+    candidateUrl = foundInList.imageUrl;
+  } else if ((tok as any)?.logo_url) {
+    candidateUrl = (tok as any).logo_url;
+  } else if ((foundInList as any)?.logo_url) {
+    candidateUrl = (foundInList as any).logo_url;
+  }
+
+  const src = candidateUrl || STANDARD_LOGOS[clean] || `/coins/${clean.toLowerCase()}.png`;
+
+  useEffect(() => {
+    setHasError(false);
+  }, [src, clean]);
+
+  if (hasError || !src) {
+    return (
+      <span
+        style={{
+          width: size,
+          height: size,
+          borderRadius: "50%",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: Math.max(9, Math.floor(size * 0.42)),
+          fontWeight: 850,
+          background: "linear-gradient(135deg, #7C3AED, #3B82F6)",
+          color: "#fff",
+          border: "1px solid rgba(255,255,255,0.2)",
+          flexShrink: 0
+        }}
+      >
+        {clean.slice(0, 2)}
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={clean}
+      onError={() => setHasError(true)}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        objectFit: "cover",
+        border: "1px solid rgba(255,255,255,0.15)",
+        background: "rgba(255,255,255,0.05)",
+        flexShrink: 0
+      }}
+    />
+  );
+}
+
+export function getAvailableUsdBalance(): number {
+  const bals = marketStore.getBalances();
+  const getBalNum = (v: any) => (typeof v === "object" && v !== null ? Number(v.bal ?? 0) : Number(v ?? 0)) || 0;
+  const usdt = getBalNum(bals["USDT"]);
+  const usdc = getBalNum(bals["USDC"]);
+  const sol = getBalNum(bals["SOL"]);
+  const solPrice = marketStore.getToken("SOL")?.numericPrice || 145;
+  return usdt + usdc + sol * solPrice;
+}
 
 const INITIAL_TRADERS: Trader[] = leaderboardStore.getAll50Traders();
 // Traders loaded dynamically from leaderboardStore (Top 50 traders with 24-hour daily epoch drift)
@@ -499,9 +598,10 @@ export function LeaderboardView({
 
       if (isCopyingThis) {
         const bals = marketStore.getBalances();
-        const solBal = Number(bals['SOL'] || 0);
-        const usdtBal = Number(bals['USDT'] || 0);
-        const usdcBal = Number(bals['USDC'] || 0);
+        const getBal = (v: any) => (typeof v === "object" && v !== null ? Number(v.bal ?? 0) : Number(v ?? 0)) || 0;
+        const solBal = getBal(bals['SOL']);
+        const usdtBal = getBal(bals['USDT']);
+        const usdcBal = getBal(bals['USDC']);
         const totalNetUsd = solBal * 179 + usdtBal + usdcBal;
 
         if (totalNetUsd < 5 || solBal < 0.05) {
@@ -820,6 +920,35 @@ export function LeaderboardView({
   const top2 = traders[1];
   const top3 = traders[2];
 
+  const availableUsd = getAvailableUsdBalance();
+
+  // Dynamic header metrics computed from all 50 traders and 24h daily epoch
+  const totalActiveCopiers = useMemo(() => {
+    const epoch = Math.floor(Date.now() / 86400000);
+    const sumCopiers = traders.reduce((acc, t, idx) => {
+      const rankWeight = Math.max(1, 51 - (t.rank || idx + 1));
+      const winBonus = Math.round((t.winRate || 80) * 1.5);
+      const epochShift = ((epoch * 37 + (idx + 1) * 19) % 41) - 20; // -20 to +20 drift per trader every 24h
+      const traderCopiers = Math.max(45, Math.round(rankWeight * 4.8 + winBonus + epochShift));
+      return acc + traderCopiers;
+    }, 0);
+    return sumCopiers.toLocaleString();
+  }, [traders]);
+
+  const totalTrackedVol = useMemo(() => {
+    const sumVol = traders.reduce((acc, t) => acc + (t.volume || 0), 0);
+    if (sumVol >= 1e9) {
+      return `$${(sumVol / 1e9).toFixed(1)}B`;
+    }
+    if (sumVol >= 1e6) {
+      return `$${(sumVol / 1e6).toFixed(1)}M`;
+    }
+    if (sumVol > 0) {
+      return `$${(sumVol / 1e3).toFixed(1)}K`;
+    }
+    return `$148.2M`;
+  }, [traders]);
+
   const handleStartCopy = async (trader: Trader) => {
     setCopySubmitting(true);
     setCopyError(null);
@@ -841,21 +970,39 @@ export function LeaderboardView({
         setCopyingTraders(leaderboardStore.getCopiedTradersMap());
         setCopyModalTrader(null);
 
-        // Deduct from marketStore balances client-side for immediate reactivity
-        const bals = marketStore.getBalances();
-        const baseCurr = res.position.base_currency || 'USDT';
-        const deductAmt = parseFloat(res.position.base_amount_deducted || String(allocatedUsdNum));
-        const currentBal = Number(bals[baseCurr] || 0);
-        marketStore.setBalance(baseCurr, Math.max(0, currentBal - deductAmt));
+        // Update marketStore balances safely from backend API response
+        if (res.balances && typeof res.balances === 'object') {
+          Object.entries(res.balances).forEach(([curr, val]) => {
+            const numVal = parseFloat(String(val));
+            if (!isNaN(numVal)) {
+              marketStore.setBalance(curr, numVal);
+            }
+          });
+        } else {
+          const bals = marketStore.getBalances();
+          const baseCurr = (res.position?.base_currency || 'USDT').toUpperCase().replace(/^\$/, '');
+          const deductAmt = parseFloat(res.position?.base_amount_deducted || String(allocatedUsdNum)) || allocatedUsdNum;
+          const curBaseObj = bals[baseCurr];
+          const currentBal = typeof curBaseObj === 'object' && curBaseObj !== null ? Number(curBaseObj.bal ?? 0) : Number(curBaseObj ?? 0);
+          marketStore.setBalance(baseCurr, Math.max(0, currentBal - deductAmt));
+        }
 
-        // Add locked tokens
-        const tokSym = res.position.token_symbol || targetToken;
-        const boughtAmt = parseFloat(res.position.token_amount_bought || '0');
-        const currentTok = Number(bals[tokSym] || 0);
-        marketStore.setBalance(tokSym, currentTok + boughtAmt);
+        // Add bought locked token to marketStore
+        const tokSym = (res.position?.token_symbol || targetToken).toUpperCase().replace(/^\$/, '');
+        const boughtAmt = parseFloat(res.position?.token_amount_bought || '0');
+        if (boughtAmt > 0) {
+          const curTokObj = marketStore.getBalances()[tokSym];
+          const currentTok = typeof curTokObj === 'object' && curTokObj !== null ? Number(curTokObj.bal ?? 0) : Number(curTokObj ?? 0);
+          marketStore.setBalance(tokSym, currentTok + boughtAmt);
+        }
+
+        // Force-sync portfolio directly from backend to guarantee complete sync
+        try {
+          await marketStore.syncBackendPortfolio(true);
+        } catch {}
 
         if (flash) {
-          flash(`🚀 Copy trade active! $${allocatedUsdNum.toFixed(2)} USD deducted & allocated to mirror ${trader.name}. Position locked in portfolio.`);
+          flash(`🚀 Copy trade active! $${allocatedUsdNum.toFixed(2)} USD allocated to mirror ${trader.name}. Position active in portfolio.`);
         }
       }
     } catch (err: any) {
@@ -938,16 +1085,16 @@ export function LeaderboardView({
           <div className="lb-stat-box">
             <span className="lb-stat-label">24h Top PnL</span>
             <span className="lb-stat-val" style={{ color: "#10B981" }}>
-              +{top1 ? `$${Math.round(top1.pnl24h).toLocaleString()}` : "$184,420"}
+              +{top1 ? `$${Math.round(top1.pnl24h).toLocaleString()}` : "$114,163"}
             </span>
           </div>
           <div className="lb-stat-box">
             <span className="lb-stat-label">Active Copiers</span>
-            <span className="lb-stat-val">12,840</span>
+            <span className="lb-stat-val">{totalActiveCopiers}</span>
           </div>
           <div className="lb-stat-box">
             <span className="lb-stat-label">24h Tracked Vol</span>
-            <span className="lb-stat-val">$148.2M</span>
+            <span className="lb-stat-val">{totalTrackedVol}</span>
           </div>
         </div>
       </section>
@@ -1141,11 +1288,13 @@ export function LeaderboardView({
                 <span
                   key={coin}
                   className="lb-coin-tag"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (onSelectCoin) onSelectCoin(coin);
                   }}
                 >
+                  <CoinIcon sym={coin} size={15} />
                   {coin}
                 </span>
               ))}
@@ -1235,11 +1384,13 @@ export function LeaderboardView({
                 <span
                   key={coin}
                   className="lb-coin-tag"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (onSelectCoin) onSelectCoin(coin);
                   }}
                 >
+                  <CoinIcon sym={coin} size={15} />
                   {coin}
                 </span>
               ))}
@@ -1327,11 +1478,13 @@ export function LeaderboardView({
                 <span
                   key={coin}
                   className="lb-coin-tag"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (onSelectCoin) onSelectCoin(coin);
                   }}
                 >
+                  <CoinIcon sym={coin} size={15} />
                   {coin}
                 </span>
               ))}
@@ -1688,11 +1841,13 @@ export function LeaderboardView({
                           <span
                             key={sym}
                             className="lb-coin-tag"
+                            style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
                             onClick={(e) => {
                               e.stopPropagation();
                               if (onSelectCoin) onSelectCoin(sym);
                             }}
                           >
+                            <CoinIcon sym={sym} size={15} />
                             {sym}
                           </span>
                         ))}
@@ -1860,16 +2015,19 @@ export function LeaderboardView({
                           border: "1px solid rgba(255,255,255,0.08)"
                         }}
                       >
-                        <div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 800, color: "#fff" }}>
-                            <span>{pos.symbol}</span>
-                            <span style={{ fontSize: "10px", padding: "1px 5px", borderRadius: 4, background: "rgba(16,185,129,0.2)", color: "#10B981" }}>
-                              {pos.side.toUpperCase()} {pos.leverage}
-                            </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <CoinIcon sym={pos.symbol} size={28} />
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 800, color: "#fff" }}>
+                              <span>{pos.symbol}</span>
+                              <span style={{ fontSize: "10px", padding: "1px 5px", borderRadius: 4, background: "rgba(16,185,129,0.2)", color: "#10B981" }}>
+                                {pos.side.toUpperCase()} {pos.leverage}
+                              </span>
+                            </div>
+                            <small style={{ color: "var(--muted)", fontSize: "11px" }}>
+                              Entry: {pos.entryPrice} • Size: {pos.size}
+                            </small>
                           </div>
-                          <small style={{ color: "var(--muted)", fontSize: "11px" }}>
-                            Entry: {pos.entryPrice} • Size: {pos.size}
-                          </small>
                         </div>
                         <div style={{ textAlign: "right" }}>
                           <div style={{ fontWeight: 850, color: "#10B981" }}>{pos.unrealizedPnl}</div>
@@ -1899,9 +2057,10 @@ export function LeaderboardView({
                         fontSize: "12px"
                       }}
                     >
-                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <CoinIcon sym={t.symbol} size={22} />
                         <span style={{ fontWeight: 750, color: "#DDD6FE" }}>{t.symbol}</span>
-                        <span style={{ color: "var(--muted)" }}>{t.time}</span>
+                        <span style={{ color: "var(--muted)", fontSize: "11px" }}>{t.time}</span>
                       </div>
                       <div style={{ fontWeight: 800, color: "#10B981" }}>
                         {t.pnl} ({t.roi})
@@ -1953,6 +2112,13 @@ export function LeaderboardView({
                   <div style={{ color: "#10B981", fontSize: "11.5px", fontWeight: 700 }}>
                     Win Rate: {copyModalTrader.winRate}% • 24h PnL: +{formatCurrency(copyModalTrader.pnl24h)}
                   </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                    <span style={{ color: "var(--muted)", fontSize: "11.5px" }}>Target Coin:</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontWeight: 800, color: "#fff", fontSize: "12px", background: "rgba(255,255,255,0.06)", padding: "2px 8px", borderRadius: 6 }}>
+                      <CoinIcon sym={copyModalTrader.topCoins?.[0] || 'SOL'} size={16} />
+                      {copyModalTrader.topCoins?.[0] || 'SOL'}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -1960,8 +2126,8 @@ export function LeaderboardView({
               <div className="lb-input-group">
                 <label>
                   <span>Allocation Investment ($ USD)</span>
-                  <span style={{ color: (Number(marketStore.getBalances()['USDT'] || 0) + Number(marketStore.getBalances()['USDC'] || 0) + Number(marketStore.getBalances()['SOL'] || 0) * 145) < 5 ? "#EF4444" : "#10B981", fontWeight: 700 }}>
-                    Avail: ${(Number(marketStore.getBalances()['USDT'] || 0) + Number(marketStore.getBalances()['USDC'] || 0) + Number(marketStore.getBalances()['SOL'] || 0) * 145).toFixed(2)} USD
+                  <span style={{ color: availableUsd < 5 ? "#EF4444" : "#10B981", fontWeight: 700 }}>
+                    Avail: ${availableUsd.toFixed(2)} USD
                   </span>
                 </label>
                 <div className="lb-input-wrap">
@@ -2006,7 +2172,7 @@ export function LeaderboardView({
                 </div>
               )}
 
-              {parseFloat(copyAmount || '0') > (Number(marketStore.getBalances()['USDT'] || 0) + Number(marketStore.getBalances()['USDC'] || 0) + Number(marketStore.getBalances()['SOL'] || 0) * 145) && (
+              {parseFloat(copyAmount || '0') > availableUsd && (
                 <div style={{
                   background: 'rgba(245, 158, 11, 0.12)',
                   border: '1px solid rgba(245, 158, 11, 0.3)',
@@ -2020,7 +2186,7 @@ export function LeaderboardView({
                   gap: 8,
                   marginTop: 8
                 }}>
-                  <span>⚠️ You need ${parseFloat(copyAmount || '10').toFixed(2)} USD. Your available balance is ${(Number(marketStore.getBalances()['USDT'] || 0) + Number(marketStore.getBalances()['USDC'] || 0) + Number(marketStore.getBalances()['SOL'] || 0) * 145).toFixed(2)}.</span>
+                  <span>⚠️ You need ${parseFloat(copyAmount || '10').toFixed(2)} USD. Your available balance is ${availableUsd.toFixed(2)}.</span>
                   {onOpenDeposit && (
                     <button
                       type="button"
@@ -2071,18 +2237,18 @@ export function LeaderboardView({
                   marginTop: 10
                 }}
               >
-                🔒 <b>Auto-Executed & Locked Position</b>: Upon confirmation, <b>${copyAmount} USD</b> is deducted from your balance to purchase {copyModalTrader.name}'s active coin. Your tokens are securely locked in your portfolio and cannot be sold until the Master Trader sells.
+                🔒 <b>Auto-Executed & Locked Position</b>: Upon confirmation, <b>${copyAmount} USD</b> is deducted from your balance to purchase {copyModalTrader.name}'s active coin.
               </div>
             </div>
 
             <div className="lb-modal-footer">
               <button
                 className="lb-confirm-btn"
-                disabled={copySubmitting || parseFloat(copyAmount || '0') > (Number(marketStore.getBalances()['USDT'] || 0) + Number(marketStore.getBalances()['USDC'] || 0) + Number(marketStore.getBalances()['SOL'] || 0) * 145)}
+                disabled={copySubmitting || parseFloat(copyAmount || '0') > availableUsd}
                 onClick={() => handleStartCopy(copyModalTrader)}
                 style={{
-                  opacity: copySubmitting || parseFloat(copyAmount || '0') > (Number(marketStore.getBalances()['USDT'] || 0) + Number(marketStore.getBalances()['USDC'] || 0) + Number(marketStore.getBalances()['SOL'] || 0) * 145) ? 0.6 : 1,
-                  cursor: copySubmitting || parseFloat(copyAmount || '0') > (Number(marketStore.getBalances()['USDT'] || 0) + Number(marketStore.getBalances()['USDC'] || 0) + Number(marketStore.getBalances()['SOL'] || 0) * 145) ? 'not-allowed' : 'pointer',
+                  opacity: copySubmitting || parseFloat(copyAmount || '0') > availableUsd ? 0.6 : 1,
+                  cursor: copySubmitting || parseFloat(copyAmount || '0') > availableUsd ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',

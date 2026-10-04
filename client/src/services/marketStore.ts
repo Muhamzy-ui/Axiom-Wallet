@@ -1899,7 +1899,11 @@ class MarketStore {
           const sym = rawSym.replace(/^\$/, "");
           if (!sym) return;
 
-          const amt = parseFloat(item.available_amount || "0") || 0;
+          const availAmt = parseFloat(item.available_amount || "0") || 0;
+          const lockedAmt = parseFloat(item.locked_amount || "0") || 0;
+          const totalAmt = parseFloat(item.total_amount || "0") || (availAmt + lockedAmt);
+          // For holding balance, use total amount so copy trading locked tokens reflect properly in net worth
+          const amt = totalAmt > 0 ? totalAmt : availAmt;
           const backendInvested = parseFloat(item.total_invested || "0") || 0;
           const backendAvgPrice = parseFloat(item.avg_buy_price || "0") || 0;
           const itemPrice = parseFloat(item.price_usd || "0") || 0;
@@ -1954,7 +1958,7 @@ class MarketStore {
             };
             hasUpdates = true;
           } else {
-            if (local.bal !== amt || local.usdValue === 0 && amt > 0) {
+            if (local.bal !== amt || (local.usdValue === 0 && amt > 0)) {
               local.bal = amt;
               local.usdValue = Number((amt * liveP).toFixed(2));
               hasUpdates = true;
@@ -2177,6 +2181,7 @@ class MarketStore {
   }
 
   setBalance(sym: string, amount: number) {
+    if (amount === undefined || amount === null || isNaN(amount)) return;
     const cleanSym = sym.toUpperCase().trim().replace(/^\$/, "");
     if (!this.balances[cleanSym]) {
       this.balances[cleanSym] = { bal: amount, usdValue: amount, name: cleanSym, totalInvested: amount, avgBuyPrice: 1.0 };
