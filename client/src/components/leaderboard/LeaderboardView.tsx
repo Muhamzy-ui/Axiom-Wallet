@@ -1123,8 +1123,11 @@ export function LeaderboardView({
 
               <div className="lb-winrate-container">
                 <div className="lb-winrate-labels">
-                  <span>Win Rate</span>
-                  <b>{top2.winRate}%</b>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <span className="lb-live-pulse-dot" />
+                    Win Rate
+                  </span>
+                  <b>{top2.winRate}% ({top2.winTrades.toLocaleString()}/{top2.totalTrades.toLocaleString()} Wins)</b>
                 </div>
                 <div className="lb-progress-track">
                   <div className="lb-progress-fill" style={{ width: `${top2.winRate}%` }} />
@@ -1214,8 +1217,11 @@ export function LeaderboardView({
 
               <div className="lb-winrate-container">
                 <div className="lb-winrate-labels">
-                  <span>Win Rate</span>
-                  <b>{top1.winRate}% (1,684/1,842 Wins)</b>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <span className="lb-live-pulse-dot" />
+                    Win Rate
+                  </span>
+                  <b>{top1.winRate}% ({top1.winTrades.toLocaleString()}/{top1.totalTrades.toLocaleString()} Wins)</b>
                 </div>
                 <div className="lb-progress-track">
                   <div className="lb-progress-fill" style={{ width: `${top1.winRate}%` }} />
@@ -1303,8 +1309,11 @@ export function LeaderboardView({
 
               <div className="lb-winrate-container">
                 <div className="lb-winrate-labels">
-                  <span>Win Rate</span>
-                  <b>{top3.winRate}%</b>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <span className="lb-live-pulse-dot" />
+                    Win Rate
+                  </span>
+                  <b>{top3.winRate}% ({top3.winTrades.toLocaleString()}/{top3.totalTrades.toLocaleString()} Wins)</b>
                 </div>
                 <div className="lb-progress-track">
                   <div className="lb-progress-fill" style={{ width: `${top3.winRate}%` }} />
@@ -1533,7 +1542,10 @@ export function LeaderboardView({
                   onClick={() => setSortBy("winRate")}
                   title="Click to sort by Win Rate"
                 >
-                  Win Rate {sortBy === "winRate" ? "▼" : ""}
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <span className="lb-live-pulse-dot" />
+                    Win Rate {sortBy === "winRate" ? "▼" : ""}
+                  </span>
                 </th>
                 <th
                   onClick={() => setSortBy("volume")}
@@ -1650,7 +1662,10 @@ export function LeaderboardView({
                     <td>
                       <div className="lb-table-wr-cell">
                         <div className="lb-wr-text">
-                          <span>{t.winRate}%</span>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                            <span className="lb-live-pulse-dot" />
+                            {t.winRate}%
+                          </span>
                           <span style={{ fontSize: "10.5px", color: "var(--muted)" }}>
                             {(t as any).isGrinder === false ? "Spot HODL" : `${t.winTrades}W / ${t.lossTrades}L`}
                           </span>
@@ -1805,7 +1820,10 @@ export function LeaderboardView({
                   </div>
                 </div>
                 <div>
-                  <small style={{ color: "var(--muted)", fontSize: "10.5px" }}>WIN RATE</small>
+                  <small style={{ color: "var(--muted)", fontSize: "10.5px", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <span className="lb-live-pulse-dot" />
+                    WIN RATE
+                  </small>
                   <div style={{ fontWeight: 850, color: "#fff", fontSize: "15px" }}>
                     {inspectTrader.winRate}%
                   </div>

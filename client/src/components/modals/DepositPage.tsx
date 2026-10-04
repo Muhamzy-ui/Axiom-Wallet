@@ -106,6 +106,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
 
   const handleSelectCoin = (sym: DepositCoin) => {
     setDepositCoin(sym);
+    setAssignedWallet(null);
     const availableNets = COIN_NETWORKS[sym];
     if (availableNets && availableNets.length > 0) {
       setDepositNetwork(availableNets[0].networkKey);
@@ -228,9 +229,16 @@ const NETWORK_POOLS: Record<string, string[]> = {
     }
   };
 
-  const activeDepositAddress = assignedWallet?.address || getFallbackAddress(depositNetwork);
+  const activeDepositAddress =
+    assignedWallet && assignedWallet.network === depositNetwork
+      ? assignedWallet.address
+      : getFallbackAddress(depositNetwork);
 
   const handleCopyAddress = () => {
+    if (timeLeft <= 0) {
+      flash("⚠️ Deposit order has expired. Please click 'Generate New Order' first.");
+      return;
+    }
     copyToClipboard(activeDepositAddress);
     setCopiedAddr(true);
     flash(`✅ Copied ${depositCoin} (${depositNetwork.split(" ")[0]}) deposit address!`);
@@ -238,6 +246,10 @@ const NETWORK_POOLS: Record<string, string[]> = {
   };
 
   const handleVerifyOnChainDeposit = async () => {
+    if (timeLeft <= 0) {
+      setVerifyError("Deposit order expired. Please click 'Generate New Order' below to get a fresh 5-minute window.");
+      return;
+    }
     const cleanHash = txHash.trim();
     if (!cleanHash) {
       setVerifyError("Please enter your transaction signature or hash (TxID).");
@@ -291,13 +303,13 @@ const NETWORK_POOLS: Record<string, string[]> = {
 
   // Continuous background on-chain radar (auto-detect incoming transfer every 4.5s)
   useEffect(() => {
-    if (!activeDepositAddress || verifySuccess || isVerifying) return;
+    if (!activeDepositAddress || verifySuccess || isVerifying || timeLeft <= 0) return;
 
     let isMounted = true;
     let pollTimer: any = null;
 
     const runAutoDetect = async () => {
-      if (!isMounted || verifySuccess || isVerifying) return;
+      if (!isMounted || verifySuccess || isVerifying || timeLeft <= 0) return;
       try {
         setIsAutoChecking(true);
         const userAddr =
@@ -355,7 +367,7 @@ const NETWORK_POOLS: Record<string, string[]> = {
       clearTimeout(initialTimer);
       clearInterval(pollTimer);
     };
-  }, [activeDepositAddress, depositCoin, depositNetwork, depositAmt, verifySuccess, isVerifying, authUser]);
+  }, [activeDepositAddress, depositCoin, depositNetwork, depositAmt, verifySuccess, isVerifying, authUser, timeLeft]);
 
   const handleManualCheckNow = async () => {
     if (isAutoChecking || isVerifying || verifySuccess) return;
@@ -565,7 +577,10 @@ const NETWORK_POOLS: Record<string, string[]> = {
                         key={net.networkKey}
                         type="button"
                         className={`network-pill ${isNetActive ? "active" : ""}`}
-                        onClick={() => setDepositNetwork(net.networkKey)}
+                        onClick={() => {
+                          setDepositNetwork(net.networkKey);
+                          setAssignedWallet(null);
+                        }}
                       >
                         <span>{net.label}</span>
                         <span style={{ fontSize: 9.5, opacity: 0.8 }}>({net.speed})</span>
@@ -588,8 +603,52 @@ const NETWORK_POOLS: Record<string, string[]> = {
               </div>
 
               <div className="qr-container">
-                <div className="qr-frame">
-                  <div className="qr-scanner-line" />
+                <div className="qr-frame" style={{ position: "relative" }}>
+                  {timeLeft <= 0 && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        background: "rgba(10, 11, 20, 0.94)",
+                        backdropFilter: "blur(5px)",
+                        borderRadius: 8,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        zIndex: 6,
+                        padding: 12,
+                        textAlign: "center"
+                      }}
+                    >
+                      <Clock size={28} color="#EF4444" />
+                      <span style={{ fontSize: 12, fontWeight: 800, color: "#F87171" }}>
+                        ORDER EXPIRED
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleRefreshOrder}
+                        style={{
+                          background: "linear-gradient(135deg, #7C3AED 0%, #6366F1 100%)",
+                          border: "none",
+                          borderRadius: 6,
+                          padding: "6px 12px",
+                          color: "#fff",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4
+                        }}
+                      >
+                        <RefreshCw size={12} />
+                        <span>Generate New Order</span>
+                      </button>
+                    </div>
+                  )}
+                  <div className="qr-scanner-line" style={{ display: timeLeft <= 0 ? "none" : "block" }} />
                   <img
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(
                       activeDepositAddress
@@ -597,24 +656,38 @@ const NETWORK_POOLS: Record<string, string[]> = {
                     width={140}
                     height={140}
                     alt="Deposit Address QR"
-                    style={{ display: "block", borderRadius: 8 }}
+                    style={{
+                      display: "block",
+                      borderRadius: 8,
+                      filter: timeLeft <= 0 ? "blur(3px) grayscale(1)" : "none",
+                      opacity: timeLeft <= 0 ? 0.25 : 1
+                    }}
                   />
                 </div>
-                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 10 }}>
-                  Scan with Binance, Bybit, Trust Wallet, or Phantom
+                <div style={{ fontSize: 11, color: timeLeft <= 0 ? "#F87171" : "var(--muted)", marginTop: 10 }}>
+                  {timeLeft <= 0
+                    ? "⚠️ Order expired. Click Generate New Order to refresh address."
+                    : "Scan with Binance, Bybit, Trust Wallet, or Phantom"}
                 </div>
               </div>
 
               {/* Monospace Address with Copy */}
               <div className="address-copy-row">
-                <span className="address-monospace-text">{activeDepositAddress}</span>
+                <span className="address-monospace-text" style={{ opacity: timeLeft <= 0 ? 0.35 : 1 }}>
+                  {timeLeft <= 0 ? "Order Expired — Click Generate New Order below" : activeDepositAddress}
+                </span>
                 <button
                   type="button"
+                  disabled={timeLeft <= 0}
                   className={`address-copy-btn ${copiedAddr ? "copied" : ""}`}
                   onClick={handleCopyAddress}
+                  style={{
+                    opacity: timeLeft <= 0 ? 0.5 : 1,
+                    cursor: timeLeft <= 0 ? "not-allowed" : "pointer"
+                  }}
                 >
                   {copiedAddr ? <Check size={14} /> : <Copy size={14} />}
-                  <span>{copiedAddr ? "Copied!" : "Copy"}</span>
+                  <span>{timeLeft <= 0 ? "Expired" : copiedAddr ? "Copied!" : "Copy"}</span>
                 </button>
               </div>
 
@@ -709,7 +782,7 @@ const NETWORK_POOLS: Record<string, string[]> = {
               </div>
 
               <div className="preset-chips-row">
-                {[10, 25, 50, 100, 250, 500, 1000].map((val) => (
+                {[5, 25, 50, 100, 250, 500].map((val) => (
                   <button
                     key={val}
                     type="button"
