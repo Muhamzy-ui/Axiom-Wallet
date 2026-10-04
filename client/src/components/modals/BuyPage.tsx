@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   ChevronLeft, Globe, ShieldCheck, RefreshCw,
   CreditCard, Building2, CheckCircle2, ArrowRight, Shield, Clock,
-  Copy, Check, Lock, Smartphone, ExternalLink, ShieldAlert, Sparkles
+  Copy, Check, Lock, Smartphone, ExternalLink, ShieldAlert, Sparkles, ChevronDown
 } from "lucide-react";
 import { api } from "../../services/api";
 import { type PlatformDepositWallet } from "../../types";
@@ -11,6 +11,7 @@ import { copyToClipboard } from "../../services/clipboard";
 import { type AuthUser } from "../../services/authService";
 import { CountryInfo, getCountryByCode } from "../../constants/countries";
 import { CountryFlag } from "../common/CountryFlag";
+import { CountrySelectModal } from "./CountrySelectModal";
 import "./Modals.css";
 
 interface BuyPageProps {
@@ -60,11 +61,26 @@ export const BuyPage: React.FC<BuyPageProps> = ({
   authUser,
   onNavigateToProfile,
 }) => {
-  // Selected Country & Fiat Currency (Defaults to USA, locked to user account)
+  // Selected Country & Fiat Currency
   const [selectedCountry, setSelectedCountry] = useState<CountryInfo>(() => {
     const savedCode = localStorage.getItem("axiom_user_country") || "US";
     return getCountryByCode(savedCode);
   });
+  const [isCountryModalOpen, setIsCountryModalOpen] = useState<boolean>(false);
+
+  const handleSelectCountry = (country: CountryInfo) => {
+    setSelectedCountry(country);
+    localStorage.setItem("axiom_user_country", country.code);
+    setIsCountryModalOpen(false);
+    const baseUsd = 50;
+    const newRate = country.rateToUsd || 1;
+    setFiatAmount(String(Math.round(baseUsd * newRate)));
+    if (country.code === "NG") {
+      setPaymentMethod("bank_transfer");
+    } else {
+      setPaymentMethod("card");
+    }
+  };
 
   useEffect(() => {
     const handleRateChange = () => {
@@ -734,8 +750,9 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                   </span>
                 </div>
 
-                {/* Locked Country Display */}
+                {/* Selectable Country Display */}
                 <div
+                  onClick={() => setIsCountryModalOpen(true)}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -745,6 +762,8 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                     background: "rgba(255, 255, 255, 0.03)",
                     border: "1px solid rgba(255, 255, 255, 0.08)",
                     marginTop: 8,
+                    cursor: "pointer",
+                    transition: "all 0.2s ease",
                   }}
                 >
                   <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={28} />
@@ -757,52 +776,31 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsCountryModalOpen(true);
+                      }}
                       style={{
-                        padding: "4px 8px",
-                        borderRadius: 6,
-                        background: "rgba(16, 185, 129, 0.12)",
-                        border: "1px solid rgba(16, 185, 129, 0.25)",
-                        color: "#10B981",
-                        fontSize: 10.5,
-                        fontWeight: 800,
+                        padding: "5px 12px",
+                        borderRadius: 8,
+                        background: "rgba(124, 58, 237, 0.16)",
+                        border: "1px solid rgba(167, 139, 250, 0.3)",
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        color: "#C4B5FD",
+                        cursor: "pointer",
                         display: "inline-flex",
                         alignItems: "center",
                         gap: 4,
                         whiteSpace: "nowrap",
                       }}
                     >
-                      🔒 Locked
-                    </span>
-                    {onNavigateToProfile && (
-                      <button
-                        type="button"
-                        onClick={onNavigateToProfile}
-                        style={{
-                          padding: "5px 10px",
-                          borderRadius: 8,
-                          background: "rgba(124, 58, 237, 0.16)",
-                          border: "1px solid rgba(167, 139, 250, 0.3)",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: "#C4B5FD",
-                          cursor: "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 4,
-                          whiteSpace: "nowrap",
-                        }}
-                        title="Change country in your profile settings with password authorization"
-                      >
-                        <span>Change in Profile</span>
-                        <ArrowRight size={11} />
-                      </button>
-                    )}
+                      <span>Change</span>
+                      <ChevronDown size={13} />
+                    </button>
                   </div>
-                </div>
-
-                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8, display: "flex", alignItems: "center", gap: 5 }}>
-                  <span>🔒 Country is locked to your account profile. To change it, go to Profile Settings and verify your password.</span>
                 </div>
               </div>
 
@@ -1053,6 +1051,15 @@ export const BuyPage: React.FC<BuyPageProps> = ({
           </>
         )}
       </div>
+
+      {/* Country Select Modal */}
+      <CountrySelectModal
+        isOpen={isCountryModalOpen}
+        onClose={() => setIsCountryModalOpen(false)}
+        onSelect={handleSelectCountry}
+        selectedCode={selectedCountry.code}
+        title="Select Country & Payment Region"
+      />
     </div>
   );
 };

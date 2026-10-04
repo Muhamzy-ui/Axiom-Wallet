@@ -75,7 +75,6 @@ export const DepositPage: React.FC<DepositPageProps> = ({
   const [pollCount, setPollCount] = useState<number>(0);
   const [lastPollTime, setLastPollTime] = useState<string>("Just now");
   const [showManualTx, setShowManualTx] = useState<boolean>(false);
-  const [isSimulating, setIsSimulating] = useState<boolean>(false);
 
   const handleSelectCoin = (sym: DepositCoin) => {
     setDepositCoin(sym);
@@ -154,23 +153,51 @@ const NETWORK_POOLS: Record<string, string[]> = {
     api
       .getDepositWallets(userIdentifier, depositNetwork, depositCoin)
       .then((res) => {
-        if (res && res.wallets && res.wallets.length > 0) {
-          setAvailableWallets(res.wallets);
-          const initial = res.assigned_wallet || res.wallets[0];
-          setAssignedWallet(initial);
+        if (res) {
+          if (res.wallets && res.wallets.length > 0) {
+            setAvailableWallets(res.wallets);
+          }
+          if (res.assigned_wallet) {
+            setAssignedWallet(res.assigned_wallet);
+          } else if (res.wallets && res.wallets.length > 0) {
+            setAssignedWallet(res.wallets[0]);
+          }
         }
       })
       .catch(() => {});
   }, [depositCoin, depositNetwork, userIdentifier]);
 
   const getFallbackAddress = (net: string) => {
-    const key = Object.keys(NETWORK_POOLS).find((k) => net.includes(k.split(" ")[0])) || "TRON (TRC-20)";
-    const pool = NETWORK_POOLS[key] || NETWORK_POOLS["TRON (TRC-20)"];
-    let hash = 0;
-    for (let i = 0; i < userIdentifier.length; i++) {
-      hash = (hash * 31 + userIdentifier.charCodeAt(i)) >>> 0;
+    const seed = `axiom_vault_v2:${userIdentifier}:${net.toLowerCase().split(' ')[0]}:${depositCoin.toUpperCase()}`;
+    let h1 = 0xdeadbeef;
+    let h2 = 0x41c6ce57;
+    for (let i = 0; i < seed.length; i++) {
+      const ch = seed.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
     }
-    return pool[hash % pool.length];
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    const b58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    const netLower = net.toLowerCase();
+    if (netLower.includes('tron') || netLower.includes('trc')) {
+      let res = "T";
+      for (let i = 0; i < 33; i++) {
+        res += b58[(Math.abs(h1 + i * 37) + (seed.charCodeAt(i % seed.length) || 0)) % 58];
+      }
+      return res;
+    } else if (netLower.includes('solana') || depositCoin === 'SOL') {
+      let res = "";
+      for (let i = 0; i < 44; i++) {
+        res += b58[(Math.abs(h2 + i * 19) + (seed.charCodeAt(i % seed.length) || 0)) % 58];
+      }
+      return res;
+    } else if (netLower.includes('bitcoin') || depositCoin === 'BTC') {
+      return `bc1q${Math.abs(h1).toString(16).padStart(8, '0')}${Math.abs(h2).toString(16).padStart(8, '0')}`.slice(0, 42);
+    } else {
+      const hex = `${Math.abs(h1).toString(16).padStart(8, '0')}${Math.abs(h2).toString(16).padStart(8, '0')}${Math.abs(h1 ^ h2).toString(16).padStart(8, '0')}`;
+      return `0x${hex.repeat(3).slice(0, 40)}`;
+    }
   };
 
   const activeDepositAddress = assignedWallet?.address || getFallbackAddress(depositNetwork);
@@ -266,6 +293,7 @@ const NETWORK_POOLS: Record<string, string[]> = {
         setLastPollTime(`${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`);
 
         if (res && res.detected && res.status === "CONFIRMED") {
+          if (pollTimer) clearInterval(pollTimer);
           const creditedTokenAmt = parseFloat(res.credited_amount || "0");
           marketStore.depositFunds(depositCoin, creditedTokenAmt);
           setVerifySuccess({
@@ -342,45 +370,6 @@ const NETWORK_POOLS: Record<string, string[]> = {
       setVerifyError(err.message || "Failed to scan blockchain node.");
     } finally {
       setIsAutoChecking(false);
-    }
-  };
-
-  const handleSimulateDeposit = async () => {
-    if (isSimulating || verifySuccess) return;
-    setIsSimulating(true);
-    setVerifyError(null);
-    try {
-      const userAddr =
-        authUser?.wallet_address ||
-        authUser?.email ||
-        authUser?.user_id ||
-        "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
-
-      const res = await api.autoDetectDeposit({
-        address: userAddr,
-        deposit_wallet: activeDepositAddress,
-        currency: depositCoin,
-        network: depositNetwork,
-        amount: depositAmt,
-        simulate: true,
-      });
-
-      if (res && res.detected && res.status === "CONFIRMED") {
-        const creditedTokenAmt = parseFloat(res.credited_amount || "0");
-        marketStore.depositFunds(depositCoin, creditedTokenAmt);
-        setVerifySuccess({
-          amount: res.credited_amount || "0",
-          usdAmount: res.usd_amount || depositAmt,
-          currency: res.currency || depositCoin,
-          newBalance: res.new_balance || "0",
-          txHash: res.tx_hash || "",
-        });
-        flash(`🎉 Test deposit verified! +$${res.usd_amount || depositAmt} USD credited automatically!`);
-      }
-    } catch (err: any) {
-      setVerifyError(err.message || "Failed to simulate test deposit.");
-    } finally {
-      setIsSimulating(false);
     }
   };
 
@@ -780,7 +769,7 @@ const NETWORK_POOLS: Record<string, string[]> = {
                 </p>
               </div>
 
-              {/* Primary Action Buttons */}
+              {/* Primary Action Button */}
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
                 <button
                   type="button"
@@ -788,7 +777,7 @@ const NETWORK_POOLS: Record<string, string[]> = {
                   onClick={handleManualCheckNow}
                   disabled={isAutoChecking}
                   style={{
-                    flex: "2 1 180px",
+                    flex: "1 1 180px",
                     margin: 0,
                     minHeight: 44,
                     fontSize: 13,
@@ -808,34 +797,6 @@ const NETWORK_POOLS: Record<string, string[]> = {
                       <span>Check Blockchain Now</span>
                     </>
                   )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleSimulateDeposit}
-                  disabled={isSimulating}
-                  style={{
-                    flex: "1 1 140px",
-                    minHeight: 44,
-                    fontSize: 12,
-                    background: "rgba(255, 255, 255, 0.05)",
-                    border: "1px solid rgba(255, 255, 255, 0.15)",
-                    borderRadius: 10,
-                    color: "#A7F3D0",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 6,
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                  }}
-                >
-                  {isSimulating ? (
-                    <RefreshCw size={13} className="animate-spin" />
-                  ) : (
-                    <Sparkles size={13} />
-                  )}
-                  <span>Test Instant Credit</span>
                 </button>
               </div>
 

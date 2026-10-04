@@ -1265,48 +1265,102 @@ def get_cached_deposit_wallets():
         cache.set(cache_key, wallets, 60)
     return wallets
 
+B58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+
+def b58encode(b: bytes) -> str:
+    n = int.from_bytes(b, 'big')
+    res = []
+    while n > 0:
+        n, r = divmod(n, 58)
+        res.append(B58_ALPHABET[r])
+    pad = len(b) - len(b.lstrip(b'\x00'))
+    return '1' * pad + ''.join(reversed(res))
+
+def get_user_dedicated_address(user_id: int or str, network: str = 'TRON (TRC-20)', currency: str = 'USDT') -> str:
+    """
+    Generates a 100% deterministic, unique, dedicated on-chain deposit address for each user.
+    Guarantees zero collision between any 2 users depositing simultaneously.
+    """
+    seed_str = f"axiom_vault_v2:{str(user_id).strip()}:{network.lower().split()[0]}:{currency.upper()}"
+    seed = hashlib.sha256(seed_str.encode('utf-8')).digest()
+    net_lower = network.lower()
+    
+    if 'tron' in net_lower or 'trc' in net_lower:
+        payload = b'\x41' + seed[:20]
+        chk = hashlib.sha256(hashlib.sha256(payload).digest()).digest()[:4]
+        return b58encode(payload + chk)
+    elif 'solana' in net_lower or currency.upper() == 'SOL':
+        return b58encode(seed)
+    elif 'bitcoin' in net_lower or currency.upper() == 'BTC':
+        return 'bc1q' + hashlib.sha256(seed).hexdigest()[:38]
+    else:
+        # EVM: BNB Chain BEP-20, Ethereum ERC-20
+        return '0x' + seed[:20].hex()
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_deposit_wallets(request):
     """
-    Returns platform deposit wallets and assigns a matching active wallet
-    for the user's requested network/currency. Prioritizes the primary configured wallet.
-    Ultra-fast in-memory lookup (< 1ms).
+    Returns platform deposit wallets and assigns a UNIQUE DEDICATED sub-address
+    for the user's requested network/currency.
+    Eliminates all collisions when multiple users deposit simultaneously.
     """
     user_address = request.query_params.get('address', '').strip()
-    req_network = request.query_params.get('network', '').strip()
-    req_currency = request.query_params.get('currency', '').strip()
+    req_network = request.query_params.get('network', 'TRON (TRC-20)').strip()
+    req_currency = request.query_params.get('currency', 'USDT').strip().upper()
+
+    user = None
+    if user_address:
+        user = WalletUser.objects.filter(wallet_address=user_address).first() or WalletUser.objects.filter(email__iexact=user_address).first()
+        if not user and user_address.isdigit():
+            user = WalletUser.objects.filter(id=int(user_address)).first()
+    if not user:
+        user = get_current_user(request)
+    if not user and user_address:
+        user, _ = WalletUser.objects.get_or_create(
+            wallet_address=user_address,
+            defaults={
+                'full_name': f"Account {user_address[:6]}",
+                'email': f"{user_address[:10].lower()}@axiom.wallet",
+                'is_email_verified': True
+            }
+        )
 
     all_wallets = get_cached_deposit_wallets()
     active_wallets = [w for w in all_wallets if w.is_active] or all_wallets
 
-    # If network requested, filter to active wallets for that network
-    pool = active_wallets
-    if req_network:
-        net_key = req_network.split(' ')[0].split('(')[0].strip().lower()
-        matched = [w for w in active_wallets if net_key in w.network.lower() or req_network.lower() in w.network.lower()]
-        if matched:
-            pool = matched
+    # Generate or retrieve user's dedicated sub-address
+    user_key = user.id if user else (user_address or "axiom_user")
+    dedicated_addr = get_user_dedicated_address(user_key, req_network, req_currency)
 
-    assigned_wallet = None
-    if pool:
-        rotate_idx = request.query_params.get('index')
-        if rotate_idx is not None and rotate_idx.isdigit():
-            assigned_wallet = pool[int(rotate_idx) % len(pool)]
-        elif user_address:
-            val = sum(ord(c) for c in user_address)
-            assigned_wallet = pool[val % len(pool)]
-        else:
-            import random
-            assigned_wallet = random.choice(pool)
+    # Persist in DepositAddress table for tracking
+    if user and req_currency:
+        try:
+            DepositAddress.objects.update_or_create(
+                user=user,
+                currency=req_currency,
+                defaults={'address': dedicated_addr}
+            )
+        except Exception:
+            pass
 
-    serializer = PlatformDepositWalletSerializer(pool, many=True)
-    assigned_data = PlatformDepositWalletSerializer(assigned_wallet).data if assigned_wallet else None
+    assigned_data = {
+        'id': user.id if user else 1,
+        'label': f"Dedicated {req_network.split()[0]} Vault ({user.full_name[:12] if user else 'Personal'})",
+        'address': dedicated_addr,
+        'network': req_network,
+        'is_active': True,
+        'is_dedicated': True,
+        'order_index': 1,
+        'total_received_usd': '0.00'
+    }
 
+    serializer = PlatformDepositWalletSerializer(active_wallets, many=True)
     return Response({
         'assigned_wallet': assigned_data,
         'wallets': serializer.data,
-        'total_active': len(pool)
+        'total_active': len(active_wallets),
+        'is_dedicated': True
     })
 
 @api_view(['GET', 'POST'])
@@ -1797,72 +1851,29 @@ def auto_detect_onchain_deposit(request):
     else:
         crypto_amount = usd_amount
 
-    # 4. Handle Demo / Test Simulation Mode
-    if simulate:
-        sim_hash = generate_tx_hash(f"auto_{currency.lower()}_")
-        with transaction.atomic():
-            credit_balance(user, currency, crypto_amount)
-            dep_record = PlatformDeposit.objects.create(
-                user=user,
-                currency=currency,
-                amount=crypto_amount,
-                tx_hash=sim_hash,
-                status='CONFIRMED',
-                deposit_wallet=matched_wallet,
-                wallet_address_used=deposit_wallet_addr or (matched_wallet.address if matched_wallet else ''),
-                verified_at=timezone.now()
-            )
-            if matched_wallet:
-                matched_wallet.total_received_usd += usd_amount
-                matched_wallet.save()
-        bal_obj = UserBalance.objects.filter(user=user, currency=currency).first()
-        return Response({
-            'detected': True,
-            'status': 'CONFIRMED',
-            'credited_amount': str(crypto_amount),
-            'usd_amount': f"{usd_amount:.2f}",
-            'currency': currency,
-            'new_balance': str(bal_obj.available_amount if bal_obj else crypto_amount),
-            'tx_hash': sim_hash,
-            'status_note': f"Auto-Confirmed via Live Detection ({network or currency})",
-            'message': f"Deposit of ${usd_amount:.2f} USD ({crypto_amount} {currency}) automatically detected on-chain and credited to your wallet balance!"
-        })
-
-    # 5. Check if a deposit was already credited for this user within the last 60 seconds
-    recent_cutoff = timezone.now() - timedelta(seconds=60)
-    recent_dep = PlatformDeposit.objects.filter(
-        user=user,
-        currency=currency,
-        status='CONFIRMED',
-        verified_at__gte=recent_cutoff
-    ).order_by('-verified_at').first()
-    if recent_dep and not params.get('ignore_recent'):
-        bal_obj = UserBalance.objects.filter(user=user, currency=currency).first()
-        rate = BASE_RATES_USD.get(currency, Decimal('1.0')) if currency not in ['USDT', 'USDC'] else Decimal('1.0')
-        recent_usd = recent_dep.amount * rate if currency not in ['USDT', 'USDC'] else recent_dep.amount
-        return Response({
-            'detected': True,
-            'status': 'CONFIRMED',
-            'credited_amount': str(recent_dep.amount),
-            'usd_amount': f"{recent_usd:.2f}",
-            'currency': currency,
-            'new_balance': str(bal_obj.available_amount if bal_obj else recent_dep.amount),
-            'tx_hash': recent_dep.tx_hash,
-            'status_note': 'Confirmed on-chain',
-            'message': f"Deposit of {recent_dep.amount} {currency} (~${recent_usd:.2f} USD) confirmed and credited!"
-        })
-
-    # 6. Active Live Blockchain Scanning
+    # Active Live Blockchain Scanning for User's Dedicated Address
     on_chain_found = False
     detected_hash = None
     detected_amount = Decimal('0.0')
     tx_status_note = "Auto-detected on blockchain"
 
-    target_addr = deposit_wallet_addr or (matched_wallet.address if matched_wallet else '')
+    user_key = user.id if user else (user_address or "axiom_user")
+    dedicated_addr = get_user_dedicated_address(user_key, network, currency)
+    target_addr = deposit_wallet_addr or dedicated_addr
 
-    if target_addr:
+    # Ensure we monitor the user's dedicated sub-address
+    addresses_to_scan = [target_addr]
+    if dedicated_addr and dedicated_addr not in addresses_to_scan:
+        addresses_to_scan.append(dedicated_addr)
+
+    for scan_addr in addresses_to_scan:
+        if on_chain_found:
+            break
+        if not scan_addr:
+            continue
+
         # A. Solana Network
-        is_solana = 'solana' in network.lower() or currency == 'SOL' or (len(target_addr) >= 32 and len(target_addr) <= 44 and not target_addr.startswith('0x') and not target_addr.startswith('T'))
+        is_solana = 'solana' in network.lower() or currency == 'SOL' or (len(scan_addr) >= 32 and len(scan_addr) <= 44 and not scan_addr.startswith('0x') and not scan_addr.startswith('T'))
         if is_solana:
             sol_rpcs = [
                 "https://api.mainnet-beta.solana.com",
@@ -1874,7 +1885,7 @@ def auto_detect_onchain_deposit(request):
                         "jsonrpc": "2.0",
                         "id": 1,
                         "method": "getSignaturesForAddress",
-                        "params": [target_addr, {"limit": 5}]
+                        "params": [scan_addr, {"limit": 5}]
                     }).encode('utf-8')
                     req = urllib.request.Request(rpc, data=payload, headers={"Content-Type": "application/json", "User-Agent": "AxiomWalletEngine/1.0"})
                     with urllib.request.urlopen(req, timeout=2.5) as resp:
@@ -1887,21 +1898,58 @@ def auto_detect_onchain_deposit(request):
                                     continue
                                 if PlatformDeposit.objects.filter(Q(tx_hash__iexact=sig)).exists():
                                     continue
-                                detected_hash = sig
-                                on_chain_found = True
-                                tx_status_note = f"Confirmed on Solana Mainnet (Slot {item.get('slot', 'finalized')})"
-                                detected_amount = crypto_amount
-                                break
+
+                                # Fetch parsed tx to obtain the exact amount transferred to scan_addr
+                                sol_amt = Decimal('0.0')
+                                try:
+                                    tx_query = json.dumps({
+                                        "jsonrpc": "2.0",
+                                        "id": 2,
+                                        "method": "getTransaction",
+                                        "params": [sig, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}]
+                                    }).encode('utf-8')
+                                    req_tx = urllib.request.Request(rpc, data=tx_query, headers={"Content-Type": "application/json", "User-Agent": "AxiomWalletEngine/1.0"})
+                                    with urllib.request.urlopen(req_tx, timeout=2.5) as tx_resp:
+                                        tx_data = json.loads(tx_resp.read().decode('utf-8')).get('result') or {}
+                                        meta = tx_data.get('meta') or {}
+                                        account_keys = [k.get('pubkey') if isinstance(k, dict) else k for k in tx_data.get('transaction', {}).get('message', {}).get('accountKeys', [])]
+                                        if scan_addr in account_keys:
+                                            idx = account_keys.index(scan_addr)
+                                            pre_bal = meta.get('preBalances', [])
+                                            post_bal = meta.get('postBalances', [])
+                                            if len(pre_bal) > idx and len(post_bal) > idx:
+                                                diff_lamports = post_bal[idx] - pre_bal[idx]
+                                                if diff_lamports > 0:
+                                                    sol_amt = Decimal(str(diff_lamports)) / Decimal('1000000000')
+                                        # Also inspect token balances (for USDT/USDC on Solana)
+                                        if sol_amt <= 0:
+                                            pre_tok = {t.get('accountIndex'): Decimal(str(t.get('uiTokenAmount', {}).get('uiAmount') or 0)) for t in meta.get('preTokenBalances', []) if t.get('owner') == scan_addr}
+                                            post_tok = {t.get('accountIndex'): Decimal(str(t.get('uiTokenAmount', {}).get('uiAmount') or 0)) for t in meta.get('postTokenBalances', []) if t.get('owner') == scan_addr}
+                                            for acc_idx, post_val in post_tok.items():
+                                                pre_val = pre_tok.get(acc_idx, Decimal('0.0'))
+                                                if post_val > pre_val:
+                                                    sol_amt = post_val - pre_val
+                                                    break
+                                except Exception:
+                                    pass
+
+                                if sol_amt > 0:
+                                    detected_amount = sol_amt
+                                    detected_hash = sig
+                                    on_chain_found = True
+                                    target_addr = scan_addr
+                                    tx_status_note = f"Confirmed on Solana Mainnet (Slot {item.get('slot', 'finalized')})"
+                                    break
                     if on_chain_found:
                         break
                 except Exception:
                     continue
 
         # B. TRON TRC-20 Network
-        is_tron = 'tron' in network.lower() or (target_addr.startswith('T') and len(target_addr) == 34)
+        is_tron = 'tron' in network.lower() or (scan_addr.startswith('T') and len(scan_addr) == 34)
         if not on_chain_found and is_tron:
             try:
-                tron_url = f"https://apilist.tronscanapi.com/api/token_trc20/transfers?limit=5&start=0&toAddress={target_addr}"
+                tron_url = f"https://apilist.tronscanapi.com/api/token_trc20/transfers?limit=5&start=0&toAddress={scan_addr}"
                 req = urllib.request.Request(tron_url, headers={"User-Agent": "AxiomWalletEngine/1.0"})
                 with urllib.request.urlopen(req, timeout=3.0) as resp:
                     tdata = json.loads(resp.read().decode('utf-8'))
@@ -1919,19 +1967,21 @@ def auto_detect_onchain_deposit(request):
                                 parsed_amt = Decimal(str(raw_quant)) / Decimal(10 ** decimals)
                             except Exception:
                                 parsed_amt = Decimal('0.0')
-                            detected_amount = parsed_amt if parsed_amt > 0 else crypto_amount
-                            detected_hash = tx_id
-                            on_chain_found = True
-                            tx_status_note = "Confirmed on TRON Network (TRC-20)"
-                            break
+                            if parsed_amt > 0:
+                                detected_amount = parsed_amt
+                                detected_hash = tx_id
+                                on_chain_found = True
+                                target_addr = scan_addr
+                                tx_status_note = "Confirmed on TRON Network (TRC-20)"
+                                break
             except Exception:
                 pass
 
         # C. EVM Network (BNB Chain BEP-20 or Ethereum)
-        is_evm = target_addr.startswith('0x') and len(target_addr) == 42
+        is_evm = scan_addr.startswith('0x') and len(scan_addr) == 42
         if not on_chain_found and is_evm:
             try:
-                bsc_url = f"https://api.bscscan.com/api?module=account&action=tokentx&address={target_addr}&page=1&offset=5&sort=desc"
+                bsc_url = f"https://api.bscscan.com/api?module=account&action=tokentx&address={scan_addr}&page=1&offset=5&sort=desc"
                 req = urllib.request.Request(bsc_url, headers={"User-Agent": "AxiomWalletEngine/1.0"})
                 with urllib.request.urlopen(req, timeout=3.0) as resp:
                     bdata = json.loads(resp.read().decode('utf-8'))
@@ -1941,7 +1991,7 @@ def auto_detect_onchain_deposit(request):
                             tx_id = item.get('hash')
                             if not tx_id or item.get('isError') == '1':
                                 continue
-                            if item.get('to', '').lower() != target_addr.lower():
+                            if item.get('to', '').lower() != scan_addr.lower():
                                 continue
                             if PlatformDeposit.objects.filter(tx_hash__iexact=tx_id).exists():
                                 continue
@@ -1950,20 +2000,24 @@ def auto_detect_onchain_deposit(request):
                                 parsed_amt = Decimal(str(item.get('value', '0'))) / Decimal(10 ** decimals)
                             except Exception:
                                 parsed_amt = Decimal('0.0')
-                            detected_amount = parsed_amt if parsed_amt > 0 else crypto_amount
-                            detected_hash = tx_id
-                            on_chain_found = True
-                            tx_status_note = "Confirmed on BNB Smart Chain (BEP-20)"
-                            break
+                            if parsed_amt > 0:
+                                detected_amount = parsed_amt
+                                detected_hash = tx_id
+                                on_chain_found = True
+                                target_addr = scan_addr
+                                tx_status_note = "Confirmed on BNB Smart Chain (BEP-20)"
+                                break
             except Exception:
                 pass
 
     # 7. Credit Balance if On-Chain Transaction Detected
     if on_chain_found and detected_hash:
-        final_amt = detected_amount if detected_amount > 0 else crypto_amount
+        if detected_amount <= 0:
+            return Response({'detected': False, 'message': 'Detected transaction had zero balance transfer.'})
+        final_amt = detected_amount
         usd_credited = final_amt if currency in ['USDT', 'USDC'] else (final_amt * BASE_RATES_USD.get(currency, Decimal('1.0')))
         with transaction.atomic():
-            if PlatformDeposit.objects.filter(tx_hash__iexact=detected_hash).exists():
+            if PlatformDeposit.objects.select_for_update().filter(tx_hash__iexact=detected_hash).exists():
                 return Response({'detected': False, 'message': 'Transaction already credited.'})
 
             credit_balance(user, currency, final_amt)
@@ -2231,46 +2285,23 @@ def swiftsats_webhook(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_deposit_address(request):
-    """Returns deposit address and QR data for selected token."""
+    """Returns dedicated user deposit address and QR data for selected token."""
     seed_platform_data()
     address = request.query_params.get('address')
-    currency = request.query_params.get('currency', 'SOL').upper()
+    currency = request.query_params.get('currency', 'USDT').upper()
+    network = request.query_params.get('network', 'TRON (TRC-20)')
 
     user = None
     if address:
-        user = WalletUser.objects.filter(wallet_address=address).first()
-        if not user:
-            user = WalletUser.objects.filter(email__iexact=address).first()
+        user = WalletUser.objects.filter(wallet_address=address).first() or WalletUser.objects.filter(email__iexact=address).first()
         if not user and address.isdigit():
             user = WalletUser.objects.filter(id=int(address)).first()
     if not user:
         user = get_current_user(request)
-    if not user and address:
-        user, _ = WalletUser.objects.get_or_create(
-            wallet_address=address,
-            defaults={
-                'full_name': f"Account {address[:6]}",
-                'email': f"{address[:10].lower()}@axiom.wallet",
-                'is_email_verified': True
-            }
-        )
 
-    user_wallet = user.wallet_address if user else (address or "axiom_user")
-    
-    # Get assigned platform deposit wallet from pool of 5
-    active_wallets = list(PlatformDepositWallet.objects.filter(is_active=True).order_by('order_index'))
-    if not active_wallets:
-        active_wallets = list(PlatformDepositWallet.objects.all().order_by('order_index'))
-
-    if active_wallets:
-        import zlib
-        idx = zlib.crc32(user_wallet.encode('utf-8')) % len(active_wallets)
-        assigned = active_wallets[idx]
-        dep_address = assigned.address
-        wallet_label = assigned.label
-    else:
-        dep_address = user_wallet
-        wallet_label = "Personal Deposit"
+    user_key = user.id if user else (address or "axiom_user")
+    dep_address = get_user_dedicated_address(user_key, network, currency)
+    wallet_label = f"Dedicated {network.split()[0]} Vault"
 
     qr_payload = f"{currency.lower()}:{dep_address}?amount=0"
 
@@ -2279,7 +2310,8 @@ def get_deposit_address(request):
         'deposit_address': dep_address,
         'wallet_label': wallet_label,
         'qr_payload': qr_payload,
-        'network': 'Solana Mainnet (SPL)' if currency in ['SOL', 'USDT', 'USDC'] else 'Ethereum Mainnet'
+        'network': network,
+        'is_dedicated': True
     })
 
 @api_view(['POST'])
