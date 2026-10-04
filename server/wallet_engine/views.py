@@ -2847,7 +2847,7 @@ def sell_token(request):
             req_amt = Decimal('0.0')
         if not tok_bal or tok_bal.available_amount < req_amt:
             return Response({
-                'error': f'🔒 This {token_symbol} position is locked by Copy Trading ({locked_copy.trader_name}). You cannot sell until the Master Trader or Vault Admin exits this position.'
+                'error': '🔒 This position is locked by copy trading. You cannot sell until the Master Trader sells.'
             }, status=status.HTTP_400_BAD_REQUEST)
 
     try:
@@ -2946,7 +2946,7 @@ def swap_execute(request):
             req_amt = Decimal('0.0')
         if not tok_bal or tok_bal.available_amount < req_amt:
             return Response({
-                'error': f'🔒 {from_curr} is locked by Copy Trading ({locked_copy.trader_name}). You cannot swap or sell until the Master Trader or Vault Admin exits this position.'
+                'error': '🔒 This position is locked by copy trading. You cannot swap or sell until the Master Trader sells.'
             }, status=status.HTTP_400_BAD_REQUEST)
 
     try:

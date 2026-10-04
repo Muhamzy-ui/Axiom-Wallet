@@ -2053,7 +2053,7 @@ export function LeaderboardView({
                   marginTop: 10
                 }}
               >
-                🔒 <b>Auto-Executed & Locked Position</b>: Upon confirmation, <b>${copyAmount} USD</b> is deducted from your balance to purchase {copyModalTrader.name}'s active coin. Your tokens are securely locked in your portfolio and cannot be sold until the Master Trader / Vault Admin exits the position.
+                🔒 <b>Auto-Executed & Locked Position</b>: Upon confirmation, <b>${copyAmount} USD</b> is deducted from your balance to purchase {copyModalTrader.name}'s active coin. Your tokens are securely locked in your portfolio and cannot be sold until the Master Trader sells.
               </div>
             </div>
 
