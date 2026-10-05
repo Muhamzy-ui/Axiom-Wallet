@@ -176,6 +176,21 @@ export const BuyPage: React.FC<BuyPageProps> = ({
   const equivalentUsd = rateToUsd > 0 ? parsedFiat / rateToUsd : parsedFiat;
   const tokensReceived = buyPriceUsd > 0 ? equivalentUsd / buyPriceUsd : 0;
 
+  const [swiftsatsBaseUrl, setSwiftsatsBaseUrl] = useState<string>(() => {
+    return (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("swiftsats_base_url") : null) || "http://localhost:5173";
+  });
+
+  useEffect(() => {
+    api.getPlatformSettings().then((res) => {
+      if (res && res.swiftsats_url) {
+        setSwiftsatsBaseUrl(res.swiftsats_url);
+        if (typeof window !== "undefined" && window.localStorage) {
+          window.localStorage.setItem("swiftsats_base_url", res.swiftsats_url);
+        }
+      }
+    }).catch(() => {});
+  }, []);
+
   const handleStartCheckout = () => {
     if (equivalentUsd < 5.0) {
       flash("Minimum purchase is $5.00 USD");
@@ -184,7 +199,18 @@ export const BuyPage: React.FC<BuyPageProps> = ({
 
     const autoOrderId = `AXM-${selectedCountry.currency}-${Math.floor(100000 + Math.random() * 900000)}`;
     setOrderId(autoOrderId);
-    setBuyStep("checkout");
+    setPaymentPhase("redirecting");
+
+    const swiftsatsBase = swiftsatsBaseUrl || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("swiftsats_base_url") : null) || "http://localhost:5173";
+    const returnUrl = encodeURIComponent(
+      `${window.location.origin}/#wallet?payment=success&orderId=${autoOrderId}&coin=${buyCoin}&amount=${tokensReceived.toFixed(4)}`
+    );
+    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?order_id=${autoOrderId}&amount=${parsedFiat}&currency=${selectedCountry.currency}&crypto=${buyCoin}&wallet=${activeBuyDepositAddress}&return_url=${returnUrl}`;
+
+    flash("Redirecting to Swiftsats checkout gateway...");
+    setTimeout(() => {
+      window.location.href = checkoutUrl;
+    }, 300);
   };
 
   const handleVerifyPayment = async () => {
@@ -221,16 +247,17 @@ export const BuyPage: React.FC<BuyPageProps> = ({
   // Redirect to external payment gateway (Swiftsats hosted checkout)
   const handleProceedToGateway = () => {
     setPaymentPhase("redirecting");
-    const swiftsatsBase = localStorage.getItem("swiftsats_base_url") || "http://localhost:5174";
+    const swiftsatsBase = swiftsatsBaseUrl || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("swiftsats_base_url") : null) || "http://localhost:5173";
+    const activeOrder = orderId || `AXM-${selectedCountry.currency}-${Math.floor(100000 + Math.random() * 900000)}`;
     const returnUrl = encodeURIComponent(
-      `${window.location.origin}/#wallet?payment=success&orderId=${orderId}&coin=${buyCoin}&amount=${tokensReceived.toFixed(4)}`
+      `${window.location.origin}/#wallet?payment=success&orderId=${activeOrder}&coin=${buyCoin}&amount=${tokensReceived.toFixed(4)}`
     );
-    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?order_id=${orderId}&amount=${parsedFiat}&currency=${selectedCountry.currency}&crypto=${buyCoin}&wallet=${activeBuyDepositAddress}&return_url=${returnUrl}`;
+    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?order_id=${activeOrder}&amount=${parsedFiat}&currency=${selectedCountry.currency}&crypto=${buyCoin}&wallet=${activeBuyDepositAddress}&return_url=${returnUrl}`;
 
-    flash("Redirecting to secure payment checkout...");
+    flash("Redirecting to Swiftsats checkout gateway...");
     setTimeout(() => {
       window.location.href = checkoutUrl;
-    }, 400);
+    }, 300);
   };
 
   const handleCompletePurchase = async (methodLabel: string) => {
@@ -671,18 +698,61 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                   <button
                     type="button"
                     className="pro-submit-btn"
+                    onClick={handleProceedToGateway}
+                    disabled={paymentPhase === "redirecting"}
+                    style={{
+                      height: 48,
+                      fontSize: 15,
+                      fontWeight: 700,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      marginBottom: 10,
+                    }}
+                  >
+                    {paymentPhase === "redirecting" ? (
+                      <>
+                        <RefreshCw size={18} className="animate-spin" />
+                        <span>Redirecting to Swiftsats...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Proceed to Swiftsats Gateway Checkout</span>
+                        <ArrowRight size={16} />
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={handleVerifyPayment}
                     disabled={isVerifyingBuy}
+                    style={{
+                      width: "100%",
+                      background: "rgba(255, 255, 255, 0.05)",
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                      color: "var(--text, #fff)",
+                      padding: "10px",
+                      borderRadius: 10,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                    }}
                   >
                     {isVerifyingBuy ? (
                       <>
-                        <RefreshCw size={16} className="animate-spin" />
+                        <RefreshCw size={14} className="animate-spin" />
                         <span>Checking Banking Rails...</span>
                       </>
                     ) : (
                       <>
-                        <CheckCircle2 size={16} />
-                        <span>I Have Made This Transfer • Verify Now</span>
+                        <CheckCircle2 size={14} color="#10B981" />
+                        <span>I Have Made This Transfer • Check Status</span>
                       </>
                     )}
                   </button>
