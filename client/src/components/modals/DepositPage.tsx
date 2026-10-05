@@ -27,25 +27,25 @@ const COIN_METAS: Record<DepositCoin, { name: string; iconUrl: string }> = {
   ETH: { name: "Ethereum", iconUrl: "https://coin-images.coingecko.com/coins/images/279/large/ethereum.png" },
 };
 
-const COIN_NETWORKS: Record<DepositCoin, { label: string; networkKey: string; speed: string; note: string }[]> = {
+const COIN_NETWORKS: Record<DepositCoin, { label: string; networkKey: string; note: string }[]> = {
   USDT: [
-    { label: "TRC-20", networkKey: "TRON (TRC-20)", speed: "⚡ ~15s", note: "Tron Network • Sub-cent fee" },
-    { label: "BEP-20", networkKey: "BNB Chain (BEP-20)", speed: "⚡ ~30s", note: "BNB Smart Chain • Low fee" },
-    { label: "Solana", networkKey: "Solana (SPL)", speed: "⚡ ~2s", note: "Solana SPL • Instant settlement" },
-    { label: "ERC-20", networkKey: "Ethereum (ERC-20)", speed: "🔒 ~3m", note: "Ethereum Mainnet • Institutional" },
+    { label: "TRC-20", networkKey: "TRON (TRC-20)", note: "Tron Network • Sub-cent fee" },
+    { label: "BEP-20", networkKey: "BNB Chain (BEP-20)", note: "BNB Smart Chain • Low fee" },
+    { label: "Solana", networkKey: "Solana (SPL)", note: "Solana SPL • Instant settlement" },
+    { label: "ERC-20", networkKey: "Ethereum (ERC-20)", note: "Ethereum Mainnet • Institutional" },
   ],
   SOL: [
-    { label: "Solana Native", networkKey: "Solana (SPL)", speed: "⚡ ~2s", note: "Solana Mainnet-Beta" },
+    { label: "Solana Native", networkKey: "Solana (SPL)", note: "Solana Mainnet-Beta" },
   ],
   USDC: [
-    { label: "Solana (SPL)", networkKey: "Solana (SPL)", speed: "⚡ ~2s", note: "Solana SPL Circle USD Coin" },
-    { label: "ERC-20", networkKey: "Ethereum (ERC-20)", speed: "🔒 ~3m", note: "Ethereum ERC-20 USD Coin" },
+    { label: "Solana (SPL)", networkKey: "Solana (SPL)", note: "Solana SPL Circle USD Coin" },
+    { label: "ERC-20", networkKey: "Ethereum (ERC-20)", note: "Ethereum ERC-20 USD Coin" },
   ],
   BTC: [
-    { label: "Bitcoin Native", networkKey: "Bitcoin (BTC)", speed: "🔒 ~10m", note: "Bitcoin SegWit (bc1) & Legacy" },
+    { label: "Bitcoin Native", networkKey: "Bitcoin (BTC)", note: "Bitcoin SegWit (bc1) & Legacy" },
   ],
   ETH: [
-    { label: "ERC-20", networkKey: "Ethereum (ERC-20)", speed: "🔒 ~3m", note: "Ethereum Mainnet Native" },
+    { label: "ERC-20", networkKey: "Ethereum (ERC-20)", note: "Ethereum Mainnet Native" },
   ],
 };
 
@@ -582,8 +582,7 @@ const NETWORK_POOLS: Record<string, string[]> = {
                           setAssignedWallet(null);
                         }}
                       >
-                        <span>{net.label}</span>
-                        <span style={{ fontSize: 9.5, opacity: 0.85 }}>{net.speed}</span>
+                        {net.label}
                       </button>
                     );
                   })}
