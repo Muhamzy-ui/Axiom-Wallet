@@ -2478,9 +2478,14 @@ def sync_user_balances(request):
                 continue
 
             b_obj = get_or_create_balance(user, clean_sym)
-            b_obj.available_amount = max(Decimal('0.0'), amt)
-            b_obj.total_invested = max(Decimal('0.0'), total_inv)
-            b_obj.avg_buy_price = max(Decimal('0.0'), avg_price)
+            # Only populate available_amount if database balance is zero/new
+            # Never overwrite real server-side deposits, P2P transfers, or trades!
+            if b_obj.available_amount == Decimal('0.0') and b_obj.locked_amount == Decimal('0.0') and amt > Decimal('0.0'):
+                b_obj.available_amount = max(Decimal('0.0'), amt)
+            if total_inv > Decimal('0.0'):
+                b_obj.total_invested = max(b_obj.total_invested, total_inv)
+            if avg_price > Decimal('0.0'):
+                b_obj.avg_buy_price = avg_price
             b_obj.save()
 
         if trade_info and isinstance(trade_info, dict):
@@ -2837,26 +2842,14 @@ def sell_token(request):
     if not user:
         return Response({'error': f'User wallet not found for identifier: {address}'}, status=status.HTTP_404_NOT_FOUND)
 
-    # Check if user's position is locked by copy trading
-    locked_copy = CopyTradingPosition.objects.filter(
-        user=user,
-        token_symbol__iexact=token_symbol,
-        is_locked=True,
-        status='ACTIVE'
-    ).first()
-    if locked_copy:
-        tok_bal = UserBalance.objects.filter(user=user, currency=token_symbol.upper()).first()
-        try:
-            req_amt = Decimal(str(amount))
-        except Exception:
-            req_amt = Decimal('0.0')
-        if not tok_bal or tok_bal.available_amount < req_amt:
-            return Response({
-                'error': '🔒 This position is locked by copy trading. You cannot sell until the Master Trader sells.'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
     try:
         result = execute_sell(user, token_symbol, base_currency, amount)
+        # Mark any active copy position for this token as CLOSED
+        CopyTradingPosition.objects.filter(
+            user=user,
+            token_symbol__iexact=token_symbol,
+            status='ACTIVE'
+        ).update(status='CLOSED', is_locked=False)
         cache.delete('active_meme_tokens_list')
         return Response({
             'success': True,
@@ -2936,26 +2929,15 @@ def swap_execute(request):
     if not user:
         return Response({'error': 'User wallet not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    # Check if from_curr is locked by copy trading
-    locked_copy = CopyTradingPosition.objects.filter(
-        user=user,
-        token_symbol__iexact=from_curr,
-        is_locked=True,
-        status='ACTIVE'
-    ).first()
-    if locked_copy:
-        tok_bal = UserBalance.objects.filter(user=user, currency=from_curr.upper()).first()
-        try:
-            req_amt = Decimal(str(from_amount))
-        except Exception:
-            req_amt = Decimal('0.0')
-        if not tok_bal or tok_bal.available_amount < req_amt:
-            return Response({
-                'error': '🔒 This position is locked by copy trading. You cannot swap or sell until the Master Trader sells.'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
     try:
         res = execute_swap(user, from_curr, to_curr, from_amount)
+        # Mark any active copy position for this token as CLOSED
+        CopyTradingPosition.objects.filter(
+            user=user,
+            token_symbol__iexact=from_curr,
+            status='ACTIVE'
+        ).update(status='CLOSED', is_locked=False)
+        cache.delete('active_meme_tokens_list')
         return Response({
             'success': True,
             'from_amount': str(res['from_amount']),
@@ -4409,70 +4391,38 @@ def subscribe_copy_trade(request):
     if not user:
         return Response({'error': 'User account not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    # Determine currency to deduct from (USDT, USDC, or SOL)
+    # Determine user total available cash balance (USDT + USDC + SOL)
     usdt_bal = UserBalance.objects.filter(user=user, currency='USDT').first()
+    usdc_bal = UserBalance.objects.filter(user=user, currency='USDC').first()
     sol_bal = UserBalance.objects.filter(user=user, currency='SOL').first()
 
-    base_currency = 'USDT'
-    base_deduct_amount = allocated_usd
     sol_rate = BASE_RATES_USD.get('SOL', Decimal('145.0'))
+    avail_usdt = (usdt_bal.available_amount if usdt_bal else Decimal('0.0')) + (usdc_bal.available_amount if usdc_bal else Decimal('0.0'))
+    avail_sol = sol_bal.available_amount if sol_bal else Decimal('0.0')
+    total_usd = avail_usdt + (avail_sol * sol_rate)
 
-    if usdt_bal and usdt_bal.available_amount >= allocated_usd:
-        base_currency = 'USDT'
-        base_deduct_amount = allocated_usd
-    elif sol_bal and (sol_bal.available_amount * sol_rate) >= allocated_usd:
-        base_currency = 'SOL'
-        base_deduct_amount = (allocated_usd / sol_rate).quantize(Decimal('0.00000001'))
-    else:
-        avail_usdt = usdt_bal.available_amount if usdt_bal else Decimal('0.0')
-        avail_sol = sol_bal.available_amount if sol_bal else Decimal('0.0')
-        total_usd = avail_usdt + (avail_sol * sol_rate)
-        if total_usd < allocated_usd:
-            return Response({
-                'error': f'Insufficient wallet balance. You have ${total_usd:.2f} available, but ${allocated_usd:.2f} is required to copy {trader_name}. Please deposit funds first.'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        if avail_usdt >= (avail_sol * sol_rate):
-            base_currency = 'USDT'
-            base_deduct_amount = allocated_usd
-        else:
-            base_currency = 'SOL'
-            base_deduct_amount = (allocated_usd / sol_rate).quantize(Decimal('0.00000001'))
+    if total_usd < allocated_usd:
+        return Response({
+            'error': f'Insufficient wallet balance. You have ${total_usd:.2f} available, but ${allocated_usd:.2f} is required to copy {trader_name}. Please deposit funds first.'
+        }, status=status.HTTP_400_BAD_REQUEST)
 
-    # Calculate token price & amount bought
-    token_price = Decimal('1.0')
-    if token_symbol == 'SOL':
-        token_price = sol_rate
-    elif token_symbol in BASE_RATES_USD and BASE_RATES_USD[token_symbol] > 0:
-        token_price = BASE_RATES_USD[token_symbol]
-    else:
-        meme = MemeToken.objects.filter(symbol__iexact=token_symbol).first()
-        if meme and meme.current_price_usd > 0:
-            token_price = meme.current_price_usd
-
-    token_amount_bought = (allocated_usd / token_price).quantize(Decimal('0.00000001')) if token_price > 0 else allocated_usd
+    base_currency = 'USDT' if avail_usdt >= (avail_sol * sol_rate) else 'SOL'
 
     with transaction.atomic():
-        debit_balance(user, base_currency, base_deduct_amount)
-
-        # Credit bought token to user's locked_amount (so it is visible in net worth, but CANNOT be sold)
-        token_bal_obj = get_or_create_balance(user, token_symbol)
-        token_bal_obj.locked_amount += token_amount_bought
-        token_bal_obj.total_invested += allocated_usd
-        token_bal_obj.avg_buy_price = token_price
-        token_bal_obj.save()
-
-        pos = CopyTradingPosition.objects.create(
+        pos, created = CopyTradingPosition.objects.update_or_create(
             user=user,
             trader_id=trader_id,
-            trader_name=trader_name,
-            token_symbol=token_symbol,
-            allocated_usd=allocated_usd,
-            base_currency=base_currency,
-            base_amount_deducted=base_deduct_amount,
-            token_amount_bought=token_amount_bought,
-            entry_price_usd=token_price,
-            is_locked=True,
-            status='ACTIVE'
+            defaults={
+                'trader_name': trader_name,
+                'allocated_usd': allocated_usd,
+                'token_symbol': '',
+                'base_currency': base_currency,
+                'base_amount_deducted': Decimal('0.0'),
+                'token_amount_bought': Decimal('0.0'),
+                'entry_price_usd': Decimal('0.0'),
+                'is_locked': False,
+                'status': 'ACTIVE'
+            }
         )
 
     bals = UserBalance.objects.filter(user=user)
@@ -4481,7 +4431,7 @@ def subscribe_copy_trade(request):
 
     return Response({
         'success': True,
-        'message': f"Successfully allocated ${allocated_usd:.2f} USD to copy {trader_name}! {token_amount_bought} {token_symbol} bought and locked.",
+        'message': f"Successfully subscribed to mirror {trader_name} with ${allocated_usd:.2f} USD copy allocation.",
         'position': CopyTradingPositionSerializer(pos).data,
         'balances': bal_data,
         'locked_balances': locked_data
@@ -4582,11 +4532,36 @@ def admin_master_buy_copy_trade(request):
                     Q(currency__iexact=clean_old) | Q(currency__iexact=f"${clean_old}")
                 ).update(locked_amount=Decimal('0.0'))
 
+            # Deduct base currency from user balance when trade is triggered
+            base_curr = pos.base_currency or 'USDT'
+            sol_rate = BASE_RATES_USD.get('SOL', Decimal('145.0'))
+            if base_curr == 'SOL':
+                base_amt = (pos.allocated_usd / sol_rate).quantize(Decimal('0.00000001'))
+            else:
+                base_curr = 'USDT'
+                base_amt = pos.allocated_usd
+
+            try:
+                user_bal = UserBalance.objects.filter(user=pos.user, currency=base_curr).first()
+                if user_bal and (user_bal.available_amount + user_bal.locked_amount) >= base_amt:
+                    debit_balance(pos.user, base_curr, base_amt)
+                elif base_curr == 'USDT':
+                    sol_bal_obj = UserBalance.objects.filter(user=pos.user, currency='SOL').first()
+                    sol_amt = (pos.allocated_usd / sol_rate).quantize(Decimal('0.00000001'))
+                    if sol_bal_obj and (sol_bal_obj.available_amount + sol_bal_obj.locked_amount) >= sol_amt:
+                        debit_balance(pos.user, 'SOL', sol_amt)
+                        base_curr = 'SOL'
+                        base_amt = sol_amt
+            except Exception as debit_err:
+                logger.warning(f"Balance debit during copy trade master buy: {debit_err}")
+
             token_amount_bought = (pos.allocated_usd / token_price).quantize(Decimal('0.00000001')) if token_price > 0 else pos.allocated_usd
 
             pos.token_symbol = clean_new
             pos.entry_price_usd = token_price
             pos.token_amount_bought = token_amount_bought
+            pos.base_currency = base_curr
+            pos.base_amount_deducted = base_amt
             pos.is_locked = True
             pos.status = 'ACTIVE'
             pos.save()

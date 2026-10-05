@@ -583,7 +583,7 @@ const NETWORK_POOLS: Record<string, string[]> = {
                         }}
                       >
                         <span>{net.label}</span>
-                        <span style={{ fontSize: 9.5, opacity: 0.8 }}>({net.speed})</span>
+                        <span style={{ fontSize: 9.5, opacity: 0.85 }}>{net.speed}</span>
                       </button>
                     );
                   })}

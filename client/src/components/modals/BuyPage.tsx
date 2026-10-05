@@ -447,13 +447,6 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                       </span>
                     </div>
 
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-                      <span style={{ color: "var(--muted)" }}>Receiving Vault:</span>
-                      <span style={{ fontFamily: "monospace", color: "#C4B5FD", fontWeight: 700 }}>
-                        {activeBuyDepositAddress.slice(0, 8)}...{activeBuyDepositAddress.slice(-6)}
-                      </span>
-                    </div>
-
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, paddingTop: 6, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
                       <span style={{ color: "var(--muted)" }}>Order Reference:</span>
                       <span style={{ fontFamily: "monospace", color: "#C4B5FD", fontWeight: 700 }}>{orderId}</span>
@@ -947,26 +940,6 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                       </div>
                     </div>
                   </label>
-                </div>
-              </div>
-
-              <div className="card-divider" />
-
-              {/* 5. Destination Vault Card */}
-              <div className="card-section" style={{ padding: "4px 0" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <Shield size={16} color="#10B981" />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>
-                      Platform Receiving Vault ({buyNetwork.split(" ")[0]})
-                    </div>
-                    <div style={{ fontFamily: "monospace", fontSize: 11, color: "#C4B5FD", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {activeBuyDepositAddress}
-                    </div>
-                  </div>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: "#10B981", background: "rgba(16, 185, 129, 0.12)", padding: "2px 6px", borderRadius: 6 }}>
-                    🔒 Auto-Secured
-                  </span>
                 </div>
               </div>
             </div>

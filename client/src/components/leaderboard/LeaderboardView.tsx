@@ -123,6 +123,14 @@ export function ProgressBarWithLiveDot({
   const clamped = Math.max(0, Math.min(100, isNaN(percent) ? 0 : percent));
   const variantClass = isLoss ? "red" : isWarn ? "warn" : "";
 
+  if (clamped <= 0) {
+    return (
+      <div className="lb-progress-track">
+        <div className={`lb-progress-fill ${variantClass}`} style={{ width: "0%", minWidth: 0, boxShadow: "none", animation: "none" }} />
+      </div>
+    );
+  }
+
   return (
     <div className="lb-progress-track">
       <div className={`lb-progress-fill ${variantClass}`} style={{ width: `${clamped}%` }}>

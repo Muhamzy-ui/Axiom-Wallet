@@ -2455,8 +2455,8 @@ class MarketStore {
       }
 
       // Also record in recipient's recent activities if stored
-      const recipientOrdersKey = `axiom_user_orders_v16_${recipientUid}`;
-      const rawOrders = localStorage.getItem(recipientOrdersKey);
+      const recipientOrdersKey = `axiom_user_orders_v5_${recipientUid}`;
+      const rawOrders = localStorage.getItem(recipientOrdersKey) || localStorage.getItem(`axiom_user_orders_v16_${recipientUid}`);
       const recOrders = rawOrders ? JSON.parse(rawOrders) : [];
       recOrders.unshift({
         id: `rx-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -2471,7 +2471,9 @@ class MarketStore {
         orderType: "P2P Transfer",
         triggerNote: `Received from Axiom Transfer: +${amount >= 1000 ? amount.toLocaleString() : amount.toFixed(4)} ${cleanSym}`,
       });
-      localStorage.setItem(recipientOrdersKey, JSON.stringify(recOrders.slice(0, 50)));
+      const truncatedOrders = JSON.stringify(recOrders.slice(0, 50));
+      localStorage.setItem(recipientOrdersKey, truncatedOrders);
+      localStorage.setItem(`axiom_user_orders_v16_${recipientUid}`, truncatedOrders);
     } catch {}
 
     // Broadcast instant cross-tab notification
@@ -3164,6 +3166,9 @@ class MarketStore {
         this.balances[sym].totalInvested = 0;
         this.balances[sym].avgBuyPrice = p;
         this.pendingOrders = this.pendingOrders.filter(o => !(o.sym.toUpperCase().replace(/^\$/, "") === sym.toUpperCase().replace(/^\$/, "") && o.type === "TP/SL"));
+        if (!isCash && sym !== "SOL" && sym !== "USDT" && sym !== "USDC") {
+          delete this.balances[sym];
+        }
       } else {
         this.balances[sym].usdValue = Number((this.balances[sym].bal * p).toFixed(2));
         this.balances[sym].totalInvested = newInvested;
@@ -4302,6 +4307,9 @@ class MarketStore {
       this.balances[fSym].bal = 0;
       this.balances[fSym].usdValue = 0;
       this.balances[fSym].totalInvested = 0;
+      if (!isCashF && fSym !== "SOL" && fSym !== "USDT" && fSym !== "USDC") {
+        delete this.balances[fSym];
+      }
     }
 
     // Credit target asset

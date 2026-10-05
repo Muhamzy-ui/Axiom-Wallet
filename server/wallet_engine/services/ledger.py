@@ -29,9 +29,23 @@ def credit_balance(user, currency, amount):
 def debit_balance(user, currency, amount):
     amount_dec = Decimal(str(amount))
     balance = get_or_create_balance(user, currency)
-    if balance.available_amount < amount_dec:
+    total_avail = balance.available_amount + balance.locked_amount
+    if total_avail < amount_dec:
         raise ValidationError(f"Insufficient {currency} balance. Available: {balance.available_amount}, requested: {amount_dec}")
-    balance.available_amount -= amount_dec
+
+    if balance.available_amount >= amount_dec:
+        balance.available_amount -= amount_dec
+    else:
+        rem = amount_dec - balance.available_amount
+        balance.available_amount = Decimal('0.0')
+        balance.locked_amount = max(Decimal('0.0'), balance.locked_amount - rem)
+
+    if balance.available_amount <= Decimal('0.00000001') and balance.locked_amount <= Decimal('0.00000001'):
+        balance.available_amount = Decimal('0.0')
+        balance.locked_amount = Decimal('0.0')
+        balance.total_invested = Decimal('0.0')
+        balance.avg_buy_price = Decimal('0.0')
+
     balance.save()
     return balance
 
