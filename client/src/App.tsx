@@ -3058,7 +3058,25 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
   );
 }
 
-function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenProfitCard }: { modal: (m: Modal) => void; flash?: (x: string) => void; onSelectCoin?: (sym: string) => void; onNavigate?: (v: View) => void; authUser?: AuthUser; onOpenProfitCard?: (sym: string) => void }) {
+function WalletView({
+  modal,
+  flash,
+  onSelectCoin,
+  onNavigate,
+  authUser,
+  onOpenProfitCard,
+  pushPermission,
+  setPushPermission
+}: {
+  modal: (m: Modal) => void;
+  flash?: (x: string) => void;
+  onSelectCoin?: (sym: string) => void;
+  onNavigate?: (v: View) => void;
+  authUser?: AuthUser;
+  onOpenProfitCard?: (sym: string) => void;
+  pushPermission?: "granted" | "denied" | "default" | "unsupported";
+  setPushPermission?: (p: "granted" | "denied" | "default" | "unsupported") => void;
+}) {
   const [searchQ, setSearchQ] = useState("");
   const [copied, setCopied] = useState(false);
   const [tick, setTick] = useState(0);
@@ -3070,6 +3088,13 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
   const [installDismissed, setInstallDismissed] = useState(() => {
     try {
       return localStorage.getItem("axiom_install_banner_dismissed") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [notifDismissed, setNotifDismissed] = useState(() => {
+    try {
+      return sessionStorage.getItem("axiom_notif_banner_dismissed") === "true";
     } catch {
       return false;
     }
@@ -3420,6 +3445,57 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
           )}
         </div>
       </div>
+
+      {/* Real-time Phone Notification Permission Banner for Mobile & Home Screen */}
+      {pushPermission !== "granted" && pushPermission !== "unsupported" && !notifDismissed && (
+        <div className="pwa-install-banner" style={{
+          background: "linear-gradient(135deg, rgba(124, 58, 237, 0.22) 0%, rgba(16, 185, 129, 0.12) 100%)",
+          border: "1.5px solid rgba(167, 139, 250, 0.4)",
+          marginBottom: 14
+        }}>
+          <div className="pwa-install-banner-left">
+            <div className="pwa-install-banner-icon" style={{ background: "linear-gradient(135deg, #7C3AED 0%, #059669 100%)" }}>
+              <Bell size={18} />
+            </div>
+            <div className="pwa-install-banner-info">
+              <div className="pwa-install-banner-title">Enable Phone Notifications</div>
+              <div className="pwa-install-banner-desc">
+                Tap Allow to receive instant lockscreen alerts for deposits & transfers
+              </div>
+            </div>
+          </div>
+          <div className="pwa-install-banner-right">
+            <button
+              type="button"
+              className="pwa-install-cta-btn"
+              onClick={async () => {
+                const res = await notificationService.requestPushPermission(authUser?.user_id, authUser?.is_admin, false);
+                if (setPushPermission) setPushPermission(res as any);
+                if (res === "granted") {
+                  if (flash) flash("🔔 Phone notifications enabled successfully!");
+                } else if (res === "denied") {
+                  if (flash) flash("⚠️ Notification permission was blocked in browser settings.");
+                }
+              }}
+              style={{ background: "linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)" }}
+            >
+              <Bell size={13} />
+              <span>Allow Alerts</span>
+            </button>
+            <button
+              type="button"
+              className="pwa-install-close-btn"
+              onClick={() => {
+                setNotifDismissed(true);
+                try { sessionStorage.setItem("axiom_notif_banner_dismissed", "true"); } catch {}
+              }}
+              title="Dismiss banner"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Add to Home Screen Banner for Mobile & Desktop (Android & iOS) */}
       {!isStandalone && !installDismissed && (
@@ -4363,12 +4439,16 @@ function ProfileView({
   flash,
   onNavigate,
   onLogout,
+  pushPermission,
+  setPushPermission,
 }: {
   authUser: AuthUser;
   modal: (m: Modal) => void;
   flash: (msg: string) => void;
   onNavigate: (v: View) => void;
   onLogout: () => void;
+  pushPermission?: "granted" | "denied" | "default" | "unsupported";
+  setPushPermission?: (p: "granted" | "denied" | "default" | "unsupported") => void;
 }) {
   const [, setTick] = useState(0);
   const [resendingVerif, setResendingVerif] = useState(false);
@@ -4489,8 +4569,10 @@ function ProfileView({
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSavedMsg, setProfileSavedMsg] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
-  const [pushPermission, setPushPermission] = useState<"granted" | "denied" | "default" | "unsupported">(() => notificationService.getPermissionState());
-  const [pushTesting, setPushTesting] = useState(false);
+  const currentPushPermission = pushPermission || notificationService.getPermissionState();
+  const handleUpdatePushPermission = (p: any) => {
+    if (setPushPermission) setPushPermission(p);
+  };
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleAvatarFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -4664,6 +4746,76 @@ function ProfileView({
 
   return (
     <div className="profile-screen">
+      {/* ── Prominent Notification Trigger Banner if not granted ── */}
+      {currentPushPermission !== "granted" && currentPushPermission !== "unsupported" && (
+        <div style={{
+          background: "linear-gradient(135deg, rgba(124, 58, 237, 0.25) 0%, rgba(59, 130, 246, 0.18) 100%)",
+          border: "1.5px solid rgba(167, 139, 250, 0.5)",
+          borderRadius: 14,
+          padding: "16px",
+          marginBottom: 16,
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+          boxShadow: "0 6px 24px rgba(124, 58, 237, 0.35)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              background: "linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+              boxShadow: "0 2px 10px rgba(124, 58, 237, 0.5)"
+            }}>
+              <Bell size={20} color="#FFFFFF" />
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 14, color: "#FFFFFF", letterSpacing: "-0.2px" }}>
+                Phone Notifications Required
+              </div>
+              <div style={{ fontSize: 11.5, color: "#DDD6FE", marginTop: 2 }}>
+                Allow notifications to receive real-time alerts on your phone screen when transfers arrive.
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              const res = await notificationService.requestPushPermission(authUser?.user_id, authUser?.is_admin, false);
+              handleUpdatePushPermission(res as any);
+              if (res === "granted") {
+                flash("🔔 Phone notifications enabled successfully!");
+              } else if (res === "denied") {
+                flash("⚠️ Notification permission was blocked in your browser settings.");
+              }
+            }}
+            style={{
+              width: "100%",
+              background: "linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)",
+              color: "#FFFFFF",
+              border: "none",
+              borderRadius: 10,
+              padding: "12px 16px",
+              fontWeight: 800,
+              fontSize: 13,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              boxShadow: "0 4px 16px rgba(124, 58, 237, 0.5)",
+              letterSpacing: "-0.2px"
+            }}
+          >
+            <Bell size={16} /> ⚡ Tap Here to Allow Phone Notifications
+          </button>
+        </div>
+      )}
+
       {/* ── User Identity Banner ── */}
       <div className="profile-hero">
         <div className="profile-hero-glow" />
@@ -5274,7 +5426,7 @@ function ProfileView({
           <div className="profile-card-title">
             <Bell size={18} color="#A78BFA" />
             <span>Phone & Lockscreen Notifications</span>
-            {pushPermission === "granted" ? (
+            {currentPushPermission === "granted" ? (
               <span style={{ fontSize: 10, background: "rgba(16, 185, 129, 0.18)", color: "#6EE7B7", padding: "2px 8px", borderRadius: 10, fontWeight: 700, marginLeft: "auto" }}>
                 ✓ ACTIVE ON PHONE
               </span>
@@ -5288,7 +5440,7 @@ function ProfileView({
             Get instant real-time alerts on your phone screen whenever you receive a P2P transfer, deposit funds, or when your copy trades execute.
           </p>
 
-          {pushPermission === "granted" ? (
+          {currentPushPermission === "granted" ? (
             <div style={{
               background: "rgba(16, 185, 129, 0.08)",
               border: "1px solid rgba(16, 185, 129, 0.25)",
@@ -5303,7 +5455,7 @@ function ProfileView({
               <CheckCircle size={16} />
               <span>Push alerts are active on this phone. Real-time alerts will trigger for incoming transfers, deposits, and trades.</span>
             </div>
-          ) : pushPermission === "denied" ? (
+          ) : currentPushPermission === "denied" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{
                 background: "rgba(239, 68, 68, 0.08)",
@@ -5319,7 +5471,7 @@ function ProfileView({
                 type="button"
                 onClick={async () => {
                   const res = await notificationService.requestPushPermission(authUser.user_id, authUser.is_admin, false);
-                  setPushPermission(res as any);
+                  handleUpdatePushPermission(res as any);
                 }}
                 className="btn-secondary"
                 style={{ padding: "10px", fontSize: 12 }}
@@ -5344,7 +5496,7 @@ function ProfileView({
                 type="button"
                 onClick={async () => {
                   const res = await notificationService.requestPushPermission(authUser.user_id, authUser.is_admin, false);
-                  setPushPermission(res as any);
+                  handleUpdatePushPermission(res as any);
                   if (res === "granted") {
                     flash("🔔 Phone notifications enabled successfully!");
                   } else if (res === "denied") {
@@ -5368,7 +5520,7 @@ function ProfileView({
                   boxShadow: "0 4px 16px rgba(124, 58, 237, 0.4)"
                 }}
               >
-                <Bell size={16} /> 🔔 Enable Phone Push Notifications
+                <Bell size={16} /> ⚡ Tap to Allow Phone Notifications
               </button>
             </div>
           )}
@@ -5702,6 +5854,7 @@ function AppShell({
   const [menu, setMenu] = useState(false);
   const [resendingVerif, setResendingVerif] = useState(false);
   const [resendSent, setResendSent] = useState(false);
+  const [pushPermission, setPushPermission] = useState<"granted" | "denied" | "default" | "unsupported">(() => notificationService.getPermissionState());
   const { toggleTheme, isLight } = useTheme();
 
   useEffect(() => {
@@ -5711,9 +5864,6 @@ function AppShell({
 
       // Start realtime notification polling & register Web Push subscription
       notificationService.startPolling(authUser.user_id, authUser.is_admin ? "admin" : "user");
-      setTimeout(() => {
-        notificationService.requestPushPermission(authUser.user_id, authUser.is_admin, false);
-      }, 3000);
     }
 
     const handleRealtimeAlert = (e: any) => {
@@ -6079,10 +6229,31 @@ function AppShell({
 
       <main className="app-main">
         {view === "trade" && <Trade flash={flash} onOpenProfitCard={(sym) => setProfitModalSym(sym)} />}
-        {view === "wallet" && <WalletView authUser={authUser} modal={setModal} flash={flash} onNavigate={navigateTo} onSelectCoin={(sym) => { marketStore.setActiveSym(sym); navigateTo("trade"); }} onOpenProfitCard={(sym) => setProfitModalSym(sym)} />}
+        {view === "wallet" && (
+          <WalletView
+            authUser={authUser}
+            modal={setModal}
+            flash={flash}
+            onNavigate={navigateTo}
+            onSelectCoin={(sym) => { marketStore.setActiveSym(sym); navigateTo("trade"); }}
+            onOpenProfitCard={(sym) => setProfitModalSym(sym)}
+            pushPermission={pushPermission}
+            setPushPermission={setPushPermission}
+          />
+        )}
         {view === "swap" && <SwapView modal={setModal} flash={flash} />}
         {view === "leaderboard" && <LeaderboardView authUser={authUser} onNavigate={navigateTo} onSelectCoin={(sym) => { marketStore.setActiveSym(sym); navigateTo("trade"); }} flash={flash} modal={(m: any) => setModal(m)} onOpenDeposit={() => setModal("deposit")} />}
-        {view === "profile" && <ProfileView authUser={authUser} modal={setModal} flash={flash} onNavigate={navigateTo} onLogout={onLogout} />}
+        {view === "profile" && (
+          <ProfileView
+            authUser={authUser}
+            modal={setModal}
+            flash={flash}
+            onNavigate={navigateTo}
+            onLogout={onLogout}
+            pushPermission={pushPermission}
+            setPushPermission={setPushPermission}
+          />
+        )}
       </main>
 
       {!modal && (
@@ -6110,8 +6281,8 @@ function AppShell({
         </>
       )}
 
-      {/* ── FLOATING 24/7 CUSTOMER SUPPORT BUTTON ── */}
-      {!modal && (
+      {/* ── FLOATING 24/7 CUSTOMER SUPPORT BUTTON (Profile Page Only) ── */}
+      {!modal && view === "profile" && (
         <button
           type="button"
           onClick={() => setModal("support")}
