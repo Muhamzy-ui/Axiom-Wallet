@@ -912,13 +912,15 @@ function UserOrdersList({
     return marketStore.subscribe(() => setTick(t => t + 1));
   }, [sym]);
 
-  // Build real positions list from wallet balances
+  // Build real positions list from wallet balances (excluding cash and gas assets)
+  const EXCLUDED_POS_SYMS = new Set(["USDT", "USDC", "SOL", "USD"]);
   const allBalances = marketStore.balances || {};
   const positionSyms = (filterCurrentPair && sym)
     ? [sym]
     : Object.keys(allBalances).filter(s => {
         const b = allBalances[s];
-        return b && b.bal > 0.000001 && s !== "USDT" && s !== "USDC";
+        const clean = s.toUpperCase().replace(/^\$/, "");
+        return b && b.bal > 0.000001 && !EXCLUDED_POS_SYMS.has(clean);
       });
 
   const positions = positionSyms
@@ -2335,11 +2337,13 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
             {mobileSubTab === "position" && (
               <div className="dex-mobile-tab-pane">
                 {(() => {
+                  const EXCLUDED_POS_SYMS = new Set(["USDT", "USDC", "SOL", "USD"]);
                   const allBalances = marketStore.balances || {};
                   const allOpenPos = Object.keys(allBalances)
                     .filter(s => {
                       const b = allBalances[s];
-                      return b && b.bal > 0.000001 && s !== "USDT" && s !== "USDC";
+                      const clean = s.toUpperCase().replace(/^\$/, "");
+                      return b && b.bal > 0.000001 && !EXCLUDED_POS_SYMS.has(clean);
                     })
                     .map(s => {
                       const p = marketStore.getUserPosition(s);

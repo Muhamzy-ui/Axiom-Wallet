@@ -3142,16 +3142,30 @@ class MarketStore {
       };
     } else {
       // User pays Token, receives quote/pair currency credit
-      const availableToken = this.balances[sym]?.bal || 0;
+      const rawSym = (sym || "").toUpperCase().trim();
+      const cleanSym = rawSym.replace(/^\$/, "");
+      const symKeys = [sym, cleanSym, `$${cleanSym}`, rawSym, sym.toLowerCase()];
+      let targetKey = "";
+      for (const k of symKeys) {
+        if (this.balances[k] && this.balances[k].bal > 0) {
+          targetKey = k;
+          break;
+        }
+      }
+      if (!targetKey && this.balances[cleanSym]) targetKey = cleanSym;
+      if (!targetKey && this.balances[sym]) targetKey = sym;
+
+      const availableToken = targetKey ? (this.balances[targetKey]?.bal || 0) : 0;
       if (amount <= 0) return { success: false, message: "Enter an amount greater than 0" };
-      if (amount > availableToken) {
-        return { success: false, message: `Insufficient ${sym} balance! Available: ${availableToken.toLocaleString()}` };
+      if (availableToken <= 0.000001) {
+        return { success: false, message: `Insufficient ${cleanSym} balance! Available: 0` };
       }
 
-      const grossUsdReceived = Number((amount * p).toFixed(2));
-      const prevBal = this.balances[sym].bal;
-      const prevInvested = this.balances[sym].totalInvested || (prevBal * p);
-      const remainingRatio = Math.max(0, (prevBal - amount) / prevBal);
+      const actualSellAmount = Math.min(amount, availableToken);
+      const grossUsdReceived = Number((actualSellAmount * p).toFixed(2));
+      const prevBal = this.balances[targetKey].bal;
+      const prevInvested = this.balances[targetKey].totalInvested || (prevBal * p);
+      const remainingRatio = Math.max(0, (prevBal - actualSellAmount) / Math.max(0.000001, prevBal));
       const newInvested = Number((prevInvested * remainingRatio).toFixed(2));
       const investedForSoldPart = Math.max(0, prevInvested - newInvested);
       const profitOnSale = grossUsdReceived - investedForSoldPart;
@@ -3159,20 +3173,23 @@ class MarketStore {
         this.addRealizedProfit(profitOnSale);
       }
 
-      this.balances[sym].bal = Math.max(0, this.balances[sym].bal - amount);
-      if (this.balances[sym].bal <= 0.000001) {
-        this.balances[sym].bal = 0;
-        this.balances[sym].usdValue = 0;
-        this.balances[sym].totalInvested = 0;
-        this.balances[sym].avgBuyPrice = p;
-        this.pendingOrders = this.pendingOrders.filter(o => !(o.sym.toUpperCase().replace(/^\$/, "") === sym.toUpperCase().replace(/^\$/, "") && o.type === "TP/SL"));
-        if (!isCash && sym !== "SOL" && sym !== "USDT" && sym !== "USDC") {
+      this.balances[targetKey].bal = Math.max(0, this.balances[targetKey].bal - actualSellAmount);
+      if (this.balances[targetKey].bal <= 0.000001) {
+        this.balances[targetKey].bal = 0;
+        this.balances[targetKey].usdValue = 0;
+        this.balances[targetKey].totalInvested = 0;
+        this.balances[targetKey].avgBuyPrice = p;
+        this.pendingOrders = this.pendingOrders.filter(o => !(o.sym.toUpperCase().replace(/^\$/, "") === cleanSym && o.type === "TP/SL"));
+        if (!isCash && cleanSym !== "SOL" && cleanSym !== "USDT" && cleanSym !== "USDC" && cleanSym !== "USD") {
+          delete this.balances[targetKey];
+          delete this.balances[cleanSym];
+          delete this.balances[`$${cleanSym}`];
           delete this.balances[sym];
         }
       } else {
-        this.balances[sym].usdValue = Number((this.balances[sym].bal * p).toFixed(2));
-        this.balances[sym].totalInvested = newInvested;
-        this.balances[sym].avgBuyPrice = newInvested / this.balances[sym].bal;
+        this.balances[targetKey].usdValue = Number((this.balances[targetKey].bal * p).toFixed(2));
+        this.balances[targetKey].totalInvested = newInvested;
+        this.balances[targetKey].avgBuyPrice = newInvested / this.balances[targetKey].bal;
       }
 
       // Credit proceeds: if cash pair, to USDT/USDC. If crypto pair, to that specific crypto (SOL, ETH, BNB)
@@ -3210,10 +3227,10 @@ class MarketStore {
 
       // Add trade to Recent Trades
       this.addTrade({
-        sym,
+        sym: cleanSym,
         type: "Sell",
         usd: grossUsdReceived,
-        tokenAmt: amount,
+        tokenAmt: actualSellAmount,
         price: p,
         trader: "JD...7b2",
         traderEmoji: "⚡",
@@ -3223,11 +3240,11 @@ class MarketStore {
       // Record in User Orders
       const userOrder: UserOrder = {
         id: `order-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        sym,
+        sym: cleanSym,
         name: token.name,
         side: "Sell",
         amountUsd: grossUsdReceived,
-        tokenAmt: amount,
+        tokenAmt: actualSellAmount,
         price: p,
         timestamp: Date.now(),
         dateStr: "just now",
@@ -3261,9 +3278,9 @@ class MarketStore {
         token.fdv = fmtMcap;
       }
 
-      // Update user position holding value immediately with new price
-      if (this.balances[sym]) {
-        this.balances[sym].usdValue = Number((this.balances[sym].bal * newP).toFixed(2));
+      // Update user position holding value immediately with new price if key still exists
+      if (targetKey && this.balances[targetKey]) {
+        this.balances[targetKey].usdValue = Number((this.balances[targetKey].bal * newP).toFixed(2));
       }
 
       // Update sellers counters
