@@ -4616,66 +4616,18 @@ class MarketStore {
           // fallback
         }
 
-        // Initialize or update organic wave cycle for non-major tokens when admin is not overriding
-        if (!isMajor && !adminMode) {
-          if (!this.marketCycles[token.sym]) {
-            this.marketCycles[token.sym] = {
-              baselinePrice: token.numericPrice,
-              phase: "impulse",
-              phaseTicksLeft: 10 + Math.floor(Math.random() * 8),
-              totalCycleGains: 0,
-            };
-          }
-
-          const cycle = this.marketCycles[token.sym];
-          cycle.phaseTicksLeft -= 1;
-
-          const currentGainPct = ((token.numericPrice - cycle.baselinePrice) / cycle.baselinePrice) * 100;
-
-          if (cycle.phase === "impulse") {
-            // Impulse phase: 62% buys, 38% sells — upward wave with natural profit-taking
-            isBuy = Math.random() < 0.62;
-            minUsd = 25;
-            maxUsd = 240;
-            if (cycle.phaseTicksLeft <= 0) {
-              // Transition to organic pullback/dip (4 to 7 ticks)
-              cycle.phase = "pullback";
-              cycle.phaseTicksLeft = 4 + Math.floor(Math.random() * 4);
-            }
-          } else if (cycle.phase === "pullback") {
-            // Pullback phase: 38% buys, 62% sells — healthy dips with bounce buyers
-            isBuy = Math.random() < 0.38;
-            minUsd = 20;
-            maxUsd = 180;
-            if (cycle.phaseTicksLeft <= 0) {
-              // Transition to consolidation
-              cycle.phase = "consolidation";
-              cycle.phaseTicksLeft = 4 + Math.floor(Math.random() * 5);
-            }
-          } else {
-            // Consolidation phase: 52% buys, 48% sells — balanced support base
-            isBuy = Math.random() < 0.52;
-            minUsd = 15;
-            maxUsd = 120;
-            if (cycle.phaseTicksLeft <= 0) {
-              if (currentGainPct >= 10) {
-                cycle.baselinePrice = token.numericPrice * 0.95;
-              }
-              cycle.phase = "impulse";
-              cycle.phaseTicksLeft = 10 + Math.floor(Math.random() * 8);
-            }
-          }
-        }
-
         const epochSec = Math.floor(Date.now() / 1000);
         const anchor = this.priceAnchors[token.sym] || token.numericPrice;
         const synced = computeSynchronizedPrice(token, anchor, epochSec);
         const newP = synced.numericPrice;
 
+        isBuy = adminMode === "only_buy" ? true : adminMode === "only_sell" ? false : synced.isBuy;
         if (isMajor) {
-          isBuy = synced.isBuy;
           minUsd = 60;
           maxUsd = 450;
+        } else {
+          minUsd = 15;
+          maxUsd = 180;
         }
 
         token.numericPrice = newP;

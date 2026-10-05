@@ -2466,6 +2466,7 @@ def sync_user_balances(request):
         return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
     with transaction.atomic():
+        synced_syms = set()
         for sym, b_data in balances.items():
             if not isinstance(b_data, dict):
                 continue
@@ -2476,21 +2477,44 @@ def sync_user_balances(request):
             clean_sym = str(sym).upper().strip().lstrip('$')
             if not clean_sym:
                 continue
+            synced_syms.add(clean_sym)
 
             b_obj = get_or_create_balance(user, clean_sym)
-            # Only populate available_amount if database balance is zero/new
-            # Never overwrite real server-side deposits, P2P transfers, or trades!
-            if b_obj.available_amount == Decimal('0.0') and b_obj.locked_amount == Decimal('0.0') and amt > Decimal('0.0'):
-                b_obj.available_amount = max(Decimal('0.0'), amt)
-            if total_inv > Decimal('0.0'):
-                b_obj.total_invested = max(b_obj.total_invested, total_inv)
-            if avg_price > Decimal('0.0'):
-                b_obj.avg_buy_price = avg_price
+            if amt <= Decimal('0.00000001'):
+                # Token has been closed / liquidated: clean up completely
+                b_obj.available_amount = Decimal('0.0')
+                b_obj.locked_amount = Decimal('0.0')
+                b_obj.total_invested = Decimal('0.0')
+                b_obj.avg_buy_price = Decimal('0.0')
+            else:
+                # If balance was 0 or this is a live positive credit/sync
+                b_obj.available_amount = amt
+                if total_inv > Decimal('0.0'):
+                    b_obj.total_invested = total_inv
+                if avg_price > Decimal('0.0'):
+                    b_obj.avg_buy_price = avg_price
             b_obj.save()
 
+        # If trade_info is a SELL, explicitly zero out the sold token in DB
         if trade_info and isinstance(trade_info, dict):
             raw_sym = str(trade_info.get('sym', '')).upper().strip()
             clean_sym = raw_sym.lstrip('$')
+            side_val = 'BUY' if str(trade_info.get('type', '')).upper() in ['BUY', 'B'] else 'SELL'
+
+            if clean_sym and side_val == 'SELL':
+                UserBalance.objects.filter(user=user).filter(
+                    Q(currency__iexact=clean_sym) | Q(currency__iexact=f"${clean_sym}")
+                ).update(
+                    available_amount=Decimal('0.0'),
+                    locked_amount=Decimal('0.0'),
+                    total_invested=Decimal('0.0'),
+                    avg_buy_price=Decimal('0.0')
+                )
+                CopyTradingPosition.objects.filter(
+                    user=user,
+                    token_symbol__iexact=clean_sym
+                ).update(status='CLOSED', is_locked=False)
+
             if clean_sym:
                 token_obj = (
                     MemeToken.objects.filter(symbol__iexact=raw_sym).first()
@@ -2514,7 +2538,6 @@ def sync_user_balances(request):
 
                 if token_obj:
                     try:
-                        side_val = 'BUY' if str(trade_info.get('type', '')).upper() in ['BUY', 'B'] else 'SELL'
                         Trade.objects.create(
                             user=user,
                             token=token_obj,
@@ -2529,6 +2552,18 @@ def sync_user_balances(request):
                     except Exception as e:
                         logger.warning(f"Trade creation in sync_user_balances: {e}")
 
+        # If a non-base token existed in DB with positive balance but was removed from client payload, zero it out
+        if synced_syms:
+            base_set = {'SOL', 'ETH', 'USDT', 'USDC', 'BTC', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'USD'}
+            for ub in UserBalance.objects.filter(user=user):
+                clean_ub = ub.currency.upper().lstrip('$')
+                if clean_ub not in base_set and clean_ub not in synced_syms:
+                    ub.available_amount = Decimal('0.0')
+                    ub.locked_amount = Decimal('0.0')
+                    ub.total_invested = Decimal('0.0')
+                    ub.save()
+
+    cache.delete('portfolio_meme_map')
     return Response({'success': True})
 
 
