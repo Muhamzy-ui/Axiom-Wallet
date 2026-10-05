@@ -550,6 +550,8 @@ export function LeaderboardView({
   const [copyError, setCopyError] = useState<string | null>(null);
   const [copyingTraders, setCopyingTraders] = useState<Record<string, any>>(() => leaderboardStore.getCopiedTradersMap());
 
+  const [alertDismissed, setAlertDismissed] = useState(false);
+
   // Helper to cleanly render SVG data-URIs, image URLs, or emoji avatars without raw markup leaks
   const renderTraderAvatar = (avatar: string | undefined, size: number = 36) => {
     if (!avatar) {
@@ -587,7 +589,7 @@ export function LeaderboardView({
     );
   };
 
-  // Simulate real-time ticker stream updates with both profit and down/loss trades in red + copy trade mirroring
+  // Simulate real-time ticker stream updates with both profit and down/loss trades in red
   useEffect(() => {
     const tokens = ["SOL", "BONK", "POPCAT", "WIF", "BTC", "ETH", "MASK", "CATE", "STONKEX"];
     const winActions = ["closed Long +", "took profit +", "scalped +", "closed +"];
@@ -621,41 +623,31 @@ export function LeaderboardView({
 
       setStream((prev) => [newItem, ...prev.slice(0, 9)]);
 
-      // Check if user is currently copying this trader
+      // Check if user is currently copying this specific trader
       const activeCopies = leaderboardStore.getCopiedTradersMap();
       const isCopyingThis = Object.keys(activeCopies).some((tid) => {
+        if (!activeCopies[tid]) return false;
         const t = traders.find(tr => tr.id === tid);
-        return t && (t.name.toLowerCase() === randomName.toLowerCase() || t.id === tid);
+        return t && t.name.toLowerCase() === randomName.toLowerCase();
       });
 
-      if (isCopyingThis) {
-        const bals = marketStore.getBalances();
-        const getBal = (v: any) => (typeof v === "object" && v !== null ? Number(v.bal ?? 0) : Number(v ?? 0)) || 0;
-        const solBal = getBal(bals['SOL']);
-        const usdtBal = getBal(bals['USDT']);
-        const usdcBal = getBal(bals['USDC']);
-        const totalNetUsd = solBal * 179 + usdtBal + usdcBal;
+      if (isCopyingThis && !alertDismissed) {
+        const metrics = marketStore.getPortfolioMetrics();
+        const totalNetUsd = metrics.totalValue;
 
-        if (totalNetUsd < 5 || solBal < 0.05) {
+        if (totalNetUsd < 5.0) {
           setInsufficientBalanceNotice({
             traderName: randomName,
             token: randomToken,
             action: randomAction,
             userBal: `$${totalNetUsd.toFixed(2)}`
           });
-          if (flash) {
-            flash(`⚠️ Copy Trade Alert: ${randomName} opened a position in ${randomToken}, but your wallet has insufficient funds ($${totalNetUsd.toFixed(2)}). Please deposit to mirror!`);
-          }
-        } else {
-          if (flash) {
-            flash(`🚀 Copy Trade Mirrored: Successfully mirrored ${randomToken} trade copying ${randomName}!`);
-          }
         }
       }
     }, 4500);
 
     return () => clearInterval(interval);
-  }, [traders, flash]);
+  }, [traders, alertDismissed]);
 
   // Hook up real user trades to live execution stream feed immediately
   useEffect(() => {
@@ -905,30 +897,30 @@ export function LeaderboardView({
         };
       });
 
-    // 2. Build real recent trades from user's actual order history (NO FAKE TRADES)
-    const realRecentTrades = userOrders.slice(0, 15).map((o: any) => ({
+    // 2. Build real recent trades from user's actual trade order history (EXCLUDING wallet deposits)
+    const realTradeOrders = userOrders.filter((o: any) => o.type !== "deposit" && (o.side === "Buy" || o.side === "Sell" || o.side === "buy" || o.side === "sell"));
+    const realRecentTrades = realTradeOrders.slice(0, 15).map((o: any) => ({
       symbol: o.sym,
       side: o.side?.toLowerCase() === "sell" ? ("short" as const) : ("long" as const),
-      pnl: o.amountUsd ? `${o.side === 'Sell' ? '+' : '-'}$${Number(o.amountUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "$0.00",
-      roi: o.side === 'Sell' ? "+12.4%" : "-0.0%",
+      pnl: o.amountUsd ? `${o.side?.toLowerCase() === 'sell' ? '+' : '-'}$${Number(o.amountUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "$0.00",
+      roi: o.side?.toLowerCase() === 'sell' ? "+12.4%" : "-0.0%",
       time: o.dateStr || "recently",
       type: "closed" as const
     }));
 
-    // 3. Real win rate calculation based on user's actual executions & portfolio metrics
-    const totalTradesCount = userOrders.length;
+    // 3. Real win rate calculation: new users start strictly from 0% loading until they trade & profit
+    const totalTradesCount = realTradeOrders.length;
     let winTradesCount = 0;
     let lossTradesCount = 0;
     let realWinRate = 0;
 
-    if (totalTradesCount > 0) {
-      winTradesCount = userOrders.filter((o: any) => o.side === "Sell" || (metrics.isPositive && o.side === "Buy")).length;
+    if (totalTradesCount > 0 && metrics.diffUsd > 0) {
+      winTradesCount = realTradeOrders.filter((o: any) => o.side?.toLowerCase() === "sell" || (metrics.diffUsd > 0 && o.side?.toLowerCase() === "buy")).length;
       lossTradesCount = Math.max(0, totalTradesCount - winTradesCount);
       realWinRate = Number(((winTradesCount / totalTradesCount) * 100).toFixed(1));
     } else {
-      // New user starts loading from beginning (0 trades -> 0% progress)
       winTradesCount = 0;
-      lossTradesCount = 0;
+      lossTradesCount = totalTradesCount;
       realWinRate = 0;
     }
 
@@ -942,7 +934,7 @@ export function LeaderboardView({
 
     return {
       id: "trader-current-user",
-      rank: 50,
+      rank: totalTradesCount > 0 && metrics.diffUsd > 0 ? Math.max(1, Math.min(50, Math.floor(50 - (metrics.diffUsd / 1500)))) : 50,
       rankDelta: 0,
       name: `${uName} (You)`,
       handle: `@${walletAddr.slice(0, 8)}`,
@@ -1258,7 +1250,10 @@ export function LeaderboardView({
             </button>
             <button
               className="lb-dismiss-btn"
-              onClick={() => setInsufficientBalanceNotice(null)}
+              onClick={() => {
+                setInsufficientBalanceNotice(null);
+                setAlertDismissed(true);
+              }}
               title="Dismiss Alert"
             >
               <X size={14} />
@@ -2410,7 +2405,7 @@ export function LeaderboardView({
                   <span className="lb-input-denom">USD</span>
                 </div>
                 <div className="lb-presets-row">
-                  {["$5", "$10", "$25", "$50", "$100", "$250", "$500"].map((p) => (
+                  {["$5", "$10", "$25", "$50", "$100", "$200", "$250", "$500"].map((p) => (
                     <button
                       key={p}
                       className="lb-preset-btn"

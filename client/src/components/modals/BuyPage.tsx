@@ -841,6 +841,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                     Math.round(25 * rateToUsd),
                     Math.round(50 * rateToUsd),
                     Math.round(100 * rateToUsd),
+                    Math.round(200 * rateToUsd),
                     Math.round(250 * rateToUsd),
                     Math.round(500 * rateToUsd),
                   ].map((amt) => (
