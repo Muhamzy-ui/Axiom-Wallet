@@ -2345,6 +2345,20 @@ def faucet_deposit(request):
         verified_at=timezone.now()
     )
 
+    try:
+        f_notif = AppNotification.objects.create(
+            target_audience='USER',
+            user=user,
+            user_identifier=user.wallet_address or user.email or user.user_id,
+            title=f"Deposit Confirmed 💰 (+{amount} {currency})",
+            message=f"Received +{amount} {currency} directly in your Axiom Wallet balance.",
+            notification_type='DEPOSIT',
+            link_url='/#wallet'
+        )
+        dispatch_web_push(f_notif)
+    except Exception:
+        pass
+
     return Response({'success': True, 'credited_amount': str(amount), 'currency': currency})
 
 
@@ -2426,9 +2440,9 @@ def internal_transfer_uid(request):
                 audit_note=f"Instant P2P Transfer to UID {recipient_uid_label}",
                 tx_hash=tx_hash_val
             )
-            # Send In-App notification to Sender
+            # Send In-App notification & Phone Web Push to Sender
             try:
-                AppNotification.objects.create(
+                s_notif = AppNotification.objects.create(
                     target_audience='USER',
                     user=sender,
                     user_identifier=str(sender.id),
@@ -2437,6 +2451,7 @@ def internal_transfer_uid(request):
                     notification_type='WITHDRAWAL',
                     link_url='/#wallet'
                 )
+                dispatch_web_push(s_notif)
             except Exception as e:
                 print(f"[Transfer Notification Sender] {e}")
 
@@ -2453,9 +2468,9 @@ def internal_transfer_uid(request):
             verified_at=timezone.now()
         )
 
-        # Send Real-Time In-App notification to Recipient
+        # Send Real-Time In-App notification & Phone Web Push to Recipient
         try:
-            AppNotification.objects.create(
+            r_notif = AppNotification.objects.create(
                 target_audience='USER',
                 user=recipient,
                 user_identifier=str(recipient.id),
@@ -2464,8 +2479,10 @@ def internal_transfer_uid(request):
                 notification_type='DEPOSIT',
                 link_url='/#wallet'
             )
+            dispatch_web_push(r_notif)
         except Exception as e:
             print(f"[Transfer Notification Recipient] {e}")
+
 
 
     return Response({
@@ -3232,6 +3249,21 @@ def admin_approve_withdrawal(request, pk):
 
     tx_hash = request.data.get('tx_hash', '').strip() or generate_tx_hash('wd_paid_')
     finalize_withdrawal(w, tx_hash=tx_hash)
+
+    try:
+        w_notif = AppNotification.objects.create(
+            target_audience='USER',
+            user=w.user,
+            user_identifier=w.user.wallet_address or w.user.email or w.user.user_id,
+            title=f"Withdrawal Approved 💸 ({w.amount} {w.currency})",
+            message=f"Your withdrawal of {w.amount} {w.currency} has been approved and broadcast on-chain.",
+            notification_type='WITHDRAWAL',
+            link_url='/#wallet'
+        )
+        dispatch_web_push(w_notif)
+    except Exception:
+        pass
+
     return Response({'success': True, 'tx_hash': tx_hash, 'status': 'APPROVED', 'message': f'Withdrawal #{w.id} approved successfully!'})
 
 @api_view(['POST'])
@@ -3253,6 +3285,21 @@ def admin_reject_withdrawal(request, pk):
     w.status = 'REJECTED'
     w.rejection_reason = reason
     w.save()
+
+    try:
+        w_notif = AppNotification.objects.create(
+            target_audience='USER',
+            user=w.user,
+            user_identifier=w.user.wallet_address or w.user.email or w.user.user_id,
+            title=f"Withdrawal Declined ⚠️ ({w.amount} {w.currency})",
+            message=f"Withdrawal #{w.id} declined: {reason}. Funds returned to your balance.",
+            notification_type='WITHDRAWAL',
+            link_url='/#wallet'
+        )
+        dispatch_web_push(w_notif)
+    except Exception:
+        pass
+
     return Response({'success': True, 'status': 'REJECTED', 'message': f'Withdrawal #{w.id} declined. Funds returned to user balance.'})
 
 def save_token_logo(symbol: str, logo_data: str) -> str:
@@ -3724,6 +3771,20 @@ def admin_approve_deposit(request, pk):
             dep.deposit_wallet.total_received_usd += usd_val
             dep.deposit_wallet.save()
 
+        try:
+            dep_notif = AppNotification.objects.create(
+                target_audience='USER',
+                user=dep.user,
+                user_identifier=dep.user.wallet_address or dep.user.email or dep.user.user_id,
+                title=f"Deposit Confirmed 💰 (+{dep.amount} {dep.currency})",
+                message=f"Your deposit of {dep.amount} {dep.currency} has been approved and credited to your trading balance.",
+                notification_type='DEPOSIT',
+                link_url='/#wallet'
+            )
+            dispatch_web_push(dep_notif)
+        except Exception:
+            pass
+
     bal_obj = UserBalance.objects.filter(user=dep.user, currency=dep.currency).first()
     new_bal = str(bal_obj.available_amount) if bal_obj else str(dep.amount)
 
@@ -3755,6 +3816,20 @@ def admin_reject_deposit(request, pk):
 
     dep.status = 'REJECTED'
     dep.save()
+
+    try:
+        dep_notif = AppNotification.objects.create(
+            target_audience='USER',
+            user=dep.user,
+            user_identifier=dep.user.wallet_address or dep.user.email or dep.user.user_id,
+            title=f"Deposit Declined ⚠️ ({dep.currency})",
+            message=f"Deposit #{dep.id} for {dep.amount} {dep.currency} was declined by the vault administrator.",
+            notification_type='DEPOSIT',
+            link_url='/#wallet'
+        )
+        dispatch_web_push(dep_notif)
+    except Exception:
+        pass
 
     return Response({
         'success': True,
@@ -4132,6 +4207,20 @@ def junior_admin_approve_deposit(request, pk):
             dep.deposit_wallet.total_received_usd += usd_val
             dep.deposit_wallet.save()
 
+        try:
+            dep_notif = AppNotification.objects.create(
+                target_audience='USER',
+                user=dep.user,
+                user_identifier=dep.user.wallet_address or dep.user.email or dep.user.user_id,
+                title=f"Deposit Confirmed 💰 (+{dep.amount} {dep.currency})",
+                message=f"Your deposit of {dep.amount} {dep.currency} has been approved and credited to your trading balance.",
+                notification_type='DEPOSIT',
+                link_url='/#wallet'
+            )
+            dispatch_web_push(dep_notif)
+        except Exception:
+            pass
+
     bal_obj = UserBalance.objects.filter(user=dep.user, currency=dep.currency).first()
     new_bal = str(bal_obj.available_amount) if bal_obj else str(dep.amount)
 
@@ -4164,6 +4253,20 @@ def junior_admin_reject_deposit(request, pk):
 
     dep.status = 'REJECTED'
     dep.save()
+
+    try:
+        dep_notif = AppNotification.objects.create(
+            target_audience='USER',
+            user=dep.user,
+            user_identifier=dep.user.wallet_address or dep.user.email or dep.user.user_id,
+            title=f"Deposit Declined ⚠️ ({dep.currency})",
+            message=f"Deposit #{dep.id} for {dep.amount} {dep.currency} was declined by the agent.",
+            notification_type='DEPOSIT',
+            link_url='/#wallet'
+        )
+        dispatch_web_push(dep_notif)
+    except Exception:
+        pass
 
     return Response({
         'success': True,
@@ -4204,6 +4307,21 @@ def junior_admin_approve_withdrawal(request, pk):
 
     tx_hash = request.data.get('tx_hash', '').strip() or generate_tx_hash('ja_wd_paid_')
     finalize_withdrawal(w, tx_hash=tx_hash)
+
+    try:
+        w_notif = AppNotification.objects.create(
+            target_audience='USER',
+            user=w.user,
+            user_identifier=w.user.wallet_address or w.user.email or w.user.user_id,
+            title=f"Withdrawal Approved 💸 ({w.amount} {w.currency})",
+            message=f"Your withdrawal of {w.amount} {w.currency} has been approved and broadcast on-chain.",
+            notification_type='WITHDRAWAL',
+            link_url='/#wallet'
+        )
+        dispatch_web_push(w_notif)
+    except Exception:
+        pass
+
     return Response({'success': True, 'tx_hash': tx_hash, 'status': 'APPROVED', 'message': f'Withdrawal #{w.id} approved successfully!'})
 
 
@@ -4230,6 +4348,21 @@ def junior_admin_reject_withdrawal(request, pk):
     w.status = 'REJECTED'
     w.rejection_reason = reason
     w.save()
+
+    try:
+        w_notif = AppNotification.objects.create(
+            target_audience='USER',
+            user=w.user,
+            user_identifier=w.user.wallet_address or w.user.email or w.user.user_id,
+            title=f"Withdrawal Declined ⚠️ ({w.amount} {w.currency})",
+            message=f"Withdrawal #{w.id} declined: {reason}. Funds returned to your balance.",
+            notification_type='WITHDRAWAL',
+            link_url='/#wallet'
+        )
+        dispatch_web_push(w_notif)
+    except Exception:
+        pass
+
     return Response({'success': True, 'status': 'REJECTED', 'message': f'Withdrawal #{w.id} declined. Funds returned to user.'})
 
 
@@ -4556,7 +4689,7 @@ def subscribe_copy_trade(request):
 
         # Generate In-App and Push Notification for trader
         try:
-            AppNotification.objects.create(
+            copy_notif = AppNotification.objects.create(
                 target_audience='USER',
                 user=user,
                 user_identifier=address,
@@ -4565,6 +4698,7 @@ def subscribe_copy_trade(request):
                 notification_type='TRADE',
                 link_url='/#leaderboard'
             )
+            dispatch_web_push(copy_notif)
         except Exception:
             pass
 
@@ -4940,13 +5074,17 @@ def create_support_ticket(request):
         )
 
         # Send Real-Time Alert to Admin & Staff
-        AppNotification.objects.create(
-            target_audience='ALL_STAFF',
-            title=f"New Ticket: {ticket_number}",
-            message=f"[{user_handle or user_identifier}] {subject}: {message_text[:90]}...",
-            notification_type='SUPPORT',
-            link_url=f"/admin#support"
-        )
+        try:
+            staff_notif = AppNotification.objects.create(
+                target_audience='ALL_STAFF',
+                title=f"New Ticket: #{ticket_number}",
+                message=f"[{user_handle or user_identifier}] {subject}: {message_text[:90]}...",
+                notification_type='SUPPORT',
+                link_url=f"/admin#support"
+            )
+            dispatch_web_push(staff_notif)
+        except Exception:
+            pass
 
         # Dispatch real email to Admin's personal Gmail
         send_admin_support_email(ticket)
@@ -5015,13 +5153,17 @@ def reply_support_ticket(request, ticket_id):
         ticket.save()
 
         # Notify Support Staff
-        AppNotification.objects.create(
-            target_audience='ALL_STAFF',
-            title=f"Reply on #{ticket.ticket_number}",
-            message=f"[{sender_name}] {message_text[:80]}...",
-            notification_type='SUPPORT',
-            link_url=f"/admin#support"
-        )
+        try:
+            staff_notif = AppNotification.objects.create(
+                target_audience='ALL_STAFF',
+                title=f"Reply on #{ticket.ticket_number}",
+                message=f"[{sender_name}] {message_text[:80]}...",
+                notification_type='SUPPORT',
+                link_url=f"/admin#support"
+            )
+            dispatch_web_push(staff_notif)
+        except Exception:
+            pass
 
         # Send Real Email directly to Admin Gmail
         send_admin_support_email(ticket)
@@ -5100,15 +5242,19 @@ def admin_reply_support_ticket(request, ticket_id):
         ticket.save()
 
         # Send targeted in-app notification to the user
-        AppNotification.objects.create(
-            target_audience='USER',
-            user=ticket.user,
-            user_identifier=ticket.user_identifier,
-            title=f"Support Desk Response: #{ticket.ticket_number}",
-            message=f"{sender_name}: {message_text[:110]}...",
-            notification_type='SUPPORT',
-            link_url='/#profile'
-        )
+        try:
+            notif = AppNotification.objects.create(
+                target_audience='USER',
+                user=ticket.user,
+                user_identifier=ticket.user_identifier,
+                title=f"Support Desk Response: #{ticket.ticket_number}",
+                message=f"{sender_name}: {message_text[:110]}...",
+                notification_type='SUPPORT',
+                link_url='/#profile'
+            )
+            dispatch_web_push(notif)
+        except Exception:
+            pass
 
     return Response({
         'success': True,
@@ -5279,6 +5425,8 @@ def admin_broadcast_notification(request):
         notification_type=notification_type,
         link_url=link_url
     )
+    dispatch_web_push(notif)
+
 
     return Response({
         'success': True,
@@ -5341,3 +5489,88 @@ Axiom Wallet Engine
             print(f"[Support Email Dispatch] Non-fatal notification error: {e}")
 
     threading.Thread(target=_worker, daemon=True).start()
+
+
+# ─────────────────────────────────────────────────────────────
+# REAL-TIME WEB PUSH DISPATCHER (APNs / FCM Native Phone Push)
+# ─────────────────────────────────────────────────────────────
+import pywebpush
+
+def dispatch_web_push(notification):
+    """Dispatches native Web Push notifications directly to users' phones and devices (APNs / FCM)."""
+    if not notification:
+        return
+
+    def _worker():
+        try:
+            priv_key = getattr(django_settings, 'VAPID_PRIVATE_KEY', None)
+            claims = {"sub": getattr(django_settings, 'VAPID_ADMIN_EMAIL', "mailto:alexanderwalker772@gmail.com")}
+            if not priv_key:
+                return
+
+            subs = []
+            if notification.target_audience == 'USER':
+                if notification.user:
+                    subs.extend(list(PushSubscription.objects.filter(user=notification.user)))
+                    if getattr(notification.user, 'wallet_address', None):
+                        subs.extend(list(PushSubscription.objects.filter(user_identifier__iexact=notification.user.wallet_address)))
+                    if getattr(notification.user, 'user_id', None):
+                        subs.extend(list(PushSubscription.objects.filter(user_identifier__iexact=notification.user.user_id)))
+                    if getattr(notification.user, 'email', None):
+                        subs.extend(list(PushSubscription.objects.filter(user_identifier__iexact=notification.user.email)))
+                if notification.user_identifier:
+                    subs.extend(list(PushSubscription.objects.filter(user_identifier__iexact=notification.user_identifier)))
+                    matched_u = find_wallet_user(notification.user_identifier)
+                    if matched_u:
+                        subs.extend(list(PushSubscription.objects.filter(user=matched_u)))
+                        if matched_u.wallet_address:
+                            subs.extend(list(PushSubscription.objects.filter(user_identifier__iexact=matched_u.wallet_address)))
+                        if matched_u.user_id:
+                            subs.extend(list(PushSubscription.objects.filter(user_identifier__iexact=matched_u.user_id)))
+            elif notification.target_audience == 'ALL_USERS':
+                subs = list(PushSubscription.objects.all())
+            elif notification.target_audience == 'ALL_STAFF':
+                subs = list(PushSubscription.objects.filter(Q(is_admin_device=True) | Q(is_junior_admin_device=True)))
+
+            unique_subs = {}
+            for s in subs:
+                if s.endpoint and s.p256dh and s.auth:
+                    unique_subs[s.endpoint] = s
+
+            payload = json.dumps({
+                'id': str(notification.id),
+                'title': notification.title,
+                'message': notification.message,
+                'body': notification.message,
+                'icon': '/icon-192.png',
+                'badge': '/favicon-32x32.png',
+                'link_url': notification.link_url or '/#wallet',
+                'tag': f"axm-{notification.notification_type.lower()}-{str(notification.id)[:6]}"
+            })
+
+            for endpoint, sub in unique_subs.items():
+                try:
+                    sub_info = {
+                        "endpoint": sub.endpoint,
+                        "keys": {
+                            "p256dh": sub.p256dh,
+                            "auth": sub.auth
+                        }
+                    }
+                    pywebpush.webpush(
+                        subscription_info=sub_info,
+                        data=payload,
+                        vapid_private_key=priv_key,
+                        vapid_claims=claims,
+                        ttl=86400
+                    )
+                except pywebpush.WebPushException as ex:
+                    if ex.response is not None and ex.response.status_code in [404, 410]:
+                        sub.delete()
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"[WebPush Dispatcher] {e}")
+
+    threading.Thread(target=_worker, daemon=True).start()
+

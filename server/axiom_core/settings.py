@@ -239,3 +239,14 @@ EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'Axiom Support <support@axiom.trade>')
 ADMIN_SUPPORT_EMAIL = os.environ.get('ADMIN_SUPPORT_EMAIL', 'alexanderwalker772@gmail.com')
 
+# ─────────────────────────────────────────────
+# Web Push (VAPID) Lockscreen Notifications
+# ─────────────────────────────────────────────
+VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY', 'BKpF4yNKHCYdO1dGmqJgZkQWRfQyOhuCq6ZPLwumaa2WDrHXbq97IfHmR0aCmBYZDkkJvW8cbGc_a3J88ILTbKk')
+VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', """-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgxPNvurGeMjNBGZ2a
+qgO3I9mR3TG0fIYEhgh2p21MNs+hRANCAASqReMjShwmHTtXRpqiYGZEFkX0Mjob
+gqumTy8Lpmmtlg6x126veyHx5kdGgpgWGQ5JCb1vHGxnP2tyfPCC02yp
+-----END PRIVATE KEY-----""")
+VAPID_ADMIN_EMAIL = os.environ.get('VAPID_ADMIN_EMAIL', 'mailto:support@axiom.trade')
+
