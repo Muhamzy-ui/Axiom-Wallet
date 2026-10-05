@@ -4465,6 +4465,8 @@ function ProfileView({
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSavedMsg, setProfileSavedMsg] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [pushPermission, setPushPermission] = useState<"granted" | "denied" | "default" | "unsupported">(() => notificationService.getPermissionState());
+  const [pushTesting, setPushTesting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleAvatarFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -5243,6 +5245,146 @@ function ProfileView({
           </div>
         </div>
 
+        {/* ── Phone & Lockscreen Notifications Card ── */}
+        <div className="profile-card">
+          <div className="profile-card-title">
+            <Bell size={18} color="#A78BFA" />
+            <span>Phone & Lockscreen Notifications</span>
+            {pushPermission === "granted" ? (
+              <span style={{ fontSize: 10, background: "rgba(16, 185, 129, 0.18)", color: "#6EE7B7", padding: "2px 8px", borderRadius: 10, fontWeight: 700, marginLeft: "auto" }}>
+                ✓ ACTIVE ON PHONE
+              </span>
+            ) : (
+              <span style={{ fontSize: 10, background: "rgba(245, 158, 11, 0.18)", color: "#FBBF24", padding: "2px 8px", borderRadius: 10, fontWeight: 700, marginLeft: "auto" }}>
+                ACTION REQUIRED
+              </span>
+            )}
+          </div>
+          <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 14px 0" }}>
+            Get instant real-time alerts on your phone screen whenever you receive a P2P transfer, deposit funds, or when your copy trades execute.
+          </p>
+
+          {pushPermission === "granted" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{
+                background: "rgba(16, 185, 129, 0.08)",
+                border: "1px solid rgba(16, 185, 129, 0.25)",
+                borderRadius: 10,
+                padding: "10px 14px",
+                fontSize: 12,
+                color: "#6EE7B7",
+                display: "flex",
+                alignItems: "center",
+                gap: 8
+              }}>
+                <CheckCircle size={16} />
+                <span>Push alerts are active on this phone. Popups and audio chimes will trigger for incoming transfers.</span>
+              </div>
+
+              <button
+                type="button"
+                disabled={pushTesting}
+                onClick={async () => {
+                  setPushTesting(true);
+                  await notificationService.showNativePhoneNotification(
+                    "🚀 Axiom Phone Alert Test",
+                    "Real-time notifications are active and delivering directly to your phone!",
+                    "/#wallet"
+                  );
+                  flash("🔔 Test alert sent to your phone!");
+                  setTimeout(() => setPushTesting(false), 1000);
+                }}
+                style={{
+                  width: "100%",
+                  background: "linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)",
+                  border: "none",
+                  color: "#FFFFFF",
+                  borderRadius: 10,
+                  padding: "12px 16px",
+                  fontSize: 13,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  boxShadow: "0 4px 16px rgba(124, 58, 237, 0.4)"
+                }}
+              >
+                <Bell size={16} /> {pushTesting ? "Sending Test Alert..." : "⚡ Send Test Push to Phone"}
+              </button>
+            </div>
+          ) : pushPermission === "denied" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{
+                background: "rgba(239, 68, 68, 0.08)",
+                border: "1px solid rgba(239, 68, 68, 0.25)",
+                borderRadius: 10,
+                padding: "10px 14px",
+                fontSize: 12,
+                color: "#FCA5A5"
+              }}>
+                ⚠️ Notifications are blocked in your browser settings. Tap your browser address bar &rarr; Site Settings &rarr; Notifications &rarr; Allow.
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  const res = await notificationService.requestPushPermission(authUser.user_id, authUser.is_admin, false);
+                  setPushPermission(res as any);
+                }}
+                className="btn-secondary"
+                style={{ padding: "10px", fontSize: 12 }}
+              >
+                Re-check Permission
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{
+                background: "rgba(245, 158, 11, 0.08)",
+                border: "1px solid rgba(245, 158, 11, 0.25)",
+                borderRadius: 10,
+                padding: "10px 14px",
+                fontSize: 12,
+                color: "#FDE68A"
+              }}>
+                🔔 Tap the button below to allow phone notifications. Your phone will ask for permission once.
+              </div>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const res = await notificationService.requestPushPermission(authUser.user_id, authUser.is_admin, false);
+                  setPushPermission(res as any);
+                  if (res === "granted") {
+                    flash("🔔 Phone notifications enabled successfully!");
+                  } else if (res === "denied") {
+                    flash("⚠️ Notification permission was denied.");
+                  }
+                }}
+                style={{
+                  width: "100%",
+                  background: "linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)",
+                  border: "none",
+                  color: "#FFFFFF",
+                  borderRadius: 10,
+                  padding: "12px 16px",
+                  fontSize: 13,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  boxShadow: "0 4px 16px rgba(124, 58, 237, 0.4)"
+                }}
+              >
+                <Bell size={16} /> 🔔 Enable Phone Push Notifications
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* ── Help & Customer Support Card ── */}
         <div className="profile-card">
           <div className="profile-card-title">
@@ -5258,24 +5400,65 @@ function ProfileView({
             onClick={() => modal("support")}
             style={{
               width: "100%",
-              background: "linear-gradient(135deg, rgba(34, 209, 248, 0.12) 0%, rgba(124, 58, 237, 0.12) 100%)",
-              border: "1px solid rgba(34, 209, 248, 0.35)",
-              color: "#67E8F9",
-              borderRadius: 10,
-              padding: "12px",
-              fontSize: 13,
-              fontWeight: 700,
+              background: "linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)",
+              border: "none",
+              color: "#FFFFFF",
+              borderRadius: 12,
+              padding: "14px 20px",
+              fontSize: 14,
+              fontWeight: 800,
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              gap: 8,
-              transition: "all 150ms",
-              boxShadow: "0 2px 10px rgba(34, 209, 248, 0.1)"
+              gap: 10,
+              transition: "transform 150ms ease, box-shadow 150ms ease",
+              boxShadow: "0 4px 20px rgba(124, 58, 237, 0.45)",
+              letterSpacing: "-0.2px"
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "translateY(-1px)";
+              e.currentTarget.style.boxShadow = "0 6px 24px rgba(124, 58, 237, 0.6)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "none";
+              e.currentTarget.style.boxShadow = "0 4px 20px rgba(124, 58, 237, 0.45)";
             }}
           >
-            <HelpCircle size={16} /> Open Help & Support Center
+            <HelpCircle size={18} /> Open 24/7 Support Desk
           </button>
+
+          <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => {
+                notificationService.sendLocalNotification(
+                  "🔔 Axiom Notification Test",
+                  "Audio chime & Dynamic Island alert are active and working perfectly!",
+                  "/#profile"
+                );
+                flash("🔔 Test alert & chime dispatched!");
+              }}
+              style={{
+                flex: 1,
+                background: "rgba(34, 209, 248, 0.1)",
+                border: "1px solid rgba(34, 209, 248, 0.3)",
+                color: "#22D1F8",
+                borderRadius: 10,
+                padding: "10px 14px",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                transition: "all 150ms"
+              }}
+            >
+              <Bell size={14} /> Test Alert & Sound
+            </button>
+          </div>
         </div>
 
         {/* Account Session Card */}

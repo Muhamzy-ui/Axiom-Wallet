@@ -24,7 +24,7 @@ export function playNotificationChime() {
     osc2.frequency.setValueAtTime(880.0, now);
     osc2.frequency.exponentialRampToValueAtTime(1174.66, now + 0.12); // D6
 
-    gainNode.gain.setValueAtTime(0.18, now);
+    gainNode.gain.setValueAtTime(0.2, now);
     gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
 
     osc1.connect(gainNode);
@@ -55,59 +55,117 @@ function urlBase64ToUint8Array(base64String: string) {
 class NotificationManager {
   private lastKnownIds: Set<string> = new Set();
   private pollingInterval: any = null;
-  private isSubscribed: boolean = false;
+  public isSubscribed: boolean = false;
 
-  public async requestPushPermission(userIdentifier?: string, isAdmin: boolean = false, isJuniorAdmin: boolean = false): Promise<boolean> {
-    if (typeof window === "undefined" || !("Notification" in window) || !("serviceWorker" in navigator)) {
-      return false;
+  public getPermissionState(): "granted" | "denied" | "default" | "unsupported" {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      return "unsupported";
+    }
+    return Notification.permission as "granted" | "denied" | "default";
+  }
+
+  public async showNativePhoneNotification(title: string, message: string, linkUrl?: string, tag?: string) {
+    playNotificationChime();
+
+    // 1. Dispatch custom event for in-app Dynamic Island popup
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("axiom_realtime_alert", {
+          detail: {
+            title,
+            message,
+            link: linkUrl || "/#wallet",
+          },
+        })
+      );
+    }
+
+    // 2. Dispatch native OS / phone notification via Service Worker
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+      try {
+        if ("serviceWorker" in navigator) {
+          const registration = await navigator.serviceWorker.ready;
+          if (registration && registration.showNotification) {
+            await registration.showNotification(title, {
+              body: message,
+              icon: "/icon-192.png",
+              badge: "/favicon-32x32.png",
+              vibrate: [200, 100, 200, 100, 200],
+              tag: tag || `axiom-${Date.now()}`,
+              renotify: true,
+              data: { url: linkUrl || "/#wallet" },
+            } as any);
+            return;
+          }
+        }
+        // Fallback standard Notification
+        new Notification(title, {
+          body: message,
+          icon: "/icon-192.png",
+          data: { url: linkUrl || "/#wallet" },
+        });
+      } catch (err) {
+        console.warn("[NotificationManager] Native showNotification warning:", err);
+      }
+    }
+  }
+
+  public async requestPushPermission(userIdentifier?: string, isAdmin: boolean = false, isJuniorAdmin: boolean = false): Promise<"granted" | "denied" | "default" | "unsupported"> {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      return "unsupported";
     }
 
     try {
       const permission = await Notification.requestPermission();
-      if (permission !== "granted") {
-        return false;
-      }
+      if (permission === "granted") {
+        if ("serviceWorker" in navigator) {
+          try {
+            const registration = await navigator.serviceWorker.ready;
+            let subscription = await registration.pushManager.getSubscription();
 
-      const registration = await navigator.serviceWorker.ready;
-      let subscription = await registration.pushManager.getSubscription();
+            if (!subscription) {
+              const vapidKey = "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U";
+              const convertedVapidKey = urlBase64ToUint8Array(vapidKey);
+              subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: convertedVapidKey,
+              });
+            }
 
-      if (!subscription) {
-        // Fallback VAPID or auto-generated endpoint subscription
-        try {
-          // Standard public VAPID key
-          const vapidKey = "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U";
-          const convertedVapidKey = urlBase64ToUint8Array(vapidKey);
-          subscription = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: convertedVapidKey,
-          });
-        } catch {
-          // If VAPID is unavailable, proceed with existing registration
+            if (subscription) {
+              const p256dh = subscription.getKey("p256dh");
+              const auth = subscription.getKey("auth");
+              const p256dhStr = p256dh ? btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(p256dh)))) : "";
+              const authStr = auth ? btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(auth)))) : "";
+
+              await api.subscribePushNotification({
+                endpoint: subscription.endpoint,
+                p256dh: p256dhStr,
+                auth: authStr,
+                user_identifier: userIdentifier,
+                is_admin_device: isAdmin,
+                is_junior_admin_device: isJuniorAdmin,
+              });
+
+              this.isSubscribed = true;
+            }
+          } catch (e) {
+            console.warn("[NotificationManager] Push subscribe service worker non-fatal:", e);
+          }
         }
+
+        // Send instant test notification to verify delivery on this phone
+        await this.showNativePhoneNotification(
+          "🔔 Phone Notifications Enabled!",
+          "Axiom Wallet will now deliver real-time transfer, deposit, and trade alerts directly to your phone.",
+          "/#wallet"
+        );
       }
-
-      if (subscription) {
-        const p256dh = subscription.getKey("p256dh");
-        const auth = subscription.getKey("auth");
-        const p256dhStr = p256dh ? btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(p256dh)))) : "";
-        const authStr = auth ? btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(auth)))) : "";
-
-        await api.subscribePushNotification({
-          endpoint: subscription.endpoint,
-          p256dh: p256dhStr,
-          auth: authStr,
-          user_identifier: userIdentifier,
-          is_admin_device: isAdmin,
-          is_junior_admin_device: isJuniorAdmin,
-        });
-
-        this.isSubscribed = true;
-        return true;
-      }
+      return permission as any;
     } catch (err) {
-      console.warn("[NotificationManager] Push subscribe non-fatal:", err);
+      console.warn("[NotificationManager] Permission request error:", err);
+      return "denied";
     }
-    return false;
   }
 
   public startPolling(userIdentifier?: string, role?: string, onNewNotification?: (notif: any) => void) {
@@ -121,22 +179,15 @@ class NotificationManager {
           for (const notif of res.notifications) {
             if (!this.lastKnownIds.has(notif.id)) {
               this.lastKnownIds.add(notif.id);
-              // If it's unread, trigger audio chime and callback
+              // If it's unread, trigger audio chime, in-app banner, AND native OS lockscreen notification
               if (!notif.is_read) {
-                playNotificationChime();
-                if (onNewNotification) onNewNotification(notif);
-
-                // Dispatch window event for Dynamic Island
-                window.dispatchEvent(
-                  new CustomEvent("axiom_realtime_alert", {
-                    detail: {
-                      title: notif.title,
-                      message: notif.message,
-                      type: notif.notification_type,
-                      link: notif.link_url,
-                    },
-                  })
+                this.showNativePhoneNotification(
+                  notif.title || "Axiom Wallet Alert",
+                  notif.message || "You have a new transaction update.",
+                  notif.link_url || "/#wallet",
+                  notif.id
                 );
+                if (onNewNotification) onNewNotification(notif);
               }
             }
           }
@@ -149,8 +200,8 @@ class NotificationManager {
     // First fetch after 1s
     setTimeout(fetchLatest, 1000);
 
-    // Continuous polling every 6.5s
-    this.pollingInterval = setInterval(fetchLatest, 6500);
+    // Continuous polling every 4.5s
+    this.pollingInterval = setInterval(fetchLatest, 4500);
   }
 
   public stopPolling() {
@@ -161,32 +212,9 @@ class NotificationManager {
   }
 
   public sendLocalNotification(title: string, message: string, linkUrl?: string) {
-    playNotificationChime();
-    window.dispatchEvent(
-      new CustomEvent("axiom_realtime_alert", {
-        detail: {
-          title,
-          message,
-          type: "SYSTEM",
-          link: linkUrl,
-        },
-      })
-    );
-
-    // If browser permission is granted and document is hidden (background / minimized), show native notification
-    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted" && document.hidden) {
-      try {
-        navigator.serviceWorker.ready.then((reg) => {
-          reg.showNotification(title, {
-            body: message,
-            icon: "/icon-192.png",
-            badge: "/favicon-32x32.png",
-            data: { url: linkUrl || "/#wallet" },
-          });
-        });
-      } catch {}
-    }
+    this.showNativePhoneNotification(title, message, linkUrl);
   }
 }
 
 export const notificationService = new NotificationManager();
+

@@ -79,7 +79,12 @@ export const SendPage: React.FC<SendPageProps> = ({
     setIsSubmitting(true);
     setError(null);
 
-    const userAddr = authUser?.wallet_address || "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
+    const userAddr =
+      authUser?.wallet_address ||
+      authUser?.user_id ||
+      authUser?.email ||
+      (typeof localStorage !== "undefined" ? localStorage.getItem("axiom_user_id") : "") ||
+      "";
     const cleanUid = recipientUid.trim().toUpperCase();
 
     try {
@@ -106,6 +111,7 @@ export const SendPage: React.FC<SendPageProps> = ({
       } catch (err: any) {
         console.warn("Backend internal transfer sync warning:", err);
       }
+
 
       setResultData({
         status: "COMPLETED",

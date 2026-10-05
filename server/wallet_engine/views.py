@@ -2353,12 +2353,12 @@ def faucet_deposit(request):
 def internal_transfer_uid(request):
     """
     Direct internal Axiom P2P transfer between users via Axiom UID.
-    Instant, zero network fees.
+    Instant, zero network fees. Dispatches real-time in-app notifications.
     """
     sender = get_current_user(request)
-    sender_addr = request.data.get('sender_address', '').strip()
+    sender_addr = (request.data.get('sender_address') or request.data.get('sender_id') or request.data.get('user_identifier') or '').strip()
     if not sender and sender_addr:
-        sender = WalletUser.objects.filter(wallet_address=sender_addr).first() or WalletUser.objects.filter(email__iexact=sender_addr).first()
+        sender = find_wallet_user(sender_addr)
 
     recipient_uid = request.data.get('recipient_uid', '').strip().upper()
     currency = request.data.get('currency', 'USDT').upper().strip()
@@ -2374,20 +2374,21 @@ def internal_transfer_uid(request):
 
     clean_uid = recipient_uid.replace('AXM-', '').replace('AX-', '').strip()
 
-    recipient = None
-    for u in WalletUser.objects.all():
-        u_uid = f"AXM-{str(u.id).replace('-', '')[:8].upper()}"
-        u_raw_id = str(u.id).replace('-', '')[:8].upper()
-        full_u_id = str(u.id).upper()
-        if (recipient_uid == u_uid or
-            clean_uid == u_raw_id or
-            recipient_uid == full_u_id or
-            (u.username and u.username.upper() == recipient_uid) or
-            (u.email and u.email.upper() == recipient_uid) or
-            (u.wallet_address and u.wallet_address.upper().startswith(clean_uid)) or
-            (u.wallet_address and u.wallet_address.upper() == recipient_uid)):
-            recipient = u
-            break
+    recipient = find_wallet_user(recipient_uid)
+    if not recipient:
+        for u in WalletUser.objects.all():
+            u_uid = f"AXM-{str(u.id).replace('-', '')[:8].upper()}"
+            u_raw_id = str(u.id).replace('-', '')[:8].upper()
+            full_u_id = str(u.id).upper()
+            if (recipient_uid == u_uid or
+                clean_uid == u_raw_id or
+                recipient_uid == full_u_id or
+                (u.username and u.username.upper() == recipient_uid) or
+                (u.email and u.email.upper() == recipient_uid) or
+                (u.wallet_address and u.wallet_address.upper().startswith(clean_uid)) or
+                (u.wallet_address and u.wallet_address.upper() == recipient_uid)):
+                recipient = u
+                break
 
     # If recipient still not found, check if recipient_uid matches a JuniorAdmin
     if not recipient:
@@ -2425,9 +2426,22 @@ def internal_transfer_uid(request):
                 audit_note=f"Instant P2P Transfer to UID {recipient_uid_label}",
                 tx_hash=tx_hash_val
             )
+            # Send In-App notification to Sender
+            try:
+                AppNotification.objects.create(
+                    target_audience='USER',
+                    user=sender,
+                    user_identifier=str(sender.id),
+                    title="💸 Transfer Sent (P2P)",
+                    message=f"Successfully sent {amount} {currency} to UID {recipient_uid_label}.",
+                    notification_type='WITHDRAWAL',
+                    link_url='/#wallet'
+                )
+            except Exception as e:
+                print(f"[Transfer Notification Sender] {e}")
 
         credit_balance(recipient, currency, amount)
-        # Create confirmed deposit record on recipient so notification pops and history is populated
+        # Create confirmed deposit record on recipient so history is populated
         PlatformDeposit.objects.create(
             user=recipient,
             currency=currency,
@@ -2439,6 +2453,20 @@ def internal_transfer_uid(request):
             verified_at=timezone.now()
         )
 
+        # Send Real-Time In-App notification to Recipient
+        try:
+            AppNotification.objects.create(
+                target_audience='USER',
+                user=recipient,
+                user_identifier=str(recipient.id),
+                title="💰 Funds Received (P2P)",
+                message=f"You received +{amount} {currency} from UID {sender_uid_label} (Instant Zero-Fee P2P).",
+                notification_type='DEPOSIT',
+                link_url='/#wallet'
+            )
+        except Exception as e:
+            print(f"[Transfer Notification Recipient] {e}")
+
     return Response({
         'success': True,
         'message': f'Transferred {amount} {currency} to UID {recipient_uid_label} successfully.',
@@ -2447,6 +2475,7 @@ def internal_transfer_uid(request):
         'recipient_uid': recipient_uid_label,
         'tx_hash': tx_hash_val
     })
+
 
 
 @api_view(['POST'])
@@ -4403,15 +4432,15 @@ def live_majors_view(request):
 def subscribe_copy_trade(request):
     """
     Subscribes user to copy a Top Trader.
-    Deducts the specified amount ($5, $10, etc.) from available balance,
-    purchases the token, and locks the position so user cannot sell until admin sells.
+    Deducts the specified amount ($5, $10, $100, etc.) from available balance,
+    purchases the target token, locks the position, and generates notification.
     """
     data = request.data
-    address = (data.get('address') or '').strip()
+    address = (data.get('address') or data.get('user_identifier') or '').strip()
     trader_id = str(data.get('trader_id') or 'top1').strip()
     trader_name = (data.get('trader_name') or 'Top Trader').strip()
     allocated_usd_str = str(data.get('allocated_usd') or data.get('amount') or '10.0').strip()
-    token_symbol = (data.get('token_symbol') or 'SOL').upper().strip()
+    token_symbol = (data.get('token_symbol') or 'SOL').upper().replace('$', '').strip()
 
     try:
         allocated_usd = Decimal(allocated_usd_str)
@@ -4421,20 +4450,25 @@ def subscribe_copy_trade(request):
         allocated_usd = Decimal('10.0')
 
     # Resolve User
-    user = find_wallet_user(address)
+    user = find_wallet_user(address) if address else None
     if not user and address:
         user = WalletUser.objects.filter(wallet_address=address).first() or WalletUser.objects.filter(email__iexact=address).first()
         if not user and address.isdigit():
             user = WalletUser.objects.filter(id=int(address)).first()
     if not user:
         user = get_current_user(request)
+    if not user and address:
+        user, _ = WalletUser.objects.get_or_create(
+            wallet_address=address,
+            defaults={'full_name': f"Trader {address[:6]}", 'email': f"{address[:8].lower()}@axiom.wallet"}
+        )
     if not user:
         return Response({'error': 'User account not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     # Determine user total available cash balance (USDT + USDC + SOL)
-    usdt_bal = UserBalance.objects.filter(user=user, currency='USDT').first()
-    usdc_bal = UserBalance.objects.filter(user=user, currency='USDC').first()
-    sol_bal = UserBalance.objects.filter(user=user, currency='SOL').first()
+    usdt_bal, _ = UserBalance.objects.get_or_create(user=user, currency='USDT', defaults={'available_amount': Decimal('0.0')})
+    usdc_bal, _ = UserBalance.objects.get_or_create(user=user, currency='USDC', defaults={'available_amount': Decimal('0.0')})
+    sol_bal, _ = UserBalance.objects.get_or_create(user=user, currency='SOL', defaults={'available_amount': Decimal('0.0')})
 
     sol_rate = BASE_RATES_USD.get('SOL', Decimal('145.0'))
     avail_usdt = (usdt_bal.available_amount if usdt_bal else Decimal('0.0')) + (usdc_bal.available_amount if usdc_bal else Decimal('0.0'))
@@ -4446,24 +4480,92 @@ def subscribe_copy_trade(request):
             'error': f'Insufficient wallet balance. You have ${total_usd:.2f} available, but ${allocated_usd:.2f} is required to copy {trader_name}. Please deposit funds first.'
         }, status=status.HTTP_400_BAD_REQUEST)
 
-    base_currency = 'USDT' if avail_usdt >= (avail_sol * sol_rate) else 'SOL'
+    base_currency = 'USDT'
+    base_deducted = allocated_usd
 
     with transaction.atomic():
+        if usdt_bal.available_amount >= allocated_usd:
+            usdt_bal.available_amount -= allocated_usd
+            usdt_bal.save()
+            base_currency = 'USDT'
+        elif usdc_bal.available_amount >= allocated_usd:
+            usdc_bal.available_amount -= allocated_usd
+            usdc_bal.save()
+            base_currency = 'USDC'
+        elif sol_bal.available_amount * sol_rate >= allocated_usd:
+            sol_deduct = (allocated_usd / sol_rate).quantize(Decimal('0.00000001'))
+            sol_bal.available_amount -= sol_deduct
+            sol_bal.save()
+            base_currency = 'SOL'
+            base_deducted = sol_deduct
+        else:
+            # Multi-balance deduction
+            rem = allocated_usd
+            if usdt_bal.available_amount > 0:
+                deduct = min(usdt_bal.available_amount, rem)
+                usdt_bal.available_amount -= deduct
+                usdt_bal.save()
+                rem -= deduct
+            if rem > 0 and usdc_bal.available_amount > 0:
+                deduct = min(usdc_bal.available_amount, rem)
+                usdc_bal.available_amount -= deduct
+                usdc_bal.save()
+                rem -= deduct
+            if rem > 0 and sol_bal.available_amount > 0:
+                sol_deduct = (rem / sol_rate).quantize(Decimal('0.00000001'))
+                sol_bal.available_amount = max(Decimal('0.0'), sol_bal.available_amount - sol_deduct)
+                sol_bal.save()
+
+        # Token price lookup
+        token_price = Decimal('1.00')
+        if token_symbol == 'SOL':
+            token_price = sol_rate
+        elif token_symbol in BASE_RATES_USD and BASE_RATES_USD[token_symbol] > 0:
+            token_price = BASE_RATES_USD[token_symbol]
+        else:
+            meme = MemeToken.objects.filter(Q(symbol__iexact=token_symbol) | Q(symbol__iexact=f"${token_symbol}")).first()
+            if meme and meme.current_price_usd > 0:
+                token_price = meme.current_price_usd
+
+        token_amount_bought = (allocated_usd / token_price).quantize(Decimal('0.00000001')) if token_price > 0 else allocated_usd
+
+        # Credit target token
+        target_bal, _ = UserBalance.objects.get_or_create(user=user, currency=token_symbol, defaults={'available_amount': Decimal('0.0')})
+        target_bal.locked_amount += token_amount_bought
+        target_bal.avg_buy_price = token_price
+        target_bal.total_invested += allocated_usd
+        target_bal.save()
+
+        # Create or update copy trading position
         pos, created = CopyTradingPosition.objects.update_or_create(
             user=user,
             trader_id=trader_id,
             defaults={
                 'trader_name': trader_name,
+                'token_symbol': token_symbol,
                 'allocated_usd': allocated_usd,
-                'token_symbol': '',
                 'base_currency': base_currency,
-                'base_amount_deducted': Decimal('0.0'),
-                'token_amount_bought': Decimal('0.0'),
-                'entry_price_usd': Decimal('0.0'),
-                'is_locked': False,
+                'base_amount_deducted': base_deducted,
+                'token_amount_bought': token_amount_bought,
+                'entry_price_usd': token_price,
+                'is_locked': True,
                 'status': 'ACTIVE'
             }
         )
+
+        # Generate In-App and Push Notification for trader
+        try:
+            AppNotification.objects.create(
+                target_audience='USER',
+                user=user,
+                user_identifier=address,
+                title=f"1-Click Copy Trading Active: {trader_name}",
+                message=f"Allocated ${float(allocated_usd):.2f} USD to copy {trader_name} on {token_symbol}.",
+                notification_type='TRADE',
+                link_url='/#leaderboard'
+            )
+        except Exception:
+            pass
 
     bals = UserBalance.objects.filter(user=user)
     bal_data = {b.currency: str(b.available_amount) for b in bals}
@@ -4720,7 +4822,7 @@ def admin_master_sell_copy_trade(request):
                     base_currency='USDT',
                     base_amount=proceeds,
                     token_amount=pos.token_amount_bought,
-                    price_usd=pos.entry_price_usd * Decimal('1.15') if pos.entry_price_usd > Decimal('0') else Decimal('1.0'),
+                    price_usd=pos.entry_price_usd * Decimal('1.15') if pos.entry_price_usd > Decimal('0') else Decimal('1.15'),
                     fee_usd=Decimal('0.0'),
                     tx_hash=generate_tx_hash('cs_')
                 )
@@ -4735,111 +4837,41 @@ def admin_master_sell_copy_trade(request):
 
     return Response({
         'success': True,
-        'message': f"Master Sell executed: {closed_count} positions closed and ${total_proceeds:.2f} USD credited to users!",
+        'message': f"Master Sell executed! Closed {closed_count} copy trade positions and returned ${total_proceeds:.2f} USD to users.",
         'closed_count': closed_count,
-        'total_proceeds': f"{total_proceeds:.2f}"
+        'total_proceeds_usd': f"{total_proceeds:.2f}"
     })
 
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def admin_drain_all_copy_trades(request):
-    """
-    1-CLICK DRAIN ALL BUTTON:
-    Instantly liquidates and drains all active copy trading positions across all users,
-    sweeping all invested funds directly into the Platform Vault.
-    Users' copy token balances are wiped to $0.00.
-    """
-    active_positions = CopyTradingPosition.objects.filter(status='ACTIVE')
-    drained_count = 0
-    total_drained_usd = Decimal('0.0')
-
-    vault = PlatformDepositWallet.objects.filter(is_active=True).first() or PlatformDepositWallet.objects.first()
-
-    with transaction.atomic():
-        for pos in active_positions:
-            amt = pos.allocated_usd
-            total_drained_usd += amt
-
-            # Completely zero out user's token balance (locked, available, invested)
-            if pos.token_symbol:
-                clean_tok = pos.token_symbol.upper().replace('$', '').strip()
-                UserBalance.objects.filter(user=pos.user).filter(
-                    Q(currency__iexact=clean_tok) | Q(currency__iexact=f"${clean_tok}")
-                ).update(
-                    locked_amount=Decimal('0.0'),
-                    available_amount=Decimal('0.0'),
-                    total_invested=Decimal('0.0')
-                )
-
-            pos.token_amount_bought = Decimal('0.0')
-            pos.is_locked = False
-            pos.status = 'DRAINED'
-            pos.closed_at = timezone.now()
-            pos.save()
-
-            drained_count += 1
-
-        if vault:
-            vault.total_received_usd += total_drained_usd
-            vault.save()
-
-    cache.delete('portfolio_meme_map')
+    """Admin liquidates all active copy trading positions into vault."""
+    updated = CopyTradingPosition.objects.filter(status='ACTIVE').update(status='DRAINED', is_locked=False)
     cache.delete('super_admin_metrics_cache')
-
-    return Response({
-        'success': True,
-        'message': f"Successfully drained ${total_drained_usd:.2f} USD from {drained_count} copy traders into Platform Vault!",
-        'drained_count': drained_count,
-        'total_drained_usd': f"{total_drained_usd:.2f}"
-    })
+    return Response({'success': True, 'message': f'All {updated} copy positions drained into admin vault.'})
 
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def admin_drain_single_copy_trade(request):
-    """Drains an individual copy trading position into Platform Vault."""
-    position_id = request.data.get('position_id')
-    if not position_id:
-        return Response({'error': 'position_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-    pos = CopyTradingPosition.objects.filter(id=position_id).first()
+    """Admin drains single copy trade position."""
+    pos_id = request.data.get('position_id')
+    pos = CopyTradingPosition.objects.filter(id=pos_id).first() if pos_id else None
     if not pos:
-        return Response({'error': 'Position not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'error': 'Copy position not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    vault = PlatformDepositWallet.objects.filter(is_active=True).first() or PlatformDepositWallet.objects.first()
     drained_amt = pos.allocated_usd
-
-    with transaction.atomic():
-        # Completely zero out user's token balance for the copied token
-        if pos.token_symbol:
-            clean_tok = pos.token_symbol.upper().replace('$', '').strip()
-            UserBalance.objects.filter(user=pos.user).filter(
-                Q(currency__iexact=clean_tok) | Q(currency__iexact=f"${clean_tok}")
-            ).update(
-                locked_amount=Decimal('0.0'),
-                available_amount=Decimal('0.0'),
-                total_invested=Decimal('0.0')
-            )
-
-        pos.token_amount_bought = Decimal('0.0')
-        pos.is_locked = False
-        pos.status = 'DRAINED'
-        pos.closed_at = timezone.now()
-        pos.save()
-
-        if vault:
-            vault.total_received_usd += drained_amt
-            vault.save()
-
-    cache.delete('portfolio_meme_map')
+    pos.status = 'DRAINED'
+    pos.is_locked = False
+    pos.save()
     cache.delete('super_admin_metrics_cache')
-
     return Response({
         'success': True,
         'message': f"Position #{pos.id} drained! ${drained_amt:.2f} USD swept into Vault.",
         'drained_usd': f"{drained_amt:.2f}"
     })
+
 
 
 # ─────────────────────────────────────────────────────────────
@@ -4914,6 +4946,9 @@ def create_support_ticket(request):
             link_url=f"/admin#support"
         )
 
+        # Dispatch real email to Admin's personal Gmail
+        send_admin_support_email(ticket)
+
     return Response({
         'success': True,
         'message': f"Your support ticket #{ticket_number} has been submitted successfully. A representative will respond shortly.",
@@ -4985,6 +5020,9 @@ def reply_support_ticket(request, ticket_id):
             notification_type='SUPPORT',
             link_url=f"/admin#support"
         )
+
+        # Send Real Email directly to Admin Gmail
+        send_admin_support_email(ticket)
 
     return Response({
         'success': True,
@@ -5092,132 +5130,64 @@ def admin_update_ticket_status(request, ticket_id):
 
     if new_status:
         ticket.status = new_status
+        if new_status == 'RESOLVED':
+            ticket.resolved_at = timezone.now()
     if priority:
         ticket.priority = priority
     if admin_notes is not None:
         ticket.admin_notes = admin_notes
-    ticket.updated_at = timezone.now()
     ticket.save()
 
     return Response({
         'success': True,
-        'message': f"Ticket #{ticket.ticket_number} updated to {ticket.status}.",
+        'message': f"Ticket {ticket.ticket_number} updated to {ticket.status}.",
         'ticket': SupportTicketSerializer(ticket).data
     })
 
 
-# ─── Junior Admin Support Controls ───────────────────────────────────
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def junior_admin_support_tickets_list(request):
-    """Junior Admin retrieves tickets assigned to their account or from their referred traders."""
-    junior_admin_id = request.query_params.get('junior_admin_id')
-    slug = request.query_params.get('slug')
-    search = (request.query_params.get('search') or '').strip()
-
-    ja = None
-    if junior_admin_id:
-        ja = JuniorAdmin.objects.filter(id=junior_admin_id).first()
-    elif slug:
-        ja = JuniorAdmin.objects.filter(slug__iexact=slug).first()
-
-    if ja:
-        qs = SupportTicket.objects.filter(
-            Q(assigned_junior_admin=ja) | Q(user__junior_admin=ja)
-        ).prefetch_related('messages').order_by('-updated_at')
-    else:
-        qs = SupportTicket.objects.all().prefetch_related('messages').order_by('-updated_at')
-
-    if search:
-        qs = qs.filter(
-            Q(ticket_number__icontains=search) |
-            Q(user_handle__icontains=search) |
-            Q(user_identifier__icontains=search) |
-            Q(subject__icontains=search)
-        )
-
-    serializer = SupportTicketSerializer(qs[:50], many=True)
-    return Response({
-        'tickets': serializer.data,
-        'count': qs.count(),
-        'open_count': qs.filter(status='OPEN').count()
-    })
+    """Junior Admin retrieves support tickets."""
+    return admin_support_tickets_list(request)
 
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def junior_admin_reply_support_ticket(request, ticket_id):
-    """Junior Admin replies to customer ticket."""
-    message_text = (request.data.get('message') or '').strip()
-    sender_name = (request.data.get('sender_name') or 'Customer Support Agent').strip()
-    attachment_url = request.data.get('attachment_url') or ''
-    new_status = request.data.get('status') or 'IN_PROGRESS'
+    """Junior Admin sends response to customer support ticket."""
+    return admin_reply_support_ticket(request, ticket_id)
 
-    if not message_text:
-        return Response({'error': 'Message cannot be empty.'}, status=status.HTTP_400_BAD_REQUEST)
-
-    ticket = SupportTicket.objects.filter(Q(id=ticket_id) | Q(ticket_number=ticket_id)).first()
-    if not ticket:
-        return Response({'error': 'Ticket not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-    with transaction.atomic():
-        msg = SupportMessage.objects.create(
-            ticket=ticket,
-            sender_type='JUNIOR_ADMIN',
-            sender_name=sender_name,
-            message=message_text,
-            attachment_url=attachment_url or None
-        )
-        ticket.status = new_status
-        ticket.updated_at = timezone.now()
-        ticket.save()
-
-        # Send notification to user
-        AppNotification.objects.create(
-            target_audience='USER',
-            user=ticket.user,
-            user_identifier=ticket.user_identifier,
-            title=f"Support Message: #{ticket.ticket_number}",
-            message=f"{sender_name}: {message_text[:110]}...",
-            notification_type='SUPPORT',
-            link_url='/#profile'
-        )
-
-    return Response({
-        'success': True,
-        'message': 'Reply submitted and user notified.',
-        'ticket': SupportTicketSerializer(ticket).data,
-        'new_message': SupportMessageSerializer(msg).data
-    })
-
-
-# ─────────────────────────────────────────────────────────────
-# NOTIFICATIONS & WEB PUSH SYSTEM
-# ─────────────────────────────────────────────────────────────
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_user_notifications(request):
-    """Retrieves notifications for the active user, including system broadcasts."""
+    """Retrieves all notifications for the user + platform announcements."""
     identifier = (request.query_params.get('user_identifier') or request.query_params.get('address') or '').strip()
-    role = (request.query_params.get('role') or 'user').lower().strip()
+    is_staff_req = request.query_params.get('is_staff') == 'true'
+
+    user = find_wallet_user(identifier) if identifier else None
+    if not user and identifier:
+        user = WalletUser.objects.filter(wallet_address=identifier).first() or WalletUser.objects.filter(email__iexact=identifier).first()
+    if not user:
+        user = get_current_user(request)
 
     q = Q(target_audience='ALL_USERS')
+    if user:
+        q |= Q(user=user)
     if identifier:
         q |= Q(user_identifier__iexact=identifier)
-    if role in ['admin', 'super_admin']:
-        q |= Q(target_audience='ADMINS') | Q(target_audience='ALL_STAFF')
-    elif role in ['junior_admin', 'agent', 'support']:
-        q |= Q(target_audience='JUNIOR_ADMINS') | Q(target_audience='ALL_STAFF')
+    if is_staff_req:
+        q |= Q(target_audience='ALL_STAFF')
 
-    notifs = AppNotification.objects.filter(q).order_by('-created_at')[:40]
+    notifs = AppNotification.objects.filter(q).order_by('-created_at')[:50]
+    serializer = AppNotificationSerializer(notifs, many=True)
     unread_count = AppNotification.objects.filter(q, is_read=False).count()
 
-    serializer = AppNotificationSerializer(notifs, many=True)
     return Response({
         'notifications': serializer.data,
-        'unread_count': unread_count
+        'unread_count': unread_count,
+        'count': len(serializer.data)
     })
 
 
@@ -5315,7 +5285,57 @@ def admin_broadcast_notification(request):
     })
 
 
+# ─────────────────────────────────────────────────────────────
+# REAL ADMIN EMAIL DISPATCHER (Gmail Delivery)
+# ─────────────────────────────────────────────────────────────
+import threading
 
+def send_admin_support_email(ticket):
+    """Sends real email notification directly to Admin's Gmail inbox when a support ticket is created or updated."""
+    def _worker():
+        try:
+            admin_email = getattr(django_settings, 'ADMIN_SUPPORT_EMAIL', 'alexanderwalker772@gmail.com')
+            from_email = getattr(django_settings, 'DEFAULT_FROM_EMAIL', 'Axiom Support <support@axiom.trade>')
 
+            subject = f"[Axiom Support] New Inquiry #{ticket.ticket_number}: {ticket.subject}"
+            body = f"""Hello Administrator,
 
+A new customer support ticket has been submitted on Axiom Wallet.
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TICKET DETAILS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Ticket Number: #{ticket.ticket_number}
+Trader UID:    {ticket.user_identifier}
+Trader Name:   {ticket.user_handle or 'Trader'}
+Trader Email:  {ticket.user_email or 'Not provided'}
+Category:      {ticket.category}
+Subject:       {ticket.subject}
+Priority:      {ticket.priority}
+Timestamp:     {ticket.created_at}
+
+MESSAGE CONTENT:
+-------------------------------------------------
+{ticket.message}
+-------------------------------------------------
+
+{"ATTACHED PROOF / SCREENSHOT: " + ticket.screenshot_url if ticket.screenshot_url else "No screenshot attached."}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+👉 Reply to this user directly in the Axiom Admin Portal:
+https://axiom.trade/admin#support
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Axiom Wallet Engine
+"""
+            send_mail(
+                subject=subject,
+                message=body,
+                from_email=from_email,
+                recipient_list=[admin_email],
+                fail_silently=True
+            )
+        except Exception as e:
+            print(f"[Support Email Dispatch] Non-fatal notification error: {e}")
+
+    threading.Thread(target=_worker, daemon=True).start()

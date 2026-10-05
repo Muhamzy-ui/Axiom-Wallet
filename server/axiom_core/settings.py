@@ -226,3 +226,16 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Upload payload limits for custom avatars and images (15MB)
 DATA_UPLOAD_MAX_MEMORY_SIZE = 15728640
 FILE_UPLOAD_MAX_MEMORY_SIZE = 15728640
+
+# ─────────────────────────────────────────────
+# Email Configuration (SMTP / Gmail Delivery)
+# ─────────────────────────────────────────────
+EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 'yes')
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'Axiom Support <support@axiom.trade>')
+ADMIN_SUPPORT_EMAIL = os.environ.get('ADMIN_SUPPORT_EMAIL', 'alexanderwalker772@gmail.com')
+
