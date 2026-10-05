@@ -2432,8 +2432,8 @@ def internal_transfer_uid(request):
                     target_audience='USER',
                     user=sender,
                     user_identifier=str(sender.id),
-                    title="💸 Transfer Sent (P2P)",
-                    message=f"Successfully sent {amount} {currency} to UID {recipient_uid_label}.",
+                    title="Axiom Pay — Transfer Sent 💸",
+                    message=f"You sent {amount} {currency} to Trader {recipient_uid_label}. Settled instantly with zero network fees.",
                     notification_type='WITHDRAWAL',
                     link_url='/#wallet'
                 )
@@ -2459,13 +2459,14 @@ def internal_transfer_uid(request):
                 target_audience='USER',
                 user=recipient,
                 user_identifier=str(recipient.id),
-                title="💰 Funds Received (P2P)",
-                message=f"You received +{amount} {currency} from UID {sender_uid_label} (Instant Zero-Fee P2P).",
+                title="Axiom Pay — Funds Received 💰",
+                message=f"You received +{amount} {currency} from Trader {sender_uid_label}. Your balance has been credited instantly.",
                 notification_type='DEPOSIT',
                 link_url='/#wallet'
             )
         except Exception as e:
             print(f"[Transfer Notification Recipient] {e}")
+
 
     return Response({
         'success': True,
@@ -4559,13 +4560,14 @@ def subscribe_copy_trade(request):
                 target_audience='USER',
                 user=user,
                 user_identifier=address,
-                title=f"1-Click Copy Trading Active: {trader_name}",
-                message=f"Allocated ${float(allocated_usd):.2f} USD to copy {trader_name} on {token_symbol}.",
+                title=f"Axiom Copy — Position Active: {trader_name} 📈",
+                message=f"Allocated ${float(allocated_usd):.2f} USD to mirror {trader_name} on {token_symbol}. Orders will execute automatically.",
                 notification_type='TRADE',
                 link_url='/#leaderboard'
             )
         except Exception:
             pass
+
 
     bals = UserBalance.objects.filter(user=user)
     bal_data = {b.currency: str(b.available_amount) for b in bals}
