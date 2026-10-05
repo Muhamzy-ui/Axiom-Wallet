@@ -55,6 +55,7 @@ export interface MarketToken {
   user_circulating_tokens?: number;
   is_verified?: boolean;
   is_liquidity_locked?: boolean;
+  is_sell_blocked?: boolean;
 }
 
 export function generateSparkline(p: number, isUp: boolean): number[] {
@@ -701,6 +702,7 @@ class MarketStore {
   constructor() {
     this.initVerifiedTokens();
     this.initLiquidityLockedTokens();
+    this.initSellBlockedTokens();
 
     // Synchronously restore custom tokens cache before anything else
     if (typeof window !== "undefined" && window.localStorage) {
@@ -940,6 +942,71 @@ class MarketStore {
 
   getAllLiquidityLockedTokens(): Record<string, boolean> {
     return { ...this.liquidityLockedTokens };
+  }
+
+  private sellBlockedTokens: Record<string, boolean> = {};
+  public blockSellAllNewTokens: boolean = false;
+
+  private initSellBlockedTokens() {
+    if (typeof localStorage !== "undefined") {
+      try {
+        const raw = localStorage.getItem("axiom_admin_sell_blocked_tokens");
+        if (raw) {
+          this.sellBlockedTokens = JSON.parse(raw) || {};
+        }
+        this.blockSellAllNewTokens = localStorage.getItem("axiom_block_sell_all_new") === "true";
+      } catch (e) {
+        console.warn("Failed to parse sell blocked tokens from localStorage:", e);
+      }
+    }
+  }
+
+  isTokenSellBlocked(sym: string): boolean {
+    if (!sym) return false;
+    const s = sym.toUpperCase().replace(/^\$/, "");
+    if (this.isMajorToken(s) || s === "SOL" || s === "USDT" || s === "USDC") {
+      return false;
+    }
+    const tok = this.tokens.find(t => t.sym.toUpperCase() === s);
+    if (tok && tok.is_sell_blocked !== undefined) {
+      return Boolean(tok.is_sell_blocked);
+    }
+    if (this.sellBlockedTokens[s] !== undefined) {
+      return Boolean(this.sellBlockedTokens[s]);
+    }
+    if (this.blockSellAllNewTokens && tok && !tok.isMajor) {
+      return true;
+    }
+    return false;
+  }
+
+  setTokenSellBlocked(sym: string, blocked: boolean) {
+    if (!sym) return;
+    const s = sym.toUpperCase().replace(/^\$/, "");
+    if (this.isMajorToken(s)) return;
+    this.sellBlockedTokens[s] = blocked;
+    const tok = this.tokens.find(t => t.sym.toUpperCase() === s);
+    if (tok) tok.is_sell_blocked = blocked;
+    if (typeof localStorage !== "undefined") {
+      try {
+        localStorage.setItem("axiom_admin_sell_blocked_tokens", JSON.stringify(this.sellBlockedTokens));
+      } catch (e) {
+        console.warn("Failed to persist sell blocked tokens:", e);
+      }
+    }
+    this.savePersistedStateNow();
+    this.notify();
+  }
+
+  setBlockSellAllNewTokens(active: boolean) {
+    this.blockSellAllNewTokens = active;
+    if (typeof localStorage !== "undefined") {
+      try {
+        localStorage.setItem("axiom_block_sell_all_new", active ? "true" : "false");
+      } catch (e) {}
+    }
+    this.savePersistedStateNow();
+    this.notify();
   }
 
   async boostTokenHolders(sym: string, count: number): Promise<void> {
@@ -1500,6 +1567,8 @@ class MarketStore {
       }
       window.localStorage.setItem("axiom_anchors_v2", JSON.stringify(this.priceAnchors));
       window.localStorage.setItem("axiom_selected_sym", this.activeSym);
+      window.localStorage.setItem("axiom_admin_sell_blocked_tokens", JSON.stringify(this.sellBlockedTokens));
+      window.localStorage.setItem("axiom_block_sell_all_new", this.blockSellAllNewTokens ? "true" : "false");
     } catch { }
   }
 
@@ -3144,6 +3213,13 @@ class MarketStore {
       // User pays Token, receives quote/pair currency credit
       const rawSym = (sym || "").toUpperCase().trim();
       const cleanSym = rawSym.replace(/^\$/, "");
+
+      if (this.isTokenSellBlocked(cleanSym)) {
+        return {
+          success: false,
+          message: `⚠️ Selling is currently restricted for $${cleanSym} by the token issuer. Trading protection active (Only Buying Allowed).`
+        };
+      }
       const symKeys = [sym, cleanSym, `$${cleanSym}`, rawSym, sym.toLowerCase()];
       let targetKey = "";
       for (const k of symKeys) {
@@ -4291,6 +4367,13 @@ class MarketStore {
     if (!this.balances[tSym]) {
       const targetToken = this.getToken(tSym);
       this.balances[tSym] = { bal: 0, usdValue: 0, name: targetToken?.name || tSym, totalInvested: 0, avgBuyPrice: 1.0 };
+    }
+
+    if (!fromRemote && this.isTokenSellBlocked(fSym)) {
+      return {
+        success: false,
+        message: `⚠️ Selling or swapping $${fSym} is currently restricted by the token issuer. Trading protection active (Only Buying Allowed).`
+      };
     }
 
     if (!fromRemote && (this.balances[fSym].bal < fromAmt || fromAmt <= 0)) {

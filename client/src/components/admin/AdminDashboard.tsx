@@ -10,7 +10,7 @@ import {
   Copy, RotateCcw, Sparkles, ExternalLink, Edit3, Trash2,
   Sun, Moon, Menu, Smartphone, Eye, EyeOff, Trophy, ShieldCheck,
   Upload, Image, QrCode, CheckCircle2, AlertCircle, HelpCircle, ChevronUp,
-  Send, MessageSquare
+  Send, MessageSquare, ShieldAlert
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -980,6 +980,7 @@ function MemeCoinsPage({ search }: { search: string }) {
     description: '',
     is_liquidity_locked: true,
     is_verified: true,
+    is_sell_blocked: marketStore.blockSellAllNewTokens,
   });
 
   // Edit Existing Meme Coin Modal State
@@ -1152,6 +1153,7 @@ function MemeCoinsPage({ search }: { search: string }) {
       description: 'The next 100x viral community token on Solana',
       is_liquidity_locked: true,
       is_verified: true,
+      is_sell_blocked: marketStore.blockSellAllNewTokens,
     });
     setModal(true);
   };
@@ -1272,6 +1274,9 @@ function MemeCoinsPage({ search }: { search: string }) {
     });
     marketStore.setTokenLiquidityLocked(cleanSym, form.is_liquidity_locked !== false);
     marketStore.setTokenVerified(cleanSym, !!form.is_verified);
+    if (form.is_sell_blocked) {
+      marketStore.setTokenSellBlocked(cleanSym, true);
+    }
     try {
       await api.createMemeToken({
         name: form.name.trim(),
@@ -1613,6 +1618,38 @@ function MemeCoinsPage({ search }: { search: string }) {
               </button>
             </div>
           </div>
+          {/* Anti-Sell / Honeypot Block Button */}
+          <div style={{ background: marketStore.isTokenSellBlocked(activeToken.sym) ? 'rgba(239,68,68,0.18)' : 'rgba(234,179,8,0.12)', padding: '10px 14px', borderRadius: 10, border: `1px solid ${marketStore.isTokenSellBlocked(activeToken.sym) ? '#EF4444' : 'rgba(234,179,8,0.35)'}` }}>
+            <div style={{ fontSize: 11, color: marketStore.isTokenSellBlocked(activeToken.sym) ? '#EF4444' : '#FBBF24', fontWeight: 700 }}>ANTI-SELL LOCK</div>
+            <div style={{ marginTop: 4 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !marketStore.isTokenSellBlocked(activeToken.sym);
+                  marketStore.setTokenSellBlocked(activeToken.sym, next);
+                  toast_(`$${activeToken.sym} Sell Lock ${next ? 'ACTIVATED (Users blocked from selling) 🚫' : 'DEACTIVATED (Selling allowed) ✅'}`);
+                }}
+                style={{
+                  background: marketStore.isTokenSellBlocked(activeToken.sym) ? 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)' : 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                  border: 'none',
+                  color: '#fff',
+                  borderRadius: 6,
+                  padding: '3px 8px',
+                  fontSize: 11,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  boxShadow: marketStore.isTokenSellBlocked(activeToken.sym) ? '0 2px 10px rgba(220,38,38,0.4)' : '0 2px 8px rgba(16,185,129,0.3)',
+                }}
+                title="Click to toggle Block Selling for this coin"
+              >
+                {marketStore.isTokenSellBlocked(activeToken.sym) ? <>🚫 Selling Blocked</> : <>✅ Selling Allowed</>}
+              </button>
+            </div>
+          </div>
+
           <div style={{ background: 'rgba(124,58,237,0.12)', padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(124,58,237,0.3)', display: 'flex', alignItems: 'center' }}>
             <button
               onClick={() => openEditModal(activeToken)}
@@ -1669,6 +1706,112 @@ function MemeCoinsPage({ search }: { search: string }) {
               </button>
             </div>
           )}
+        </div>
+
+        {/* ── ANTI-SELL & HONEYPOT CONTROLLER BAR ── */}
+        <div style={{
+          background: marketStore.isTokenSellBlocked(selectedSym) ? 'rgba(239, 68, 68, 0.09)' : 'rgba(124, 58, 237, 0.07)',
+          border: `1px solid ${marketStore.isTokenSellBlocked(selectedSym) ? 'rgba(239, 68, 68, 0.35)' : 'rgba(124, 58, 237, 0.25)'}`,
+          borderRadius: 14,
+          padding: '14px 18px',
+          marginBottom: 18,
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 14
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              background: marketStore.isTokenSellBlocked(selectedSym) ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: marketStore.isTokenSellBlocked(selectedSym) ? '#EF4444' : '#10B981',
+              flexShrink: 0
+            }}>
+              <ShieldAlert size={22} />
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 900, color: C.text, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>Anti-Sell Protection (Block User Selling)</span>
+                <span style={{
+                  fontSize: 10,
+                  padding: '2px 8px',
+                  borderRadius: 12,
+                  fontWeight: 800,
+                  background: marketStore.isTokenSellBlocked(selectedSym) ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)',
+                  color: marketStore.isTokenSellBlocked(selectedSym) ? '#EF4444' : '#10B981',
+                  border: `1px solid ${marketStore.isTokenSellBlocked(selectedSym) ? 'rgba(239,68,68,0.4)' : 'rgba(16,185,129,0.4)'}`
+                }}>
+                  {marketStore.isTokenSellBlocked(selectedSym) ? '🚫 SELLING BLOCKED (Users Cannot Sell)' : '🟢 SELLING ALLOWED'}
+                </span>
+              </div>
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+                When activated on a coin, regular traders can only <b>BUY</b>. All sell and swap-out orders are blocked.
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 11, color: C.muted, fontWeight: 700 }}>Select Coin:</span>
+              <select
+                value={selectedSym}
+                onChange={(e) => setSelectedSym(e.target.value)}
+                style={{
+                  background: C.surface2,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 8,
+                  padding: '7px 12px',
+                  color: C.text,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                {filtered.map(t => (
+                  <option key={t.sym} value={t.sym}>
+                    {t.sym} ({t.name}) — {marketStore.isTokenSellBlocked(t.sym) ? '🚫 Blocked' : '🟢 Open'}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                const next = !marketStore.isTokenSellBlocked(selectedSym);
+                marketStore.setTokenSellBlocked(selectedSym, next);
+                toast_(`$${selectedSym} Sell Lock ${next ? 'ACTIVATED (Users blocked from selling) 🚫' : 'DEACTIVATED (Selling allowed) ✅'}`);
+              }}
+              style={{
+                background: marketStore.isTokenSellBlocked(selectedSym) ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)' : 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)',
+                border: 'none',
+                color: '#fff',
+                borderRadius: 8,
+                padding: '8px 14px',
+                fontSize: 12,
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                boxShadow: marketStore.isTokenSellBlocked(selectedSym) ? '0 2px 10px rgba(16,185,129,0.35)' : '0 2px 10px rgba(220,38,38,0.35)',
+                transition: 'all 150ms'
+              }}
+            >
+              {marketStore.isTokenSellBlocked(selectedSym) ? (
+                <><Check size={14} /> Allow Selling (Deactivate)</>
+              ) : (
+                <><Lock size={14} /> Activate Sell Block 🚫</>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* RUGGED WARNING BANNER */}
@@ -2494,6 +2637,30 @@ function MemeCoinsPage({ search }: { search: string }) {
                   <td style={TD}><Badge status={t.is_rugged ? 'rugged' : 'active'} /></td>
                   <td style={TD}>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !marketStore.isTokenSellBlocked(t.sym);
+                          marketStore.setTokenSellBlocked(t.sym, next);
+                          toast_(`$${t.sym} Sell Lock ${next ? 'ACTIVATED 🚫' : 'DEACTIVATED ✅'}`);
+                        }}
+                        style={{
+                          background: marketStore.isTokenSellBlocked(t.sym) ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.06)',
+                          border: `1px solid ${marketStore.isTokenSellBlocked(t.sym) ? '#EF4444' : C.border}`,
+                          color: marketStore.isTokenSellBlocked(t.sym) ? '#EF4444' : C.muted,
+                          borderRadius: 6,
+                          padding: '3px 8px',
+                          fontSize: 10,
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 3,
+                        }}
+                        title="Toggle sell restriction"
+                      >
+                        {marketStore.isTokenSellBlocked(t.sym) ? '🚫 Blocked' : '🟢 Open'}
+                      </button>
                       <Btn sm ghost onClick={() => openEditModal(t)} title="Edit coin metrics">
                         <Edit3 size={12} /> Edit
                       </Btn>
@@ -2986,6 +3153,33 @@ function MemeCoinsPage({ search }: { search: string }) {
                     }}
                   >
                     {form.is_liquidity_locked ? <>🔒 Locked</> : '🔓 Unlocked'}
+                  </button>
+                </div>
+
+                {/* Anti-Sell / Block Sell on Launch toggle */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: form.is_sell_blocked ? 'rgba(239,68,68,0.12)' : C.surface2, border: `1px solid ${form.is_sell_blocked ? '#EF4444' : C.border}`, borderRadius: 10, padding: '10px 14px' }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>🚫 Block User Selling on Launch (Honeypot Mode)</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>Traders can buy this coin on the DEX, but will not be able to sell or swap it out</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setForm(prev => ({ ...prev, is_sell_blocked: !prev.is_sell_blocked }))}
+                    style={{
+                      background: form.is_sell_blocked ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.06)',
+                      border: `1px solid ${form.is_sell_blocked ? '#EF4444' : C.border}`,
+                      color: form.is_sell_blocked ? '#EF4444' : C.muted,
+                      borderRadius: 6,
+                      padding: '4px 10px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4
+                    }}
+                  >
+                    {form.is_sell_blocked ? <>🚫 Sell Blocked</> : <>🟢 Sell Open</>}
                   </button>
                 </div>
 

@@ -4,7 +4,8 @@ import {
   Copy, LayoutDashboard, LineChart, Menu, Plus, Search,
   Send, Settings, Shield, ShieldCheck, Target, Star, Wallet, X, TrendingUp, TrendingDown,
   AlertTriangle, Coins, Users, ArrowDownToLine, ArrowUpToLine, Skull, LogOut, Sliders, Zap, Globe, Lock, ShoppingBag, RotateCcw, ExternalLink,
-  Sun, Moon, CreditCard, RefreshCw, Clock, Crown, Flame, Activity, Trophy, Eye, EyeOff, Camera, Share, Download, Smartphone, HelpCircle
+  Sun, Moon, CreditCard, RefreshCw, Clock, Crown, Flame, Activity, Trophy, Eye, EyeOff, Camera, Share, Download, Smartphone, HelpCircle,
+  Headphones
 } from "lucide-react";
 import "./index.css";
 import { AdminDashboard } from "./components/admin/AdminDashboard";
@@ -5767,9 +5768,15 @@ function AppShell({
     };
     window.addEventListener("axiom_realtime_alert", handleRealtimeAlert);
 
+    const handleOpenSupport = () => {
+      setModal("support");
+    };
+    window.addEventListener("open_support_modal", handleOpenSupport);
+
     return () => {
       notificationService.stopPolling();
       window.removeEventListener("axiom_realtime_alert", handleRealtimeAlert);
+      window.removeEventListener("open_support_modal", handleOpenSupport);
     };
   }, [authUser?.user_id, authUser?.wallet_address, authUser?.is_admin]);
 
@@ -6145,6 +6152,54 @@ function AppShell({
           })}
           </nav>
         </>
+      )}
+
+      {/* ── FLOATING 24/7 CUSTOMER SUPPORT BUTTON ── */}
+      {!modal && (
+        <button
+          type="button"
+          onClick={() => setModal("support")}
+          className="floating-support-btn"
+          title="24/7 Live Customer Support"
+          aria-label="24/7 Live Customer Support"
+          style={{
+            position: "fixed",
+            bottom: "82px",
+            right: "18px",
+            width: "48px",
+            height: "48px",
+            borderRadius: "50%",
+            background: "#FFFFFF",
+            border: "none",
+            boxShadow: "0 6px 24px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.25)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            zIndex: 9980,
+            transition: "all 180ms cubic-bezier(0.4, 0, 0.2, 1)",
+            padding: 0,
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.08) translateY(-2px)")}
+          onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1) translateY(0)")}
+        >
+          <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Headphones size={22} color="#000000" strokeWidth={2.4} />
+            <span
+              style={{
+                position: "absolute",
+                top: -5,
+                right: -6,
+                width: 9,
+                height: 9,
+                borderRadius: "50%",
+                background: "#10B981",
+                border: "2px solid #FFFFFF",
+                boxShadow: "0 0 6px #10B981",
+              }}
+            />
+          </div>
+        </button>
       )}
 
       {modal && <ModalBox authUser={authUser} type={modal} close={() => setModal("")} flash={flash} onNavigate={navigateTo} />}
