@@ -2446,7 +2446,7 @@ def internal_transfer_uid(request):
                     target_audience='USER',
                     user=sender,
                     user_identifier=str(sender.id),
-                    title="Axiom Pay — Transfer Sent 💸",
+                    title=f"Transfer Sent (-{amount} {currency}) 🚀",
                     message=f"You sent {amount} {currency} to Trader {recipient_uid_label}. Settled instantly with zero network fees.",
                     notification_type='WITHDRAWAL',
                     link_url='/#wallet'
@@ -2474,7 +2474,7 @@ def internal_transfer_uid(request):
                 target_audience='USER',
                 user=recipient,
                 user_identifier=str(recipient.id),
-                title="Axiom Pay — Funds Received 💰",
+                title=f"Deposit Confirmed (+{amount} {currency}) 💰",
                 message=f"You received +{amount} {currency} from Trader {sender_uid_label}. Your balance has been credited instantly.",
                 notification_type='DEPOSIT',
                 link_url='/#wallet'

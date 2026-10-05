@@ -6,6 +6,7 @@ import {
 import { api } from "../../services/api";
 import { marketStore } from "../../services/marketStore";
 import { type AuthUser } from "../../services/authService";
+import { notificationService } from "../../services/notificationService";
 import "./Modals.css";
 
 interface SendPageProps {
@@ -108,6 +109,7 @@ export const SendPage: React.FC<SendPageProps> = ({
         if (apiRes && apiRes.tx_hash) {
           txHashVal = apiRes.tx_hash;
         }
+        notificationService.triggerImmediateSync();
       } catch (err: any) {
         console.warn("Backend internal transfer sync warning:", err);
       }
