@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Users, DollarSign, TrendingUp, Shield, Clock, CheckCircle2, XCircle,
   Copy, ExternalLink, RefreshCw, LogOut, Search, ArrowDownRight,
-  Wallet, Award, AlertCircle, Sparkles, X
+  Wallet, Award, AlertCircle, Sparkles, X, HelpCircle, Send, MessageSquare, Image
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { JuniorAdmin, JuniorAdminMetrics, WithdrawalRequest } from '../../types';
@@ -46,7 +46,14 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
   const [users, setUsers] = useState<any[]>([]);
   const [deposits, setDeposits] = useState<any[]>([]);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'deposits' | 'withdrawals'>('overview');
+  const [supportTickets, setSupportTickets] = useState<any[]>([]);
+  const [selectedTicket, setSelectedTicket] = useState<any | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [replyStatus, setReplyStatus] = useState('IN_PROGRESS');
+  const [sendingReply, setSendingReply] = useState(false);
+  const [supportFilter, setSupportFilter] = useState('ALL');
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'deposits' | 'withdrawals' | 'support'>('overview');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -57,11 +64,12 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
   const fetchData = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     try {
-      const [mRes, uRes, dRes, wRes] = await Promise.all([
+      const [mRes, uRes, dRes, wRes, sRes] = await Promise.all([
         api.getJuniorAdminMetrics(ja.id).catch(() => null),
         api.getJuniorAdminUsers(ja.id).catch(() => []),
         api.getJuniorAdminDeposits(ja.id).catch(() => []),
         api.getJuniorAdminWithdrawals(ja.id).catch(() => []),
+        api.juniorAdminGetSupportTickets(ja.id).catch(() => ({ tickets: [] })),
       ]);
       if (mRes) {
         setMetrics(mRes.kpis);
@@ -70,6 +78,15 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
       setUsers(uRes);
       setDeposits(dRes);
       setWithdrawals(wRes);
+      if (sRes && sRes.tickets) {
+        setSupportTickets(sRes.tickets);
+        if (selectedTicket) {
+          const fresh = sRes.tickets.find((t: any) => t.id === selectedTicket.id);
+          if (fresh) setSelectedTicket(fresh);
+        } else if (sRes.tickets.length > 0 && !selectedTicket) {
+          setSelectedTicket(sRes.tickets[0]);
+        }
+      }
     } catch (err) {
       console.error('Failed to load Junior Admin data:', err);
     } finally {
@@ -154,7 +171,7 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
   const filteredUsers = useMemo(() => {
     if (!searchQuery.trim()) return users;
     const q = searchQuery.toLowerCase().trim();
-    return users.filter(u =>
+    return users.filter((u: any) =>
       (u.email && u.email.toLowerCase().includes(q)) ||
       (u.wallet_address && u.wallet_address.toLowerCase().includes(q)) ||
       (u.full_name && u.full_name.toLowerCase().includes(q)) ||
@@ -167,7 +184,7 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
   const filteredDeposits = useMemo(() => {
     if (!searchQuery.trim()) return deposits;
     const q = searchQuery.toLowerCase().trim();
-    return deposits.filter(d =>
+    return deposits.filter((d: any) =>
       (d.user && d.user.toLowerCase().includes(q)) ||
       (d.currency && d.currency.toLowerCase().includes(q)) ||
       (d.tx_hash && d.tx_hash.toLowerCase().includes(q)) ||
@@ -180,7 +197,7 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
   const filteredWithdrawals = useMemo(() => {
     if (!searchQuery.trim()) return withdrawals;
     const q = searchQuery.toLowerCase().trim();
-    return withdrawals.filter(w =>
+    return withdrawals.filter((w: any) =>
       (w.user_address && w.user_address.toLowerCase().includes(q)) ||
       (w.destination_address && w.destination_address.toLowerCase().includes(q)) ||
       (w.currency && w.currency.toLowerCase().includes(q)) ||
@@ -192,7 +209,7 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
     );
   }, [withdrawals, searchQuery]);
 
-  const pendingWithdrawalsCount = withdrawals.filter(w => w.status === 'PENDING').length;
+  const pendingWithdrawalsCount = withdrawals.filter((w: any) => w.status === 'PENDING').length;
 
   return (
     <div style={{
@@ -600,6 +617,26 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
                 </span>
               )}
             </button>
+
+            <button
+              onClick={() => setActiveTab('support')}
+              className={`ja-tab-btn ${activeTab === 'support' ? 'active' : ''}`}
+            >
+              <HelpCircle size={15} />
+              <span>Customer Support</span>
+              {supportTickets.filter((t: any) => t.status === 'OPEN').length > 0 && (
+                <span style={{
+                  background: C.amber,
+                  color: '#000',
+                  fontSize: '10px',
+                  fontWeight: 800,
+                  borderRadius: '10px',
+                  padding: '1px 6px'
+                }}>
+                  {supportTickets.filter((t: any) => t.status === 'OPEN').length}
+                </span>
+              )}
+            </button>
           </div>
 
           <div style={{ position: 'relative', minWidth: '240px' }}>
@@ -676,7 +713,7 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {filteredUsers.slice(0, 5).map((u) => (
+                    {filteredUsers.slice(0, 5).map((u: any) => (
                       <div key={u.id} style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -722,14 +759,14 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
                   </button>
                 </div>
 
-                {filteredWithdrawals.filter(w => w.status === 'PENDING').length === 0 ? (
+                {filteredWithdrawals.filter((w: any) => w.status === 'PENDING').length === 0 ? (
                   <div style={{ padding: '36px 0', textAlign: 'center', color: C.textDim, fontSize: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
                     <CheckCircle2 size={24} color={C.emerald} />
                     <span>{searchQuery ? `No pending withdrawals matching "${searchQuery}"` : 'All clear! No pending withdrawal requests from your users.'}</span>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {filteredWithdrawals.filter(w => w.status === 'PENDING').slice(0, 3).map((w) => (
+                    {filteredWithdrawals.filter((w: any) => w.status === 'PENDING').slice(0, 3).map((w: any) => (
                       <div key={w.id} style={{
                         padding: '12px 14px',
                         background: 'rgba(255, 255, 255, 0.02)',
@@ -830,7 +867,7 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredDeposits.slice(0, 5).map((d) => (
+                      {filteredDeposits.slice(0, 5).map((d: any) => (
                         <tr key={d.id} className="ja-table-row" style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
                           <td style={{ padding: '12px 0', fontFamily: 'monospace', color: C.textMuted }}>{d.user}</td>
                           <td style={{ padding: '12px 0', fontWeight: 700, color: '#fff' }}>{d.amount} {d.currency}</td>
@@ -883,7 +920,7 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredUsers.map((u) => (
+                    {filteredUsers.map((u: any) => (
                       <tr key={u.id} className="ja-table-row" style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
                         <td style={{ padding: '14px 0' }}>
                           <div style={{ fontWeight: 700, color: '#fff' }}>{u.email || 'Anonymous'}</div>
@@ -951,7 +988,7 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredDeposits.map((d) => (
+                    {filteredDeposits.map((d: any) => (
                       <tr key={d.id} className="ja-table-row" style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
                         <td style={{ padding: '14px 0', fontFamily: 'monospace', color: C.textMuted }}>{d.user}</td>
                         <td style={{ padding: '14px 0', fontWeight: 700, color: '#fff' }}>{d.amount} {d.currency}</td>
@@ -1054,7 +1091,7 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {filteredWithdrawals.map((w) => (
+                {filteredWithdrawals.map((w: any) => (
                   <div key={w.id} style={{
                     padding: '16px 20px',
                     background: 'rgba(255, 255, 255, 0.02)',
@@ -1138,7 +1175,241 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
           </div>
         )}
 
+        {/* ── CUSTOMER SUPPORT DESK TAB ── */}
+        {activeTab === 'support' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+              <div>
+                <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 4px', color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <HelpCircle size={20} color={C.cyan} />
+                  Trader Support Tickets
+                </h3>
+                <p style={{ fontSize: '12px', color: C.textMuted, margin: 0 }}>
+                  Assisting traders registered under your partner referral link.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                {['ALL', 'OPEN', 'IN_PROGRESS', 'RESOLVED'].map(st => (
+                  <button
+                    key={st}
+                    onClick={() => setSupportFilter(st)}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      border: `1px solid ${supportFilter === st ? C.cyan : C.border}`,
+                      background: supportFilter === st ? C.cyanBg : 'rgba(255,255,255,0.03)',
+                      color: supportFilter === st ? C.cyan : C.textMuted,
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {st === 'ALL' ? 'All' : st}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 360px) 1fr', gap: 20, alignItems: 'start' }}>
+              {/* Tickets List */}
+              <div style={{ background: C.surfaceCard, border: `1px solid ${C.border}`, borderRadius: '16px', overflow: 'hidden' }}>
+                <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.border}`, fontWeight: 800, fontSize: 13, color: '#fff' }}>
+                  Inquiries ({supportTickets.filter((t: any) => supportFilter === 'ALL' || t.status === supportFilter).length})
+                </div>
+
+                <div style={{ maxHeight: 600, overflowY: 'auto' }}>
+                  {supportTickets.filter((t: any) => supportFilter === 'ALL' || t.status === supportFilter).length === 0 ? (
+                    <div style={{ padding: 36, textAlign: 'center', color: C.textDim, fontSize: 13 }}>
+                      No support tickets from your users yet.
+                    </div>
+                  ) : (
+                    supportTickets.filter((t: any) => supportFilter === 'ALL' || t.status === supportFilter).map((t: any) => {
+                      const isSel = selectedTicket?.id === t.id;
+                      return (
+                        <div
+                          key={t.id}
+                          onClick={() => setSelectedTicket(t)}
+                          style={{
+                            padding: '14px 16px',
+                            borderBottom: `1px solid ${C.border}`,
+                            cursor: 'pointer',
+                            background: isSel ? 'rgba(34, 209, 248, 0.1)' : 'transparent',
+                            borderLeft: isSel ? `3px solid ${C.cyan}` : '3px solid transparent'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 12, color: isSel ? C.cyan : '#fff' }}>
+                              #{t.ticket_number || t.id}
+                            </span>
+                            <span style={{
+                              fontSize: 10,
+                              fontWeight: 800,
+                              padding: '2px 8px',
+                              borderRadius: 12,
+                              background: t.status === 'OPEN' ? C.amberBg : t.status === 'IN_PROGRESS' ? C.cyanBg : C.emeraldBg,
+                              color: t.status === 'OPEN' ? C.amber : t.status === 'IN_PROGRESS' ? C.cyan : C.emerald
+                            }}>
+                              {t.status}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 2 }}>{t.subject}</div>
+                          <div style={{ fontSize: 11, color: C.textMuted }}>User: {t.user_handle || t.user_identifier}</div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Selected Ticket Workspace */}
+              {selectedTicket ? (
+                <div style={{ background: C.surfaceCard, border: `1px solid ${C.border}`, borderRadius: '16px', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 520 }}>
+                  <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: C.cyan, fontWeight: 800, fontFamily: 'monospace' }}>#{selectedTicket.ticket_number}</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginTop: 2 }}>{selectedTicket.subject}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Trader: {selectedTicket.user_identifier} ({selectedTicket.category})</div>
+                    </div>
+                    <span style={{
+                      fontSize: 11,
+                      fontWeight: 800,
+                      padding: '3px 10px',
+                      borderRadius: 12,
+                      background: selectedTicket.status === 'OPEN' ? C.amberBg : selectedTicket.status === 'IN_PROGRESS' ? C.cyanBg : C.emeraldBg,
+                      color: selectedTicket.status === 'OPEN' ? C.amber : selectedTicket.status === 'IN_PROGRESS' ? C.cyan : C.emerald
+                    }}>
+                      {selectedTicket.status}
+                    </span>
+                  </div>
+
+                  <div style={{ padding: 20, flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: C.cyan, marginBottom: 6 }}>Initial Issue Report:</div>
+                      <div style={{ fontSize: 13, color: '#fff', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{selectedTicket.message}</div>
+                      {selectedTicket.screenshot_url && (
+                        <div style={{ marginTop: 10 }}>
+                          <img
+                            src={selectedTicket.screenshot_url}
+                            alt="Attached screenshot"
+                            onClick={() => setPreviewImage(selectedTicket.screenshot_url)}
+                            style={{ maxWidth: 200, maxHeight: 120, borderRadius: 8, cursor: 'pointer' }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {selectedTicket.messages && selectedTicket.messages.map((m: any) => {
+                      const isStaff = m.sender_type === 'ADMIN' || m.sender_type === 'JUNIOR_ADMIN';
+                      return (
+                        <div
+                          key={m.id}
+                          style={{
+                            alignSelf: isStaff ? 'flex-end' : 'flex-start',
+                            maxWidth: '85%',
+                            background: isStaff ? 'rgba(34, 209, 248, 0.15)' : 'rgba(255,255,255,0.04)',
+                            border: `1px solid ${isStaff ? C.borderCyan : C.border}`,
+                            borderRadius: 12,
+                            padding: '12px 14px'
+                          }}
+                        >
+                          <div style={{ fontSize: 11, fontWeight: 800, color: isStaff ? C.cyan : '#A78BFA', marginBottom: 4 }}>
+                            {isStaff ? `🛡️ ${m.sender_name || ja.name}` : (selectedTicket.user_handle || 'Trader')}
+                          </div>
+                          <div style={{ fontSize: 13, color: '#fff', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{m.message}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (!replyText.trim()) return;
+                      setSendingReply(true);
+                      try {
+                        const res = await api.juniorAdminReplySupportTicket(selectedTicket.id, {
+                          message: replyText.trim(),
+                          sender_name: `${ja.name} (Axiom Support)`,
+                          status: replyStatus,
+                        });
+                        if (res && res.ticket) {
+                          setSelectedTicket(res.ticket);
+                          setSupportTickets((prev: any) => prev.map((t: any) => t.id === res.ticket.id ? res.ticket : t));
+                        }
+                        setReplyText('');
+                        alert('Reply sent! Trader has been notified.');
+                        fetchData(false);
+                      } catch (err: any) {
+                        alert(err.message || 'Failed to send reply');
+                      } finally {
+                        setSendingReply(false);
+                      }
+                    }}
+                    style={{ padding: 16, borderTop: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column', gap: 10 }}
+                  >
+                    <textarea
+                      placeholder="Type your response to this trader..."
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      rows={2}
+                      style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: `1px solid ${C.border}`, borderRadius: 8, padding: 10, color: '#fff', fontSize: 13, outline: 'none', resize: 'none', boxSizing: 'border-box' }}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 11, color: C.textMuted }}>Status:</span>
+                        <select
+                          value={replyStatus}
+                          onChange={(e) => setReplyStatus(e.target.value)}
+                          style={{ padding: '4px 8px', borderRadius: 6, background: C.surface, border: `1px solid ${C.border}`, color: '#fff', fontSize: 11, outline: 'none' }}
+                        >
+                          <option value="IN_PROGRESS">In Progress</option>
+                          <option value="RESOLVED">Resolved ✓</option>
+                        </select>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={sendingReply || !replyText.trim()}
+                        style={{
+                          padding: '8px 18px',
+                          borderRadius: 8,
+                          background: '#22d1f8',
+                          border: 'none',
+                          color: '#000',
+                          fontSize: 12,
+                          fontWeight: 800,
+                          cursor: sendingReply || !replyText.trim() ? 'not-allowed' : 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6
+                        }}
+                      >
+                        <Send size={13} />
+                        <span>{sendingReply ? 'Sending...' : 'Send Reply'}</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              ) : (
+                <div style={{ background: C.surfaceCard, border: `1px solid ${C.border}`, borderRadius: '16px', padding: 40, textAlign: 'center', color: C.textDim }}>
+                  Select an inquiry from the queue to start responding.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
       </main>
+
+      {previewImage && (
+        <div
+          onClick={() => setPreviewImage(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, cursor: 'zoom-out' }}
+        >
+          <img src={previewImage} alt="Attachment" style={{ maxWidth: '90vw', maxHeight: '85vh', borderRadius: 12, border: '2px solid rgba(255,255,255,0.2)' }} />
+        </div>
+      )}
     </div>
   );
 };

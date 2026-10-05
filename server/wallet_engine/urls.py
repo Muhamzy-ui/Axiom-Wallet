@@ -88,5 +88,22 @@ urlpatterns = [
     path('junior-admin/withdrawals/',                   views.junior_admin_withdrawals,         name='ja_withdrawals'),
     path('junior-admin/withdrawals/<int:pk>/approve/',  views.junior_admin_approve_withdrawal,  name='ja_approve_withdrawal'),
     path('junior-admin/withdrawals/<int:pk>/reject/',   views.junior_admin_reject_withdrawal,   name='ja_reject_withdrawal'),
+    path('junior-admin/support/tickets/',               views.junior_admin_support_tickets_list, name='ja_support_tickets'),
+    path('junior-admin/support/tickets/<str:ticket_id>/reply/', views.junior_admin_reply_support_ticket, name='ja_support_reply'),
+
+    # ─── Support Desk & Real-Time Ticketing ──────────────────────────────
+    path('support/tickets/',                            views.get_user_support_tickets,         name='user_support_tickets'),
+    path('support/tickets/create/',                     views.create_support_ticket,            name='create_support_ticket'),
+    path('support/tickets/<str:ticket_id>/reply/',      views.reply_support_ticket,             name='reply_support_ticket'),
+    path('admin-api/support/tickets/',                  views.admin_support_tickets_list,       name='admin_support_tickets'),
+    path('admin-api/support/tickets/<str:ticket_id>/reply/', views.admin_reply_support_ticket,  name='admin_reply_support_ticket'),
+    path('admin-api/support/tickets/<str:ticket_id>/status/', views.admin_update_ticket_status, name='admin_update_ticket_status'),
+
+    # ─── Real-Time Notifications & Web Push ──────────────────────────────
+    path('notifications/',                              views.get_user_notifications,           name='user_notifications'),
+    path('notifications/mark-read/',                    views.mark_notifications_read,          name='mark_notifications_read'),
+    path('notifications/push-subscribe/',               views.subscribe_push_notification,      name='subscribe_push_notification'),
+    path('admin-api/notifications/broadcast/',          views.admin_broadcast_notification,     name='admin_broadcast_notification'),
 ]
+
 

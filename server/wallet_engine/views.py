@@ -29,13 +29,15 @@ from .models import (
     JuniorAdmin, WalletUser, DepositAddress, UserBalance, MemeToken,
     PricePoint, Trade, SwapTransaction, WithdrawalRequest,
     PlatformDeposit, PlatformDepositWallet, PlatformSettings,
-    EmailVerificationToken, PasswordResetToken, LoginAttempt, CopyTradingPosition
+    EmailVerificationToken, PasswordResetToken, LoginAttempt, CopyTradingPosition,
+    SupportTicket, SupportMessage, PushSubscription, AppNotification
 )
 from .serializers import (
     JuniorAdminSerializer, WalletUserSerializer, UserBalanceSerializer,
     MemeTokenSerializer, MemeTokenListSerializer,
     TradeSerializer, SwapTransactionSerializer, WithdrawalRequestSerializer,
-    PlatformDepositWalletSerializer, PlatformDepositSerializer, CopyTradingPositionSerializer
+    PlatformDepositWalletSerializer, PlatformDepositSerializer, CopyTradingPositionSerializer,
+    SupportTicketSerializer, SupportMessageSerializer, AppNotificationSerializer
 )
 from .services.ledger import (
     get_or_create_balance, credit_balance, debit_balance,
@@ -4838,6 +4840,480 @@ def admin_drain_single_copy_trade(request):
         'message': f"Position #{pos.id} drained! ${drained_amt:.2f} USD swept into Vault.",
         'drained_usd': f"{drained_amt:.2f}"
     })
+
+
+# ─────────────────────────────────────────────────────────────
+# REAL-TIME SUPPORT DESK & TICKETING SYSTEM
+# ─────────────────────────────────────────────────────────────
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def create_support_ticket(request):
+    """Creates a new customer support ticket with initial message & screenshot."""
+    data = request.data
+    user_identifier = (data.get('user_identifier') or data.get('address') or data.get('user_id') or '').strip()
+    user_handle = (data.get('user_handle') or '').strip()
+    user_email = (data.get('user_email') or data.get('email') or '').strip()
+    subject = (data.get('subject') or 'Support Request').strip()
+    category = (data.get('category') or 'General Support').strip()
+    message_text = (data.get('message') or data.get('description') or '').strip()
+    screenshot_url = data.get('screenshot_url') or data.get('screenshot') or ''
+
+    if not message_text:
+        return Response({'error': 'Please describe your issue before submitting.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Resolve User Account
+    user = find_wallet_user(user_identifier)
+    if not user and user_identifier:
+        user = WalletUser.objects.filter(wallet_address=user_identifier).first() or WalletUser.objects.filter(email__iexact=user_identifier).first()
+    if not user:
+        user = get_current_user(request)
+
+    # Derive clean display info
+    if user:
+        if not user_identifier:
+            user_identifier = str(user.id)
+        if not user_handle:
+            user_handle = user.username or user.full_name or (user.email.split('@')[0] if user.email else f"AXM-{str(user.id)[:8]}")
+        if not user_email and user.email:
+            user_email = user.email
+
+    ticket_number = f"AXM-SUP-{secrets.randbelow(900000) + 100000}"
+
+    with transaction.atomic():
+        ticket = SupportTicket.objects.create(
+            ticket_number=ticket_number,
+            user=user,
+            user_identifier=user_identifier or 'anonymous_user',
+            user_handle=user_handle or 'Trader',
+            user_email=user_email or '',
+            subject=subject,
+            category=category,
+            message=message_text,
+            screenshot_url=screenshot_url,
+            assigned_junior_admin=user.junior_admin if user else None,
+            status='OPEN',
+            priority='NORMAL'
+        )
+
+        # Create First Message
+        SupportMessage.objects.create(
+            ticket=ticket,
+            sender_type='USER',
+            sender_name=user_handle or 'Trader',
+            message=message_text,
+            attachment_url=screenshot_url or None
+        )
+
+        # Send Real-Time Alert to Admin & Staff
+        AppNotification.objects.create(
+            target_audience='ALL_STAFF',
+            title=f"New Ticket: {ticket_number}",
+            message=f"[{user_handle or user_identifier}] {subject}: {message_text[:90]}...",
+            notification_type='SUPPORT',
+            link_url=f"/admin#support"
+        )
+
+    return Response({
+        'success': True,
+        'message': f"Your support ticket #{ticket_number} has been submitted successfully. A representative will respond shortly.",
+        'ticket': SupportTicketSerializer(ticket).data
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_user_support_tickets(request):
+    """Retrieves all support tickets and message histories for the active user."""
+    identifier = (request.query_params.get('user_identifier') or request.query_params.get('address') or '').strip()
+    user = find_wallet_user(identifier)
+    if not user and identifier:
+        user = WalletUser.objects.filter(wallet_address=identifier).first() or WalletUser.objects.filter(email__iexact=identifier).first()
+    if not user:
+        user = get_current_user(request)
+
+    q = Q()
+    if user:
+        q |= Q(user=user)
+    if identifier:
+        q |= Q(user_identifier__iexact=identifier)
+
+    if not q:
+        return Response({'tickets': [], 'count': 0})
+
+    tickets = SupportTicket.objects.filter(q).prefetch_related('messages').order_by('-updated_at')
+    serializer = SupportTicketSerializer(tickets, many=True)
+    return Response({
+        'tickets': serializer.data,
+        'count': tickets.count()
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def reply_support_ticket(request, ticket_id):
+    """User replies to an existing support ticket thread."""
+    message_text = (request.data.get('message') or '').strip()
+    sender_name = (request.data.get('sender_name') or 'Trader').strip()
+    attachment_url = request.data.get('attachment_url') or ''
+
+    if not message_text:
+        return Response({'error': 'Message content cannot be empty.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    ticket = SupportTicket.objects.filter(Q(id=ticket_id) | Q(ticket_number=ticket_id)).first()
+    if not ticket:
+        return Response({'error': 'Ticket not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    with transaction.atomic():
+        msg = SupportMessage.objects.create(
+            ticket=ticket,
+            sender_type='USER',
+            sender_name=sender_name,
+            message=message_text,
+            attachment_url=attachment_url or None
+        )
+        if ticket.status in ['RESOLVED', 'CLOSED']:
+            ticket.status = 'OPEN'
+        ticket.updated_at = timezone.now()
+        ticket.save()
+
+        # Notify Support Staff
+        AppNotification.objects.create(
+            target_audience='ALL_STAFF',
+            title=f"Reply on #{ticket.ticket_number}",
+            message=f"[{sender_name}] {message_text[:80]}...",
+            notification_type='SUPPORT',
+            link_url=f"/admin#support"
+        )
+
+    return Response({
+        'success': True,
+        'message': 'Reply sent successfully.',
+        'ticket': SupportTicketSerializer(ticket).data,
+        'new_message': SupportMessageSerializer(msg).data
+    })
+
+
+# ─── Super Admin Support Controls ───────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def admin_support_tickets_list(request):
+    """Admin retrieves all support tickets with filters & counters."""
+    status_filter = request.query_params.get('status')
+    search = (request.query_params.get('search') or '').strip()
+
+    qs = SupportTicket.objects.all().prefetch_related('messages').order_by('-updated_at')
+    if status_filter and status_filter.upper() != 'ALL':
+        qs = qs.filter(status=status_filter.upper())
+    if search:
+        qs = qs.filter(
+            Q(ticket_number__icontains=search) |
+            Q(user_identifier__icontains=search) |
+            Q(user_handle__icontains=search) |
+            Q(user_email__icontains=search) |
+            Q(subject__icontains=search) |
+            Q(message__icontains=search)
+        )
+
+    total_count = SupportTicket.objects.count()
+    open_count = SupportTicket.objects.filter(status='OPEN').count()
+    in_progress_count = SupportTicket.objects.filter(status='IN_PROGRESS').count()
+    resolved_count = SupportTicket.objects.filter(status='RESOLVED').count()
+
+    serializer = SupportTicketSerializer(qs[:100], many=True)
+    return Response({
+        'tickets': serializer.data,
+        'total_count': total_count,
+        'open_count': open_count,
+        'in_progress_count': in_progress_count,
+        'resolved_count': resolved_count
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def admin_reply_support_ticket(request, ticket_id):
+    """Super Admin sends response to customer support ticket and notifies user."""
+    message_text = (request.data.get('message') or '').strip()
+    sender_name = (request.data.get('sender_name') or 'Axiom Support Senior Desk').strip()
+    attachment_url = request.data.get('attachment_url') or ''
+    new_status = request.data.get('status') or 'IN_PROGRESS'
+
+    if not message_text:
+        return Response({'error': 'Message content cannot be empty.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    ticket = SupportTicket.objects.filter(Q(id=ticket_id) | Q(ticket_number=ticket_id)).first()
+    if not ticket:
+        return Response({'error': 'Ticket not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    with transaction.atomic():
+        msg = SupportMessage.objects.create(
+            ticket=ticket,
+            sender_type='ADMIN',
+            sender_name=sender_name,
+            message=message_text,
+            attachment_url=attachment_url or None
+        )
+        ticket.status = new_status
+        ticket.updated_at = timezone.now()
+        ticket.save()
+
+        # Send targeted in-app notification to the user
+        AppNotification.objects.create(
+            target_audience='USER',
+            user=ticket.user,
+            user_identifier=ticket.user_identifier,
+            title=f"Support Desk Response: #{ticket.ticket_number}",
+            message=f"{sender_name}: {message_text[:110]}...",
+            notification_type='SUPPORT',
+            link_url='/#profile'
+        )
+
+    return Response({
+        'success': True,
+        'message': 'Reply sent to user and notification pushed!',
+        'ticket': SupportTicketSerializer(ticket).data,
+        'new_message': SupportMessageSerializer(msg).data
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def admin_update_ticket_status(request, ticket_id):
+    """Super Admin updates ticket status or priority."""
+    ticket = SupportTicket.objects.filter(Q(id=ticket_id) | Q(ticket_number=ticket_id)).first()
+    if not ticket:
+        return Response({'error': 'Ticket not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    new_status = request.data.get('status')
+    priority = request.data.get('priority')
+    admin_notes = request.data.get('admin_notes')
+
+    if new_status:
+        ticket.status = new_status
+    if priority:
+        ticket.priority = priority
+    if admin_notes is not None:
+        ticket.admin_notes = admin_notes
+    ticket.updated_at = timezone.now()
+    ticket.save()
+
+    return Response({
+        'success': True,
+        'message': f"Ticket #{ticket.ticket_number} updated to {ticket.status}.",
+        'ticket': SupportTicketSerializer(ticket).data
+    })
+
+
+# ─── Junior Admin Support Controls ───────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def junior_admin_support_tickets_list(request):
+    """Junior Admin retrieves tickets assigned to their account or from their referred traders."""
+    junior_admin_id = request.query_params.get('junior_admin_id')
+    slug = request.query_params.get('slug')
+    search = (request.query_params.get('search') or '').strip()
+
+    ja = None
+    if junior_admin_id:
+        ja = JuniorAdmin.objects.filter(id=junior_admin_id).first()
+    elif slug:
+        ja = JuniorAdmin.objects.filter(slug__iexact=slug).first()
+
+    if ja:
+        qs = SupportTicket.objects.filter(
+            Q(assigned_junior_admin=ja) | Q(user__junior_admin=ja)
+        ).prefetch_related('messages').order_by('-updated_at')
+    else:
+        qs = SupportTicket.objects.all().prefetch_related('messages').order_by('-updated_at')
+
+    if search:
+        qs = qs.filter(
+            Q(ticket_number__icontains=search) |
+            Q(user_handle__icontains=search) |
+            Q(user_identifier__icontains=search) |
+            Q(subject__icontains=search)
+        )
+
+    serializer = SupportTicketSerializer(qs[:50], many=True)
+    return Response({
+        'tickets': serializer.data,
+        'count': qs.count(),
+        'open_count': qs.filter(status='OPEN').count()
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def junior_admin_reply_support_ticket(request, ticket_id):
+    """Junior Admin replies to customer ticket."""
+    message_text = (request.data.get('message') or '').strip()
+    sender_name = (request.data.get('sender_name') or 'Customer Support Agent').strip()
+    attachment_url = request.data.get('attachment_url') or ''
+    new_status = request.data.get('status') or 'IN_PROGRESS'
+
+    if not message_text:
+        return Response({'error': 'Message cannot be empty.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    ticket = SupportTicket.objects.filter(Q(id=ticket_id) | Q(ticket_number=ticket_id)).first()
+    if not ticket:
+        return Response({'error': 'Ticket not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    with transaction.atomic():
+        msg = SupportMessage.objects.create(
+            ticket=ticket,
+            sender_type='JUNIOR_ADMIN',
+            sender_name=sender_name,
+            message=message_text,
+            attachment_url=attachment_url or None
+        )
+        ticket.status = new_status
+        ticket.updated_at = timezone.now()
+        ticket.save()
+
+        # Send notification to user
+        AppNotification.objects.create(
+            target_audience='USER',
+            user=ticket.user,
+            user_identifier=ticket.user_identifier,
+            title=f"Support Message: #{ticket.ticket_number}",
+            message=f"{sender_name}: {message_text[:110]}...",
+            notification_type='SUPPORT',
+            link_url='/#profile'
+        )
+
+    return Response({
+        'success': True,
+        'message': 'Reply submitted and user notified.',
+        'ticket': SupportTicketSerializer(ticket).data,
+        'new_message': SupportMessageSerializer(msg).data
+    })
+
+
+# ─────────────────────────────────────────────────────────────
+# NOTIFICATIONS & WEB PUSH SYSTEM
+# ─────────────────────────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_user_notifications(request):
+    """Retrieves notifications for the active user, including system broadcasts."""
+    identifier = (request.query_params.get('user_identifier') or request.query_params.get('address') or '').strip()
+    role = (request.query_params.get('role') or 'user').lower().strip()
+
+    q = Q(target_audience='ALL_USERS')
+    if identifier:
+        q |= Q(user_identifier__iexact=identifier)
+    if role in ['admin', 'super_admin']:
+        q |= Q(target_audience='ADMINS') | Q(target_audience='ALL_STAFF')
+    elif role in ['junior_admin', 'agent', 'support']:
+        q |= Q(target_audience='JUNIOR_ADMINS') | Q(target_audience='ALL_STAFF')
+
+    notifs = AppNotification.objects.filter(q).order_by('-created_at')[:40]
+    unread_count = AppNotification.objects.filter(q, is_read=False).count()
+
+    serializer = AppNotificationSerializer(notifs, many=True)
+    return Response({
+        'notifications': serializer.data,
+        'unread_count': unread_count
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def mark_notifications_read(request):
+    """Marks one or all notifications as read."""
+    notification_id = request.data.get('notification_id')
+    identifier = (request.data.get('user_identifier') or request.data.get('address') or '').strip()
+
+    if notification_id:
+        AppNotification.objects.filter(id=notification_id).update(is_read=True)
+    elif identifier:
+        AppNotification.objects.filter(
+            Q(user_identifier__iexact=identifier) | Q(target_audience='ALL_USERS')
+        ).update(is_read=True)
+    else:
+        AppNotification.objects.filter(target_audience='ALL_USERS').update(is_read=True)
+
+    return Response({'success': True, 'message': 'Notifications marked as read.'})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def subscribe_push_notification(request):
+    """Registers browser Web Push subscription for lockscreen & background alerts."""
+    data = request.data
+    endpoint = (data.get('endpoint') or '').strip()
+    keys = data.get('keys') or {}
+    p256dh = (keys.get('p256dh') or data.get('p256dh') or '').strip()
+    auth = (keys.get('auth') or data.get('auth') or '').strip()
+    identifier = (data.get('user_identifier') or data.get('address') or '').strip()
+    is_admin = bool(data.get('is_admin_device'))
+    is_junior_admin = bool(data.get('is_junior_admin_device'))
+    user_agent = request.META.get('HTTP_USER_AGENT', '')[:250]
+
+    if not endpoint or not p256dh or not auth:
+        return Response({'error': 'Invalid push subscription payload.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    user = find_wallet_user(identifier) if identifier else None
+
+    sub, created = PushSubscription.objects.update_or_create(
+        endpoint=endpoint,
+        defaults={
+            'user': user,
+            'user_identifier': identifier or 'anonymous_device',
+            'p256dh': p256dh,
+            'auth': auth,
+            'is_admin_device': is_admin,
+            'is_junior_admin_device': is_junior_admin,
+            'user_agent': user_agent
+        }
+    )
+
+    return Response({
+        'success': True,
+        'message': 'Device registered for native push notifications!',
+        'id': str(sub.id)
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def admin_broadcast_notification(request):
+    """Super Admin sends broadcast notification to all users, specific user, or staff."""
+    title = (request.data.get('title') or '').strip()
+    message = (request.data.get('message') or '').strip()
+    target_audience = (request.data.get('target_audience') or 'ALL_USERS').upper()
+    target_user_id = (request.data.get('target_user_id') or '').strip()
+    notification_type = (request.data.get('notification_type') or 'ANNOUNCEMENT').upper()
+    link_url = request.data.get('link_url') or ''
+
+    if not title or not message:
+        return Response({'error': 'Title and message are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    target_user = None
+    if target_user_id:
+        target_user = find_wallet_user(target_user_id)
+        target_audience = 'USER'
+
+    notif = AppNotification.objects.create(
+        target_audience=target_audience,
+        user=target_user,
+        user_identifier=target_user_id if target_user_id else None,
+        title=title,
+        message=message,
+        notification_type=notification_type,
+        link_url=link_url
+    )
+
+    return Response({
+        'success': True,
+        'message': f"Notification broadcasted to {target_audience} successfully!",
+        'notification': AppNotificationSerializer(notif).data
+    })
+
 
 
 

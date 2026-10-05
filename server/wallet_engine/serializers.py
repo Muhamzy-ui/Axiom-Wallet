@@ -255,3 +255,41 @@ class CopyTradingPositionSerializer(serializers.ModelSerializer):
             'entry_price_usd', 'is_locked', 'status', 'created_at', 'closed_at'
         ]
 
+
+class SupportMessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        from .models import SupportMessage
+        model = SupportMessage
+        fields = [
+            'id', 'ticket', 'sender_type', 'sender_name',
+            'message', 'attachment_url', 'created_at'
+        ]
+
+
+class SupportTicketSerializer(serializers.ModelSerializer):
+    messages = SupportMessageSerializer(many=True, read_only=True)
+    assigned_junior_admin_name = serializers.CharField(source='assigned_junior_admin.name', read_only=True)
+    assigned_junior_admin_slug = serializers.CharField(source='assigned_junior_admin.slug', read_only=True)
+
+    class Meta:
+        from .models import SupportTicket
+        model = SupportTicket
+        fields = [
+            'id', 'ticket_number', 'user', 'user_identifier', 'user_handle',
+            'user_email', 'subject', 'category', 'message', 'screenshot_url',
+            'status', 'priority', 'assigned_junior_admin', 'assigned_junior_admin_name',
+            'assigned_junior_admin_slug', 'admin_notes', 'created_at', 'updated_at',
+            'messages'
+        ]
+
+
+class AppNotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        from .models import AppNotification
+        model = AppNotification
+        fields = [
+            'id', 'target_audience', 'user', 'user_identifier', 'title',
+            'message', 'notification_type', 'link_url', 'is_read', 'created_at'
+        ]
+
+

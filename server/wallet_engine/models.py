@@ -268,3 +268,117 @@ class CopyTradingPosition(models.Model):
     def __str__(self):
         return f"{self.user} copying {self.trader_name} on {self.token_symbol} (${self.allocated_usd})"
 
+
+class SupportTicket(models.Model):
+    STATUS_CHOICES = (
+        ('OPEN', 'Open'),
+        ('IN_PROGRESS', 'In Progress'),
+        ('RESOLVED', 'Resolved'),
+        ('CLOSED', 'Closed'),
+    )
+    PRIORITY_CHOICES = (
+        ('LOW', 'Low'),
+        ('NORMAL', 'Normal'),
+        ('HIGH', 'High'),
+        ('URGENT', 'Urgent'),
+    )
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ticket_number = models.CharField(max_length=32, unique=True, db_index=True)
+    user = models.ForeignKey(WalletUser, on_delete=models.CASCADE, related_name='support_tickets', null=True, blank=True)
+    user_identifier = models.CharField(max_length=128, db_index=True)
+    user_handle = models.CharField(max_length=120, blank=True, null=True)
+    user_email = models.CharField(max_length=120, blank=True, null=True)
+    subject = models.CharField(max_length=255)
+    category = models.CharField(max_length=64, default='General Support')
+    message = models.TextField()
+    screenshot_url = models.TextField(blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='OPEN', db_index=True)
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='NORMAL')
+    assigned_junior_admin = models.ForeignKey(JuniorAdmin, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_tickets')
+    admin_notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"[{self.ticket_number}] {self.subject} ({self.status})"
+
+
+class SupportMessage(models.Model):
+    SENDER_CHOICES = (
+        ('USER', 'User'),
+        ('ADMIN', 'Super Admin'),
+        ('JUNIOR_ADMIN', 'Junior Admin / Support Agent'),
+    )
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ticket = models.ForeignKey(SupportTicket, on_delete=models.CASCADE, related_name='messages')
+    sender_type = models.CharField(max_length=20, choices=SENDER_CHOICES)
+    sender_name = models.CharField(max_length=120, default='Support Desk')
+    message = models.TextField()
+    attachment_url = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Message on {self.ticket.ticket_number} by {self.sender_name} ({self.sender_type})"
+
+
+class PushSubscription(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(WalletUser, on_delete=models.CASCADE, related_name='push_subscriptions', null=True, blank=True)
+    user_identifier = models.CharField(max_length=128, db_index=True)
+    endpoint = models.TextField(unique=True)
+    p256dh = models.TextField()
+    auth = models.TextField()
+    is_admin_device = models.BooleanField(default=False)
+    is_junior_admin_device = models.BooleanField(default=False)
+    junior_admin = models.ForeignKey(JuniorAdmin, on_delete=models.SET_NULL, null=True, blank=True, related_name='push_subscriptions')
+    user_agent = models.CharField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"PushSub for {self.user_identifier} (Admin={self.is_admin_device})"
+
+
+class AppNotification(models.Model):
+    AUDIENCE_CHOICES = (
+        ('USER', 'Specific User'),
+        ('ALL_USERS', 'All Users'),
+        ('ADMINS', 'Admins Only'),
+        ('JUNIOR_ADMINS', 'Junior Admins Only'),
+        ('ALL_STAFF', 'All Staff'),
+    )
+    TYPE_CHOICES = (
+        ('DEPOSIT', 'Deposit Confirmed'),
+        ('WITHDRAWAL', 'Withdrawal Status'),
+        ('TRADE', 'Trade Execution'),
+        ('SUPPORT', 'Support Ticket Update'),
+        ('ANNOUNCEMENT', 'Announcement'),
+        ('SECURITY', 'Security Alert'),
+        ('SYSTEM', 'System Alert'),
+    )
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    target_audience = models.CharField(max_length=32, choices=AUDIENCE_CHOICES, default='USER')
+    user = models.ForeignKey(WalletUser, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications')
+    user_identifier = models.CharField(max_length=128, blank=True, null=True, db_index=True)
+    title = models.CharField(max_length=180)
+    message = models.TextField()
+    notification_type = models.CharField(max_length=32, choices=TYPE_CHOICES, default='SYSTEM')
+    link_url = models.CharField(max_length=255, blank=True, null=True)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"[{self.notification_type}] {self.title} -> {self.user_identifier or self.target_audience}"
+
+

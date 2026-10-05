@@ -9,7 +9,8 @@ import {
   Globe, Lock, BarChart2, Shield, Skull, TrendingUp, TrendingDown,
   Copy, RotateCcw, Sparkles, ExternalLink, Edit3, Trash2,
   Sun, Moon, Menu, Smartphone, Eye, EyeOff, Trophy, ShieldCheck,
-  Upload, Image, QrCode, CheckCircle2, AlertCircle, HelpCircle, ChevronUp
+  Upload, Image, QrCode, CheckCircle2, AlertCircle, HelpCircle, ChevronUp,
+  Send, MessageSquare
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -7535,12 +7536,671 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
   );
 }
 
+/* ── SUPPORT TICKETS & PUSH BROADCAST ADMIN SECTION ───────────────────────── */
+function SupportAdminSection({ toast }: { toast: (msg: string) => void }) {
+  const [tickets, setTickets] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedTicket, setSelectedTicket] = useState<any | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [replyText, setReplyText] = useState('');
+  const [replyAttachment, setReplyAttachment] = useState('');
+  const [replyStatus, setReplyStatus] = useState('IN_PROGRESS');
+  const [sendingReply, setSendingReply] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  // Broadcast Modal state
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [broadcastTitle, setBroadcastTitle] = useState('');
+  const [broadcastMessage, setBroadcastMessage] = useState('');
+  const [broadcastAudience, setBroadcastAudience] = useState('ALL_USERS');
+  const [broadcastTargetUser, setBroadcastTargetUser] = useState('');
+  const [broadcastType, setBroadcastType] = useState('ANNOUNCEMENT');
+  const [broadcastLink, setBroadcastLink] = useState('/#wallet');
+  const [sendingBroadcast, setSendingBroadcast] = useState(false);
+
+  // Counters
+  const [counts, setCounts] = useState({ total: 0, open: 0, in_progress: 0, resolved: 0 });
+
+  const loadTickets = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.adminGetSupportTickets(statusFilter === 'ALL' ? undefined : statusFilter, searchQuery);
+      if (res && res.tickets) {
+        setTickets(res.tickets);
+        setCounts({
+          total: res.total_count ?? res.tickets.length,
+          open: res.open_count ?? res.tickets.filter((t: any) => t.status === 'OPEN').length,
+          in_progress: res.in_progress_count ?? res.tickets.filter((t: any) => t.status === 'IN_PROGRESS').length,
+          resolved: res.resolved_count ?? res.tickets.filter((t: any) => t.status === 'RESOLVED').length,
+        });
+        if (selectedTicket) {
+          const fresh = res.tickets.find((t: any) => t.id === selectedTicket.id);
+          if (fresh) setSelectedTicket(fresh);
+        } else if (res.tickets.length > 0 && !selectedTicket) {
+          setSelectedTicket(res.tickets[0]);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load admin support tickets:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter, searchQuery, selectedTicket?.id]);
+
+  useEffect(() => {
+    loadTickets();
+    const interval = setInterval(loadTickets, 10000);
+    return () => clearInterval(interval);
+  }, [loadTickets]);
+
+  const handleSendReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTicket || !replyText.trim()) return;
+    setSendingReply(true);
+    try {
+      const res = await api.adminReplySupportTicket(selectedTicket.id, {
+        message: replyText.trim(),
+        sender_name: 'Axiom Official Support Team',
+        status: replyStatus,
+        attachment_url: replyAttachment.trim() || undefined,
+      });
+      if (res && res.ticket) {
+        setSelectedTicket(res.ticket);
+        setTickets(prev => prev.map(t => t.id === res.ticket.id ? res.ticket : t));
+      }
+      setReplyText('');
+      setReplyAttachment('');
+      toast(`Reply sent to ticket #${selectedTicket.ticket_number}! User notified via Push.`);
+      loadTickets();
+    } catch (err: any) {
+      toast(err.message || 'Failed to send reply');
+    } finally {
+      setSendingReply(false);
+    }
+  };
+
+  const handleUpdateStatus = async (newStatus: string) => {
+    if (!selectedTicket) return;
+    try {
+      const res = await api.adminUpdateTicketStatus(selectedTicket.id, { status: newStatus });
+      if (res && res.ticket) {
+        setSelectedTicket(res.ticket);
+        setTickets(prev => prev.map(t => t.id === res.ticket.id ? res.ticket : t));
+        toast(`Ticket status updated to ${newStatus}`);
+      }
+    } catch (err: any) {
+      toast('Failed to update ticket status');
+    }
+  };
+
+  const handleSendBroadcast = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!broadcastTitle.trim() || !broadcastMessage.trim()) {
+      toast('Please provide a title and message for broadcast.');
+      return;
+    }
+    setSendingBroadcast(true);
+    try {
+      const res = await api.adminBroadcastNotification({
+        title: broadcastTitle.trim(),
+        message: broadcastMessage.trim(),
+        target_audience: broadcastAudience,
+        target_user_id: broadcastTargetUser.trim() || undefined,
+        notification_type: broadcastType,
+        link_url: broadcastLink.trim() || undefined,
+      });
+      if (res && res.success) {
+        toast(`📢 Notification broadcasted successfully to ${broadcastAudience}!`);
+        setShowBroadcastModal(false);
+        setBroadcastTitle('');
+        setBroadcastMessage('');
+      } else {
+        toast(res?.message || 'Broadcast complete.');
+      }
+    } catch (err: any) {
+      toast(err.message || 'Failed to broadcast notification.');
+    } finally {
+      setSendingBroadcast(false);
+    }
+  };
+
+  const filteredTickets = tickets.filter(t => {
+    if (statusFilter !== 'ALL' && t.status !== statusFilter) return false;
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase().trim();
+    return (
+      (t.ticket_number && t.ticket_number.toLowerCase().includes(q)) ||
+      (t.user_handle && t.user_handle.toLowerCase().includes(q)) ||
+      (t.user_identifier && t.user_identifier.toLowerCase().includes(q)) ||
+      (t.subject && t.subject.toLowerCase().includes(q)) ||
+      (t.category && t.category.toLowerCase().includes(q))
+    );
+  });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 1400, margin: '0 auto', width: '100%' }}>
+      {/* ── Top Header & Stats Bar ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, margin: '0 0 4px', letterSpacing: '-0.4px', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <HelpCircle size={26} color="#22D1F8" />
+            Support Desk & Push Notifications
+          </h1>
+          <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>
+            Manage user inquiries, view attached screenshots, reply in real-time, and dispatch live push alerts.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            type="button"
+            onClick={loadTickets}
+            style={{
+              padding: '9px 15px',
+              borderRadius: 10,
+              background: 'rgba(255,255,255,0.06)',
+              border: `1px solid ${C.border}`,
+              color: C.text,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+          >
+            <RefreshCw size={14} className={loading ? "spin-animate" : ""} /> Sync
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowBroadcastModal(true)}
+            style={{
+              padding: '9px 18px',
+              borderRadius: 10,
+              background: 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)',
+              border: 'none',
+              color: '#fff',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              boxShadow: '0 2px 12px rgba(124, 58, 237, 0.35)'
+            }}
+          >
+            <Send size={15} /> 📢 Send Push Broadcast
+          </button>
+        </div>
+      </div>
+
+      {/* ── KPI Stat Cards ── */}
+      <div className="admin-kpi-grid">
+        <StatCard icon={<HelpCircle />} label="Total Inquiries" value={counts.total} color={C.violet} />
+        <StatCard icon={<AlertCircle />} label="Open Tickets" value={counts.open} color={counts.open > 0 ? C.amber : C.green} />
+        <StatCard icon={<Clock />} label="In Progress" value={counts.in_progress} color="#22D1F8" />
+        <StatCard icon={<CheckCircle2 />} label="Resolved Cases" value={counts.resolved} color={C.green} />
+      </div>
+
+      {/* ── Search & Filter Tabs ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
+          {[
+            { id: 'ALL', label: `All Tickets (${counts.total})` },
+            { id: 'OPEN', label: `Open (${counts.open})`, color: C.amber },
+            { id: 'IN_PROGRESS', label: `In Progress (${counts.in_progress})`, color: '#22D1F8' },
+            { id: 'RESOLVED', label: `Resolved (${counts.resolved})`, color: C.green },
+            { id: 'CLOSED', label: 'Closed' },
+          ].map(f => (
+            <button
+              key={f.id}
+              onClick={() => setStatusFilter(f.id)}
+              style={{
+                padding: '8px 14px',
+                borderRadius: 8,
+                border: `1px solid ${statusFilter === f.id ? (f.color || C.violet) : C.border}`,
+                background: statusFilter === f.id ? `${f.color || C.violet}22` : 'rgba(255,255,255,0.02)',
+                color: statusFilter === f.id ? (f.color || '#fff') : C.muted,
+                fontSize: 12,
+                fontWeight: statusFilter === f.id ? 700 : 500,
+                cursor: 'pointer',
+                transition: 'all 150ms'
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ position: 'relative', minWidth: 240, flex: 1, maxWidth: 360 }}>
+          <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: C.muted }} />
+          <input
+            type="text"
+            placeholder="Filter ticket #, UID, subject..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '8px 12px 8px 34px',
+              borderRadius: 8,
+              background: C.surface,
+              border: `1px solid ${C.border}`,
+              color: C.text,
+              fontSize: 12,
+              outline: 'none'
+            }}
+          />
+        </div>
+      </div>
+
+      {/* ── Two-Column Main Support Workspace ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 380px) 1fr', gap: 20, alignItems: 'start' }}>
+        {/* Left Column: Tickets Queue */}
+        <Card style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.border}`, fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>Ticket Queue ({filteredTickets.length})</span>
+            {loading && <span style={{ fontSize: 11, color: C.muted }}>Updating...</span>}
+          </div>
+
+          <div style={{ maxHeight: 680, overflowY: 'auto' }}>
+            {filteredTickets.length === 0 ? (
+              <div style={{ padding: 40, textAlign: 'center', color: C.muted }}>
+                <HelpCircle size={32} style={{ opacity: 0.3, marginBottom: 8 }} />
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>No tickets in this view</div>
+                <div style={{ fontSize: 11, marginTop: 4 }}>Support inquiries from traders will populate here.</div>
+              </div>
+            ) : (
+              filteredTickets.map(t => {
+                const isSel = selectedTicket?.id === t.id;
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => setSelectedTicket(t)}
+                    style={{
+                      padding: '14px 16px',
+                      borderBottom: `1px solid ${C.border}`,
+                      cursor: 'pointer',
+                      background: isSel ? 'rgba(124, 58, 237, 0.12)' : 'transparent',
+                      borderLeft: isSel ? `3px solid ${C.violet}` : '3px solid transparent',
+                      transition: 'all 120ms'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 12, color: isSel ? '#C4B5FD' : C.text }}>
+                        #{t.ticket_number || t.id}
+                      </span>
+                      <span style={{
+                        fontSize: 10,
+                        fontWeight: 800,
+                        padding: '2px 8px',
+                        borderRadius: 12,
+                        background: t.status === 'OPEN' ? 'rgba(245, 158, 11, 0.18)' : t.status === 'IN_PROGRESS' ? 'rgba(34, 209, 248, 0.18)' : t.status === 'RESOLVED' ? 'rgba(16, 185, 129, 0.18)' : 'rgba(255,255,255,0.08)',
+                        color: t.status === 'OPEN' ? C.amber : t.status === 'IN_PROGRESS' ? '#22D1F8' : t.status === 'RESOLVED' ? C.green : C.muted
+                      }}>
+                        {t.status}
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {t.subject}
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11, color: C.muted }}>
+                      <span>User: <strong style={{ color: '#A78BFA' }}>{t.user_handle || t.user_identifier?.slice(0, 10)}</strong></span>
+                      <span>{new Date(t.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </Card>
+
+        {/* Right Column: Active Ticket Conversation Workspace */}
+        {selectedTicket ? (
+          <Card style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 680 }}>
+            {/* Ticket Header & Status Control */}
+            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, background: 'rgba(255,255,255,0.02)' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 15, color: '#C4B5FD' }}>
+                    #{selectedTicket.ticket_number}
+                  </span>
+                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.08)', color: C.muted }}>
+                    Category: {selectedTicket.category || 'General Inquiry'}
+                  </span>
+                </div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginTop: 4 }}>
+                  {selectedTicket.subject}
+                </div>
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+                  Trader UID: <strong style={{ color: '#A78BFA' }}>{selectedTicket.user_identifier}</strong>
+                  {selectedTicket.user_handle && <span> (@{selectedTicket.user_handle})</span>}
+                  {selectedTicket.user_email && <span> · {selectedTicket.user_email}</span>}
+                </div>
+              </div>
+
+              {/* Status Selector dropdown */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, color: C.muted }}>Status:</span>
+                <select
+                  value={selectedTicket.status}
+                  onChange={(e) => handleUpdateStatus(e.target.value)}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 8,
+                    background: C.surface,
+                    border: `1px solid ${C.border}`,
+                    color: C.text,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="OPEN">🟡 OPEN</option>
+                  <option value="IN_PROGRESS">🔵 IN PROGRESS</option>
+                  <option value="RESOLVED">🟢 RESOLVED</option>
+                  <option value="CLOSED">⚪ CLOSED</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Conversation Messages Thread */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* Initial Issue Description Box */}
+              <div style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#A78BFA' }}>
+                    <span>Original Issue Report</span>
+                  </div>
+                  <span style={{ fontSize: 11, color: C.muted }}>
+                    {new Date(selectedTicket.created_at).toLocaleString()}
+                  </span>
+                </div>
+                <div style={{ fontSize: 13, color: C.text, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                  {selectedTicket.message}
+                </div>
+
+                {/* Screenshot attachment preview */}
+                {selectedTicket.screenshot_url && (
+                  <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Image size={13} /> Attached Proof / Screenshot:
+                    </div>
+                    <img
+                      src={selectedTicket.screenshot_url}
+                      alt="Attachment Preview"
+                      onClick={() => setPreviewImage(selectedTicket.screenshot_url)}
+                      style={{
+                        maxWidth: 240,
+                        maxHeight: 140,
+                        borderRadius: 8,
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        cursor: 'pointer',
+                        objectFit: 'cover',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Messages loop */}
+              {selectedTicket.messages && selectedTicket.messages.map((m: any) => {
+                const isAdmin = m.sender_type === 'ADMIN' || m.sender_type === 'SUPER_ADMIN' || m.sender_type === 'JUNIOR_ADMIN';
+                return (
+                  <div
+                    key={m.id}
+                    style={{
+                      alignSelf: isAdmin ? 'flex-end' : 'flex-start',
+                      maxWidth: '82%',
+                      background: isAdmin ? 'linear-gradient(135deg, rgba(124, 58, 237, 0.25) 0%, rgba(6, 182, 212, 0.2) 100%)' : 'rgba(255,255,255,0.04)',
+                      border: `1px solid ${isAdmin ? 'rgba(167, 139, 250, 0.4)' : C.border}`,
+                      borderRadius: 14,
+                      padding: '12px 16px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: isAdmin ? '#67E8F9' : '#A78BFA' }}>
+                        {isAdmin ? `🛡️ ${m.sender_name || 'Axiom Staff'}` : (selectedTicket.user_handle || 'Trader')}
+                      </span>
+                      <span style={{ fontSize: 10, color: C.muted }}>
+                        {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 13, color: '#fff', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                      {m.message}
+                    </div>
+                    {m.attachment_url && (
+                      <div style={{ marginTop: 8 }}>
+                        <img
+                          src={m.attachment_url}
+                          alt="Message attachment"
+                          onClick={() => setPreviewImage(m.attachment_url)}
+                          style={{ maxWidth: 200, maxHeight: 120, borderRadius: 6, cursor: 'pointer' }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Reply Composer */}
+            <form onSubmit={handleSendReply} style={{ padding: '14px 18px', borderTop: `1px solid ${C.border}`, background: 'rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <textarea
+                placeholder="Type your official reply to the trader..."
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                rows={2}
+                style={{
+                  width: '100%',
+                  background: C.surface,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 10,
+                  padding: '10px 14px',
+                  color: C.text,
+                  fontSize: 13,
+                  outline: 'none',
+                  resize: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 11, color: C.muted }}>Next Status:</span>
+                  <select
+                    value={replyStatus}
+                    onChange={(e) => setReplyStatus(e.target.value)}
+                    style={{
+                      padding: '5px 10px',
+                      borderRadius: 6,
+                      background: C.surface,
+                      border: `1px solid ${C.border}`,
+                      color: C.text,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      outline: 'none'
+                    }}
+                  >
+                    <option value="IN_PROGRESS">Keep In Progress</option>
+                    <option value="RESOLVED">Mark as Resolved ✓</option>
+                    <option value="CLOSED">Close Ticket</option>
+                  </select>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={sendingReply || !replyText.trim()}
+                  style={{
+                    padding: '8px 20px',
+                    borderRadius: 8,
+                    background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
+                    border: 'none',
+                    color: '#fff',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: !replyText.trim() || sendingReply ? 'not-allowed' : 'pointer',
+                    opacity: !replyText.trim() || sendingReply ? 0.6 : 1,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  <Send size={13} />
+                  <span>{sendingReply ? 'Sending...' : 'Send Official Reply'}</span>
+                </button>
+              </div>
+            </form>
+          </Card>
+        ) : (
+          <Card style={{ padding: 40, textAlign: 'center', color: C.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', height: 400 }}>
+            <HelpCircle size={40} style={{ opacity: 0.3, marginBottom: 12 }} />
+            <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>Select a Ticket to View Details</div>
+            <div style={{ fontSize: 12, marginTop: 4 }}>Select any inquiry from the queue on the left to start replying.</div>
+          </Card>
+        )}
+      </div>
+
+      {/* ── Broadcast Push Notification Modal ── */}
+      {showBroadcastModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ width: '100%', maxWidth: 520, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 24, boxShadow: '0 20px 50px rgba(0,0,0,0.6)', position: 'relative' }}>
+            <button
+              onClick={() => setShowBroadcastModal(false)}
+              style={{ position: 'absolute', right: 16, top: 16, background: 'none', border: 'none', color: C.muted, cursor: 'pointer' }}
+            >
+              <X size={18} />
+            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(124, 58, 237, 0.2)', border: '1px solid rgba(167, 139, 250, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#C4B5FD' }}>
+                <Send size={20} />
+              </div>
+              <div>
+                <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0 }}>Dispatch Live Push Alert</h2>
+                <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>Send real-time Web Push & in-app island banner to trader devices.</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSendBroadcast} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: C.muted, display: 'block', marginBottom: 4 }}>
+                  Target Audience
+                </label>
+                <select
+                  value={broadcastAudience}
+                  onChange={(e) => setBroadcastAudience(e.target.value)}
+                  style={{ width: '100%', padding: '9px 12px', background: 'rgba(0,0,0,0.3)', border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 13, outline: 'none' }}
+                >
+                  <option value="ALL_USERS">📢 All Registered Active Traders</option>
+                  <option value="JUNIOR_ADMINS">🛡️ Junior Admins & Partners</option>
+                  <option value="USER">🎯 Specific Trader (by UID or Email)</option>
+                </select>
+              </div>
+
+              {broadcastAudience === 'USER' && (
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: C.muted, display: 'block', marginBottom: 4 }}>
+                    Target Trader UID / Email / Wallet Address
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. AXM-8F2A9C or user@email.com"
+                    value={broadcastTargetUser}
+                    onChange={(e) => setBroadcastTargetUser(e.target.value)}
+                    required
+                    style={{ width: '100%', padding: '9px 12px', background: 'rgba(0,0,0,0.3)', border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+              )}
+
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: C.muted, display: 'block', marginBottom: 4 }}>
+                  Alert Title
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Deposit Credited / Market Surge / Security Notice"
+                  value={broadcastTitle}
+                  onChange={(e) => setBroadcastTitle(e.target.value)}
+                  required
+                  style={{ width: '100%', padding: '9px 12px', background: 'rgba(0,0,0,0.3)', border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: C.muted, display: 'block', marginBottom: 4 }}>
+                  Notification Message Body
+                </label>
+                <textarea
+                  placeholder="Enter clear message details..."
+                  value={broadcastMessage}
+                  onChange={(e) => setBroadcastMessage(e.target.value)}
+                  required
+                  rows={3}
+                  style={{ width: '100%', padding: '9px 12px', background: 'rgba(0,0,0,0.3)', border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 13, outline: 'none', resize: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+                <button
+                  type="submit"
+                  disabled={sendingBroadcast}
+                  style={{
+                    flex: 1,
+                    padding: '11px',
+                    borderRadius: 10,
+                    background: 'linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%)',
+                    border: 'none',
+                    color: '#fff',
+                    fontSize: 13,
+                    fontWeight: 800,
+                    cursor: sendingBroadcast ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {sendingBroadcast ? 'Broadcasting Alert...' : '🚀 Dispatch Push Notification'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowBroadcastModal(false)}
+                  style={{ padding: '11px 18px', borderRadius: 10, background: 'rgba(255,255,255,0.06)', border: `1px solid ${C.border}`, color: C.muted, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Image Lightbox Modal ── */}
+      {previewImage && (
+        <div
+          onClick={() => setPreviewImage(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, cursor: 'zoom-out' }}
+        >
+          <div style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh' }}>
+            <img src={previewImage} alt="Fullscreen Attachment" style={{ maxWidth: '100%', maxHeight: '85vh', borderRadius: 12, border: '2px solid rgba(255,255,255,0.2)' }} />
+            <div style={{ textAlign: 'center', marginTop: 10, color: '#fff', fontSize: 13 }}>Click anywhere to close</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ══════════════════════ ROOT COMPONENT ══════════════════════════ */
 interface AdminDashboardProps { onExitAdmin: () => void; }
-type Page = 'dashboard' | 'tokens' | 'users' | 'junior_admins' | 'deposits' | 'deposit_wallets' | 'withdrawals' | 'trades' | 'leaderboard' | 'settings';
+type Page = 'dashboard' | 'tokens' | 'users' | 'junior_admins' | 'deposits' | 'deposit_wallets' | 'withdrawals' | 'trades' | 'leaderboard' | 'support' | 'settings';
 
 const NAV: { id: Page; label: string; icon: React.ReactElement }[] = [
   { id: 'dashboard',       label: 'Dashboard',               icon: <LayoutDashboard size={18} /> },
+  { id: 'support',         label: 'Support Tickets & Push',   icon: <HelpCircle size={18} />      },
   { id: 'tokens',          label: 'Coins & Market Maker',    icon: <Coins size={18} />           },
   { id: 'users',           label: 'Users & Wallets',          icon: <Users size={18} />           },
   { id: 'junior_admins',   label: 'Junior Admins & Links',    icon: <Globe size={18} />           },
@@ -8015,6 +8675,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
         <main className="admin-main-area" onClick={() => { setBell(false); setProf(false); }}>
           <AdminErrorBoundary key={page}>
             {page === 'dashboard'       && <DashboardPage metrics={metrics} withdrawals={ws} onApprove={approve} onReject={reject} loading={loading} search={search} />}
+            {page === 'support'         && <SupportAdminSection toast={toast_} />}
             {page === 'tokens'          && <MemeCoinsPage search={search} />}
             {page === 'users'           && <UsersPage metrics={metrics} loading={loading} search={search} />}
             {page === 'junior_admins'   && <JuniorAdminsPage loading={loading} search={search} />}

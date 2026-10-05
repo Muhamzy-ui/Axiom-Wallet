@@ -4,7 +4,7 @@ import {
   Copy, LayoutDashboard, LineChart, Menu, Plus, Search,
   Send, Settings, Shield, ShieldCheck, Target, Star, Wallet, X, TrendingUp, TrendingDown,
   AlertTriangle, Coins, Users, ArrowDownToLine, ArrowUpToLine, Skull, LogOut, Sliders, Zap, Globe, Lock, ShoppingBag, RotateCcw, ExternalLink,
-  Sun, Moon, CreditCard, RefreshCw, Clock, Crown, Flame, Activity, Trophy, Eye, EyeOff, Camera, Share, Download, Smartphone
+  Sun, Moon, CreditCard, RefreshCw, Clock, Crown, Flame, Activity, Trophy, Eye, EyeOff, Camera, Share, Download, Smartphone, HelpCircle
 } from "lucide-react";
 import "./index.css";
 import { AdminDashboard } from "./components/admin/AdminDashboard";
@@ -26,6 +26,8 @@ import { SendPage } from "./components/modals/SendPage";
 import { ProfitShareModal } from "./components/modals/ProfitShareModal";
 import { CountrySelectModal } from "./components/modals/CountrySelectModal";
 import { AddToHomeScreenModal } from "./components/modals/AddToHomeScreenModal";
+import { SupportModal } from "./components/modals/SupportModal";
+import { notificationService } from "./services/notificationService";
 import { pwaService, getIsStandalone, getIsIOS, getIsAndroid } from "./services/pwaService";
 import { getCountryByCode, CountryInfo, syncDollarRateFromBackend } from "./constants/countries";
 import { CountryFlag } from "./components/common/CountryFlag";
@@ -34,7 +36,8 @@ import { formatCoinPrice, formatRawPrice, formatPercentage, formatUsdAmount } fr
 import { generatePhantomAvatar, generatePresetAvatar, PHANTOM_AVATAR_PRESETS, type AvatarPreset } from "./utils/avatar";
 
 type View = "trade" | "wallet" | "swap" | "admin" | "profile" | "leaderboard";
-type Modal = "deposit" | "send" | "confirm" | "create" | "buy" | "withdraw" | "profit" | "install" | "";
+type Modal = "deposit" | "send" | "confirm" | "create" | "buy" | "withdraw" | "profit" | "install" | "support" | "";
+
 
 const COIN_IMGS: Record<string, string> = {
   BTC: "https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png",
@@ -4270,6 +4273,18 @@ function ModalBox({
     );
   }
 
+  if (type === "support") {
+    return (
+      <SupportModal
+        isOpen={true}
+        onClose={close}
+        authUser={authUser}
+        flash={flash}
+      />
+    );
+  }
+
+
   const meta: Record<string, { title: string; sub: string }> = {
     confirm: { title: "Confirm Swap", sub: "Review before confirming." },
     create: { title: "Create Asset", sub: "Create a new token listing draft." },
@@ -5228,6 +5243,41 @@ function ProfileView({
           </div>
         </div>
 
+        {/* ── Help & Customer Support Card ── */}
+        <div className="profile-card">
+          <div className="profile-card-title">
+            <HelpCircle size={18} color="#22D1F8" />
+            <span>Help & Customer Support</span>
+          </div>
+          <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 14px 0" }}>
+            Got questions about deposits, trading, withdrawals, or account security? Browse our knowledge base or chat with our 24/7 support desk.
+          </p>
+
+          <button
+            type="button"
+            onClick={() => modal("support")}
+            style={{
+              width: "100%",
+              background: "linear-gradient(135deg, rgba(34, 209, 248, 0.12) 0%, rgba(124, 58, 237, 0.12) 100%)",
+              border: "1px solid rgba(34, 209, 248, 0.35)",
+              color: "#67E8F9",
+              borderRadius: 10,
+              padding: "12px",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              transition: "all 150ms",
+              boxShadow: "0 2px 10px rgba(34, 209, 248, 0.1)"
+            }}
+          >
+            <HelpCircle size={16} /> Open Help & Support Center
+          </button>
+        </div>
+
         {/* Account Session Card */}
         <div className="profile-card">
           <div className="profile-card-title">
@@ -5518,8 +5568,27 @@ function AppShell({
     if (authUser) {
       marketStore.setUser(authUser);
       marketStore.syncBackendPortfolio(true);
+
+      // Start realtime notification polling & register Web Push subscription
+      notificationService.startPolling(authUser.user_id, authUser.is_admin ? "admin" : "user");
+      setTimeout(() => {
+        notificationService.requestPushPermission(authUser.user_id, authUser.is_admin, false);
+      }, 3000);
     }
-  }, [authUser?.user_id, authUser?.wallet_address]);
+
+    const handleRealtimeAlert = (e: any) => {
+      const detail = e.detail;
+      if (detail && detail.message) {
+        flash(detail.message);
+      }
+    };
+    window.addEventListener("axiom_realtime_alert", handleRealtimeAlert);
+
+    return () => {
+      notificationService.stopPolling();
+      window.removeEventListener("axiom_realtime_alert", handleRealtimeAlert);
+    };
+  }, [authUser?.user_id, authUser?.wallet_address, authUser?.is_admin]);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -5826,6 +5895,20 @@ function AppShell({
         >
           {isAppStandalone ? <CheckCircle size={16} /> : <Smartphone size={16} />}
           <span>{isAppStandalone ? "App Installed ✓" : "Add to Home Screen"}</span>
+        </button>
+
+        {/* Help & Support in Side Dropdown */}
+        <button
+          onClick={() => { setModal("support"); setMenu(false); }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            color: "#67E8F9",
+          }}
+        >
+          <HelpCircle size={16} />
+          <span>Help & Support</span>
         </button>
 
         {/* Sync & Refresh Button in Side Dropdown */}

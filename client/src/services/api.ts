@@ -905,7 +905,159 @@ export const api = {
       return false;
     }
   },
+
+  // ─── Support Desk & Customer Tickets ───
+  async createSupportTicket(data: {
+    user_identifier: string;
+    user_handle?: string;
+    user_email?: string;
+    subject: string;
+    category?: string;
+    message: string;
+    screenshot_url?: string;
+  }): Promise<{ success: boolean; message: string; ticket: any }> {
+    const res = await fetch(`${API_BASE}/support/tickets/create/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to submit support ticket.');
+    }
+    return res.json();
+  },
+
+  async getUserSupportTickets(userIdentifier: string): Promise<{ tickets: any[]; count: number }> {
+    const res = await fetch(`${API_BASE}/support/tickets/?user_identifier=${encodeURIComponent(userIdentifier)}&_t=${Date.now()}`);
+    return res.json();
+  },
+
+  async replySupportTicket(ticketId: string, data: { message: string; sender_name?: string; attachment_url?: string }): Promise<any> {
+    const res = await fetch(`${API_BASE}/support/tickets/${ticketId}/reply/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to send reply.');
+    }
+    return res.json();
+  },
+
+  // Admin Support Controls
+  async adminGetSupportTickets(status?: string, search?: string): Promise<{ tickets: any[]; total_count: number; open_count: number; in_progress_count: number; resolved_count: number }> {
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+    if (search) params.append('search', search);
+    params.append('_t', String(Date.now()));
+    const res = await fetch(`${API_BASE}/admin-api/support/tickets/?${params.toString()}`);
+    return res.json();
+  },
+
+  async adminReplySupportTicket(ticketId: string, data: { message: string; sender_name?: string; status?: string; attachment_url?: string }): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin-api/support/tickets/${ticketId}/reply/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to send admin reply.');
+    }
+    return res.json();
+  },
+
+  async adminUpdateTicketStatus(ticketId: string, data: { status?: string; priority?: string; admin_notes?: string }): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin-api/support/tickets/${ticketId}/status/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+
+  // Junior Admin Support Controls
+  async juniorAdminGetSupportTickets(juniorAdminId?: string, slug?: string, search?: string): Promise<{ tickets: any[]; count: number; open_count: number }> {
+    const params = new URLSearchParams();
+    if (juniorAdminId) params.append('junior_admin_id', juniorAdminId);
+    if (slug) params.append('slug', slug);
+    if (search) params.append('search', search);
+    params.append('_t', String(Date.now()));
+    const res = await fetch(`${API_BASE}/junior-admin/support/tickets/?${params.toString()}`);
+    return res.json();
+  },
+
+  async juniorAdminReplySupportTicket(ticketId: string, data: { message: string; sender_name?: string; status?: string; attachment_url?: string }): Promise<any> {
+    const res = await fetch(`${API_BASE}/junior-admin/support/tickets/${ticketId}/reply/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+
+  // ─── Real-Time Notifications & Push ───
+  async getUserNotifications(userIdentifier?: string, role?: string): Promise<{ notifications: any[]; unread_count: number }> {
+    const params = new URLSearchParams();
+    if (userIdentifier) params.append('user_identifier', userIdentifier);
+    if (role) params.append('role', role);
+    params.append('_t', String(Date.now()));
+    const res = await fetch(`${API_BASE}/notifications/?${params.toString()}`);
+    return res.json();
+  },
+
+  async markNotificationsRead(notificationId?: string, userIdentifier?: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/notifications/mark-read/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notification_id: notificationId, user_identifier: userIdentifier }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  async subscribePushNotification(data: {
+    endpoint: string;
+    p256dh: string;
+    auth: string;
+    user_identifier?: string;
+    is_admin_device?: boolean;
+    is_junior_admin_device?: boolean;
+  }): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/notifications/push-subscribe/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  async adminBroadcastNotification(data: {
+    title: string;
+    message: string;
+    target_audience?: string;
+    target_user_id?: string;
+    notification_type?: string;
+    link_url?: string;
+  }): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin-api/notifications/broadcast/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
 };
+
 
 
 
