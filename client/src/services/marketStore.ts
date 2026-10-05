@@ -2286,18 +2286,18 @@ class MarketStore {
     let totalCurrentCrypto = 0;
 
     Object.entries(this.balances).forEach(([sym, b]) => {
-      if (b.bal > 0.000001) {
-        if (sym !== "USDC" && sym !== "USDT") {
-          const token = this.getToken(sym);
-          const impliedPrice = (b.bal > 0 && b.usdValue > 0) ? (b.usdValue / b.bal) : (b.avgBuyPrice || (sym === "SOL" ? 121.69 : 0));
-          const p = token && token.numericPrice > 0 ? token.numericPrice : impliedPrice;
-          if (p > 0) {
-            const invested = (b.totalInvested !== undefined && b.totalInvested > 0)
-              ? b.totalInvested
-              : (b.bal * (b.avgBuyPrice || p));
-            totalInvestedCrypto += invested;
-            totalCurrentCrypto += b.bal * p;
-          }
+      const isCash = sym === "USDC" || sym === "USDT" || sym === "USD";
+      if (!isCash && b.bal > 0.0001) {
+        const token = this.getToken(sym);
+        const impliedPrice = (b.bal > 0 && b.usdValue > 0) ? (b.usdValue / b.bal) : (b.avgBuyPrice || (sym === "SOL" ? 121.69 : 0));
+        const p = token && token.numericPrice > 0 ? token.numericPrice : impliedPrice;
+        const curVal = b.bal * p;
+        if (p > 0 && curVal >= 0.0099) {
+          const invested = (b.totalInvested !== undefined && b.totalInvested > 0)
+            ? b.totalInvested
+            : (b.bal * (b.avgBuyPrice || p));
+          totalInvestedCrypto += invested;
+          totalCurrentCrypto += curVal;
         }
       }
     });
@@ -3174,7 +3174,7 @@ class MarketStore {
       }
 
       this.balances[targetKey].bal = Math.max(0, this.balances[targetKey].bal - actualSellAmount);
-      if (this.balances[targetKey].bal <= 0.000001) {
+      if (this.balances[targetKey].bal <= 0.0001 || (this.balances[targetKey].bal * p) < 0.0099) {
         this.balances[targetKey].bal = 0;
         this.balances[targetKey].usdValue = 0;
         this.balances[targetKey].totalInvested = 0;
@@ -4325,13 +4325,17 @@ class MarketStore {
 
     this.balances[fSym].bal = Math.max(0, Number((this.balances[fSym].bal - fromAmt).toFixed(6)));
     this.balances[fSym].usdValue = Number((this.balances[fSym].bal * fromPrice).toFixed(2));
-    if (this.balances[fSym].bal <= 0.000001) {
+    if (this.balances[fSym].bal <= 0.0001 || this.balances[fSym].usdValue < 0.0099) {
       this.balances[fSym].bal = 0;
       this.balances[fSym].usdValue = 0;
       this.balances[fSym].totalInvested = 0;
-      if (!isCashF && fSym !== "SOL" && fSym !== "USDT" && fSym !== "USDC") {
+      this.balances[fSym].avgBuyPrice = 0;
+      if (!isCashF && fSym !== "SOL" && fSym !== "USDT" && fSym !== "USDC" && fSym !== "USD") {
         delete this.balances[fSym];
       }
+    } else {
+      const remRatio = this.balances[fSym].bal / Math.max(0.000001, prevFromBal);
+      this.balances[fSym].totalInvested = Number((prevFromInvested * remRatio).toFixed(2));
     }
 
     // Credit target asset

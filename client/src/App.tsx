@@ -3197,13 +3197,20 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
       const cleanSym = rawSym.replace(/^\$/, "");
       const isStable = cleanSym === "USDC" || cleanSym === "USDT";
       const b = rawBalances[token.sym] || rawBalances[cleanSym] || rawBalances[`$${cleanSym}`] || rawBalances[rawSym];
-      const balNum = b?.bal || 0;
+      const rawBalNum = b?.bal || 0;
       const impliedPrice = (b && b.bal > 0 && b.usdValue > 0) ? (b.usdValue / b.bal) : (b?.avgBuyPrice || 0);
       const effectivePrice = token.numericPrice > 0 ? token.numericPrice : (impliedPrice || (isStable ? 1.0 : 0));
-      const userUsd = isStable ? balNum : (b?.usdValue !== undefined && b?.usdValue > 0 ? b.usdValue : (balNum * effectivePrice));
-      const invested = b?.totalInvested !== undefined && b?.totalInvested > 0 ? b.totalInvested : (balNum * (b?.avgBuyPrice || effectivePrice));
-      const pnlUsd = isStable ? 0 : (userUsd - invested);
-      const pnlPct = isStable || invested <= 0 ? 0 : (pnlUsd / invested) * 100;
+      const calcUsd = isStable ? rawBalNum : (b?.usdValue !== undefined && b?.usdValue > 0 ? b.usdValue : (rawBalNum * effectivePrice));
+
+      // Strictly consider a position active only if user holds meaningful balance (>= 1 cent & > 0.0001 tokens)
+      const hasMeaningfulHold = rawBalNum > 0.0001 && calcUsd >= 0.0099;
+      const balNum = hasMeaningfulHold ? rawBalNum : 0;
+      const userUsd = hasMeaningfulHold ? calcUsd : 0;
+      const invested = (hasMeaningfulHold && b?.totalInvested !== undefined && b?.totalInvested > 0)
+        ? b.totalInvested
+        : (hasMeaningfulHold ? (balNum * (b?.avgBuyPrice || effectivePrice)) : 0);
+      const pnlUsd = (isStable || !hasMeaningfulHold) ? 0 : (userUsd - invested);
+      const pnlPct = (isStable || !hasMeaningfulHold || invested <= 0) ? 0 : (pnlUsd / invested) * 100;
       const sparkline = isStable ? [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1] : (token.sparkline || generateSparkline(effectivePrice, token.pos));
 
       return {
@@ -3229,8 +3236,8 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
     // Requirement 7: Any coin where user has a balance (e.g. USDT, SOL, or bought coin) MUST BE AT THE VERY TOP!
     // Sorted descending by userUsd value so highest balance is #1.
     mapped.sort((a, b) => {
-      const aHasMoney = a.userUsd > 0.005 || a.balNum > 0.000001;
-      const bHasMoney = b.userUsd > 0.005 || b.balNum > 0.000001;
+      const aHasMoney = a.userUsd >= 0.01 && a.balNum > 0.0001;
+      const bHasMoney = b.userUsd >= 0.01 && b.balNum > 0.0001;
       if (aHasMoney && !bHasMoney) return -1;
       if (!aHasMoney && bHasMoney) return 1;
       if (aHasMoney && bHasMoney) {
@@ -3243,12 +3250,7 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
   }, [rawBalances, tick]);
 
   const boughtCoins = useMemo(() => {
-    const buyOrderSyms = new Set(
-      (marketStore.userOrders || [])
-        .filter(o => o && (o.side === "Buy" || String(o.side).toLowerCase() === "buy"))
-        .map(o => (o.sym || "").toUpperCase().replace(/^\$/, ""))
-    );
-    return allTokensList.filter(b => !b.isStable && (b.balNum > 0.000001 || buyOrderSyms.has(b.sym.toUpperCase().replace(/^\$/, "")) || b.invested > 0));
+    return allTokensList.filter(b => !b.isStable && b.balNum > 0.0001 && b.userUsd >= 0.01);
   }, [allTokensList, tick]);
 
   const totalMoneyInvestedInBought = useMemo(() => {
@@ -3566,18 +3568,18 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
 
               <div className="asset-right">
                 <div className="asset-price">
-                  {b.balNum > 0.000001
+                  {b.balNum > 0.0001 && b.userUsd >= 0.01
                     ? `$${b.userUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                     : b.price}
                 </div>
                 <div className="asset-sub-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                  {b.balNum > 0.000001 && (
+                  {b.balNum > 0.0001 && b.userUsd >= 0.01 && (
                     <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>
                       {b.balNum >= 1000 ? b.balNum.toLocaleString(undefined, { maximumFractionDigits: 1 }) : b.balNum.toFixed(b.numericPrice < 0.001 ? 0 : 4)} {b.sym}
                     </span>
                   )}
                   {(() => {
-                    const hasHolding = b.balNum > 0.000001 && !b.isStable && b.invested > 0;
+                    const hasHolding = b.balNum > 0.0001 && b.userUsd >= 0.01 && !b.isStable && b.invested > 0;
                     if (assetTab === "buys" || hasHolding) {
                       const isProfit = b.pnlUsd >= -0.005;
                       const pnlText = `${isProfit ? "+" : "-"}${Math.abs(b.pnlPct).toFixed(2)}%`;
