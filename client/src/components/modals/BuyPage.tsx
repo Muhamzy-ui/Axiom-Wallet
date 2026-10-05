@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import {
-  ChevronLeft, Globe, ShieldCheck, RefreshCw,
-  CreditCard, Building2, CheckCircle2, ArrowRight, Shield, Clock,
-  Copy, Check, Lock, Smartphone, ExternalLink, ShieldAlert, Sparkles, ChevronDown
+  ChevronLeft, ShieldCheck, RefreshCw,
+  CreditCard, Building2, CheckCircle2, ArrowRight, Clock,
+  Copy, Check
 } from "lucide-react";
 import { api } from "../../services/api";
 import { type PlatformDepositWallet } from "../../types";
@@ -59,7 +59,6 @@ export const BuyPage: React.FC<BuyPageProps> = ({
   onDone,
   flash,
   authUser,
-  onNavigateToProfile,
 }) => {
   // Selected Country & Fiat Currency
   const [selectedCountry, setSelectedCountry] = useState<CountryInfo>(() => {
@@ -110,17 +109,18 @@ export const BuyPage: React.FC<BuyPageProps> = ({
     }
   }, [selectedCountry.code]);
 
-  // Step state: "form" | "checkout" | "success"
+  // Step state: "form" (select coin, amount & method) -> "checkout" (order summary & buy/copy wallet) -> "success"
   const [buyStep, setBuyStep] = useState<"form" | "checkout" | "success">("form");
   const [assignedBuyWallet, setAssignedBuyWallet] = useState<PlatformDepositWallet | null>(null);
 
   // Verification & Order State
   const [orderId, setOrderId] = useState<string>("");
-  const [txHash, setTxHash] = useState<string>("");
+  const [txHash] = useState<string>("");
   const [isVerifyingBuy, setIsVerifyingBuy] = useState<boolean>(false);
   const [buyVerifyError, setBuyVerifyError] = useState<string | null>(null);
   const [buySuccessData, setBuySuccessData] = useState<any>(null);
   const [copiedBankAcc, setCopiedBankAcc] = useState<boolean>(false);
+  const [copiedWalletAddr, setCopiedWalletAddr] = useState<boolean>(false);
 
   // Redirection & Processing State
   const [paymentPhase, setPaymentPhase] = useState<"idle" | "redirecting">("idle");
@@ -193,24 +193,20 @@ export const BuyPage: React.FC<BuyPageProps> = ({
 
   const handleStartCheckout = () => {
     if (equivalentUsd < 5.0) {
-      flash("Minimum purchase is $5.00 USD");
+      flash("⚠️ Minimum purchase is $5.00 USD");
       return;
     }
 
     const autoOrderId = `AXM-${selectedCountry.currency}-${Math.floor(100000 + Math.random() * 900000)}`;
     setOrderId(autoOrderId);
-    setPaymentPhase("redirecting");
+    setBuyStep("checkout");
+  };
 
-    const swiftsatsBase = swiftsatsBaseUrl || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("swiftsats_base_url") : null) || "http://localhost:5173";
-    const returnUrl = encodeURIComponent(
-      `${window.location.origin}/#wallet?payment=success&orderId=${autoOrderId}&coin=${buyCoin}&amount=${tokensReceived.toFixed(4)}`
-    );
-    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?order_id=${autoOrderId}&amount=${parsedFiat}&currency=${selectedCountry.currency}&crypto=${buyCoin}&wallet=${activeBuyDepositAddress}&return_url=${returnUrl}`;
-
-    flash("Redirecting to Swiftsats checkout gateway...");
-    setTimeout(() => {
-      window.location.href = checkoutUrl;
-    }, 300);
+  const handleCopyWalletAddress = () => {
+    copyToClipboard(activeBuyDepositAddress);
+    setCopiedWalletAddr(true);
+    flash(`✅ Copied destination ${buyCoin} wallet address!`);
+    setTimeout(() => setCopiedWalletAddr(false), 2000);
   };
 
   const handleVerifyPayment = async () => {
@@ -260,46 +256,34 @@ export const BuyPage: React.FC<BuyPageProps> = ({
     }, 300);
   };
 
-  const handleCompletePurchase = async (methodLabel: string) => {
-    try {
-      const userAddr = authUser?.wallet_address || authUser?.email || "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
-      try {
-        await api.creditSwiftsatsOrder({
-          address: userAddr,
-          order_id: orderId,
-          amount_usd: equivalentUsd.toFixed(2),
-          currency: buyCoin,
-          deposit_wallet: activeBuyDepositAddress,
-        });
-      } catch { }
-
-      marketStore.depositFunds(buyCoin, tokensReceived);
-      setBuySuccessData({
-        order_id: orderId,
-        currency: buyCoin,
-        credited_amount: tokensReceived.toFixed(4),
-        amount_usd: equivalentUsd.toFixed(2),
-        payment_method: methodLabel,
-      });
-      setBuyStep("success");
-      flash(`✅ Payment Authorized! Credited +${tokensReceived.toFixed(4)} ${buyCoin} via ${methodLabel}.`);
-    } finally {
-      setPaymentPhase("idle");
-    }
-  };
-
   return (
     <div className="fullpage-modal-wrap">
       {/* Sticky Header */}
       <header className="fullpage-modal-header">
-        <button type="button" className="fullpage-back-btn" onClick={onClose}>
+        <button
+          type="button"
+          className="fullpage-back-btn"
+          onClick={() => {
+            if (buyStep === "checkout") {
+              setBuyStep("form");
+            } else {
+              onClose();
+            }
+          }}
+        >
           <ChevronLeft size={16} />
-          <span>Back</span>
+          <span>{buyStep === "checkout" ? "Back" : "Close"}</span>
         </button>
 
         <div className="fullpage-header-title">
           <h1>Buy Crypto</h1>
-          <span>Direct fiat onramp & vault delivery</span>
+          <span>
+            {buyStep === "form"
+              ? "Step 1 of 2: Select Coin & Amount"
+              : buyStep === "checkout"
+              ? "Step 2 of 2: Order Summary & Checkout"
+              : "Purchase Confirmed"}
+          </span>
         </div>
 
         <div style={{ width: 68 }} />
@@ -392,7 +376,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
             </button>
           </div>
         ) : buyStep === "checkout" ? (
-          /* Step 2: Checkout Screen */
+          /* STEP 2: Dedicated Order Summary & Gateway / Bank Checkout Screen */
           <div className="pro-card">
             {paymentMethod === "card" ? (
               /* Step 2A: Apple Pay & Debit/Credit Card Checkout View */
@@ -474,9 +458,43 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                       </span>
                     </div>
 
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                      <span style={{ color: "var(--muted)" }}>Delivery Network:</span>
+                      <span style={{ fontWeight: 600 }}>{buyNetwork}</span>
+                    </div>
+
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, paddingTop: 6, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
                       <span style={{ color: "var(--muted)" }}>Order Reference:</span>
                       <span style={{ fontFamily: "monospace", color: "#C4B5FD", fontWeight: 700 }}>{orderId}</span>
+                    </div>
+
+                    {/* Receiving Wallet with Copy Option */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, paddingTop: 6, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
+                      <span style={{ color: "var(--muted)" }}>Receiving Wallet:</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontFamily: "monospace", color: "#C4B5FD", fontSize: 11 }}>
+                          {activeBuyDepositAddress.slice(0, 6)}...{activeBuyDepositAddress.slice(-4)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleCopyWalletAddress}
+                          style={{
+                            background: "rgba(255, 255, 255, 0.08)",
+                            border: "none",
+                            color: "#fff",
+                            borderRadius: 6,
+                            padding: "2px 6px",
+                            fontSize: 10.5,
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 3,
+                          }}
+                        >
+                          {copiedWalletAddr ? <Check size={10} /> : <Copy size={10} />}
+                          {copiedWalletAddr ? "Copied" : "Copy"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -499,7 +517,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontSize: 22, lineHeight: 1 }}></span>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Apple Pay & Card Gateway</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Swiftsats Card & Apple Pay Gateway</span>
                       </div>
                       <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: "rgba(59, 130, 246, 0.15)", color: "#60A5FA" }}>
                         SECURE CHECKOUT
@@ -507,7 +525,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                     </div>
 
                     <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-                      You will now be redirected to the secure payment portal to authorize payment via <b>Apple Pay</b> (Face ID / Touch ID) or <b>Debit / Credit Card</b> (Visa, Mastercard, AMEX). No card details are ever entered or stored on Axiom.
+                      Click below to proceed to the secure <b>Swiftsats</b> checkout portal to complete payment via <b>Apple Pay</b> or <b>Debit / Credit Card</b>. No card details are ever stored on Axiom.
                     </div>
 
                     <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#10B981", fontSize: 11.5, fontWeight: 600 }}>
@@ -535,11 +553,11 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                     {paymentPhase === "redirecting" ? (
                       <>
                         <RefreshCw size={18} className="animate-spin" />
-                        <span>Redirecting to Payment Gateway...</span>
+                        <span>Redirecting to Swiftsats Gateway...</span>
                       </>
                     ) : (
                       <>
-                        <span>Proceed to Secure Checkout</span>
+                        <span>Proceed to Swiftsats Gateway (Click to Pay)</span>
                         <ArrowRight size={16} />
                       </>
                     )}
@@ -562,12 +580,12 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                       cursor: "pointer",
                     }}
                   >
-                    ← Edit Amount / Coin
+                    ← Back to Step 1 (Change Amount or Coin)
                   </button>
                 </div>
               </>
             ) : (
-              /* Step 2B: Nigerian Bank Transfer Checkout (Strictly for Nigerian users) */
+              /* Step 2B: Nigerian Bank Transfer Checkout */
               <>
                 <div className="card-section">
                   <div
@@ -601,7 +619,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                         Transfer {selectedCountry.currencySymbol}{parsedFiat.toLocaleString()} {selectedCountry.currency}
                       </div>
                       <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>
-                        Send via your banking app to complete your instant crypto purchase.
+                        Send via your banking app or Swiftsats to receive +{tokensReceived < 1 ? tokensReceived.toFixed(6) : tokensReceived.toFixed(4)} {buyCoin}.
                       </div>
                     </div>
                   </div>
@@ -647,6 +665,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                           onClick={() => {
                             copyToClipboard("8241092831");
                             setCopiedBankAcc(true);
+                            flash("✅ Copied Bank Account Number!");
                             setTimeout(() => setCopiedBankAcc(false), 2000);
                           }}
                           style={{
@@ -684,6 +703,35 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                       <span style={{ color: "var(--muted)" }}>Order Reference:</span>
                       <span style={{ fontFamily: "monospace", color: "#C4B5FD", fontWeight: 700 }}>{orderId}</span>
                     </div>
+
+                    {/* Receiving Wallet with Copy Option */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, paddingTop: 6, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
+                      <span style={{ color: "var(--muted)" }}>Receiving Wallet:</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontFamily: "monospace", color: "#C4B5FD", fontSize: 11 }}>
+                          {activeBuyDepositAddress.slice(0, 6)}...{activeBuyDepositAddress.slice(-4)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleCopyWalletAddress}
+                          style={{
+                            background: "rgba(255, 255, 255, 0.08)",
+                            border: "none",
+                            color: "#fff",
+                            borderRadius: 6,
+                            padding: "2px 6px",
+                            fontSize: 10.5,
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 3,
+                          }}
+                        >
+                          {copiedWalletAddr ? <Check size={10} /> : <Copy size={10} />}
+                          {copiedWalletAddr ? "Copied" : "Copy"}
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   <div style={{ marginTop: 12, fontSize: 11.5, color: "var(--muted)", textAlign: "center" }}>
@@ -693,7 +741,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
 
                 <div className="card-divider" />
 
-                {/* Check Status CTA */}
+                {/* Check Status & Gateway CTA */}
                 <div className="card-section">
                   <button
                     type="button"
@@ -790,7 +838,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                         cursor: "pointer",
                       }}
                     >
-                      ← Edit Amount / Coin
+                      ← Back to Step 1 (Change Amount or Coin)
                     </button>
                   </div>
                 </div>
@@ -798,7 +846,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
             )}
           </div>
         ) : (
-          /* Step 1: Form View — ONE SINGLE UNIFIED PRO-CARD (Exact match with DepositPage) */
+          /* STEP 1: Select Crypto to Buy & Purchase Amount & Payment Method */
           <>
             <div className="pro-card">
               {/* 1. Crypto Asset Selector */}
@@ -889,7 +937,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                         placeholder="50"
                       />
                     </div>
-                    <div className="converter-badge">
+                    <div className="converter-badge" onClick={() => setIsCountryModalOpen(true)} style={{ cursor: "pointer" }}>
                       <CountryFlag code={selectedCountry.code} flag={selectedCountry.flag} size={18} />
                       <span>{selectedCountry.currency}</span>
                     </div>
@@ -1006,7 +1054,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                         )}
                       </div>
                       <div style={{ fontSize: 11, color: "var(--muted)" }}>
-                        Visa, Mastercard, AMEX & 1-Click Apple Pay.
+                        Visa, Mastercard, AMEX & 1-Click Apple Pay via Swiftsats.
                       </div>
                     </div>
                   </label>
@@ -1021,7 +1069,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                 className="pro-submit-btn"
                 onClick={handleStartCheckout}
               >
-                <span>Continue to Pay {selectedCountry.currencySymbol}{parsedFiat.toLocaleString()} {selectedCountry.currency}</span>
+                <span>Continue to Buy {selectedCountry.currencySymbol}{parsedFiat.toLocaleString()} {selectedCountry.currency}</span>
                 <ArrowRight size={16} />
               </button>
             </div>
