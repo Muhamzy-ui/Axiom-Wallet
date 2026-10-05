@@ -165,13 +165,6 @@ class NotificationManager {
       const permission = await Notification.requestPermission();
       if (permission === "granted") {
         await this.autoSyncPushSubscription(userIdentifier, isAdmin, isJuniorAdmin);
-
-        // Send instant test notification to verify delivery on this phone
-        await this.showNativePhoneNotification(
-          "🔔 Phone Notifications Active!",
-          "Axiom Wallet will now deliver real-time transfer, deposit, and trade alerts directly to your lockscreen.",
-          "/#wallet"
-        );
       }
       return permission as any;
     } catch (err) {

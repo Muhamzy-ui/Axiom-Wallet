@@ -2402,11 +2402,8 @@ class MarketStore {
       diffPct = 0;
     }
 
-    // Instant Hydration on Reload: If calculated total is zero or lower than cached metrics, immediately return cached metrics!
+    // Instant Hydration on Reload: If calculated total is zero and cached metrics exist, return cached metrics
     if (totalValue <= 0.00001 && this.cachedPortfolioMetrics && this.cachedPortfolioMetrics.totalValue > 0) {
-      return this.cachedPortfolioMetrics;
-    }
-    if (totalInvestedCrypto === 0 && this.cachedPortfolioMetrics && this.cachedPortfolioMetrics.totalValue > totalValue) {
       return this.cachedPortfolioMetrics;
     }
 
@@ -2417,7 +2414,7 @@ class MarketStore {
       baseline24h,
       diffUsd,
       diffPct,
-      isPositive: diffUsd >= -0.0049,
+      isPositive: diffUsd > 0.0049 || (Math.abs(diffUsd) <= 0.0049 && diffPct >= 0),
     };
 
     if (totalValue > 0) {

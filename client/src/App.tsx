@@ -3258,23 +3258,46 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
   }, [allTokensList, tick]);
 
   const totalMoneyInvestedInBought = useMemo(() => {
-    return boughtCoins.reduce((acc, b) => acc + b.invested, 0);
+    return boughtCoins.reduce((acc, b) => acc + (b.invested || 0), 0);
   }, [boughtCoins]);
 
   const totalValueOfBought = useMemo(() => {
-    return boughtCoins.reduce((acc, b) => acc + b.userUsd, 0);
+    return boughtCoins.reduce((acc, b) => acc + (b.userUsd || 0), 0);
   }, [boughtCoins]);
-
-  const totalBoughtPnl = totalValueOfBought - totalMoneyInvestedInBought;
-  const totalBoughtPnlPct = totalMoneyInvestedInBought > 0 ? (totalBoughtPnl / totalMoneyInvestedInBought) * 100 : 0;
 
   const portfolioMetrics = marketStore.getPortfolioMetrics();
   const stableBalanceSum = (rawBalances["USDT"]?.bal || 0) + (rawBalances["USDC"]?.bal || 0);
   const calculatedTotalWithBuys = stableBalanceSum + totalValueOfBought;
   const totalPortfolioValue = Math.max(portfolioMetrics.totalValue, calculatedTotalWithBuys > 0 ? calculatedTotalWithBuys : 0);
-  const effectiveDiffUsd = totalBoughtPnl > 0.005 ? (totalBoughtPnl + (marketStore.realizedProfit24h || 0)) : portfolioMetrics.diffUsd;
-  const isUp = effectiveDiffUsd >= -0.0049;
-  const effectiveDiffPct = totalMoneyInvestedInBought > 0 ? totalBoughtPnlPct : portfolioMetrics.diffPct;
+
+  // Unified 24h PnL calculation across active crypto positions + recent realized profits
+  let effectiveDiffUsd = 0;
+  let effectiveDiffPct = 0;
+
+  if (totalMoneyInvestedInBought > 0) {
+    const activeHoldingsPnl = totalValueOfBought - totalMoneyInvestedInBought;
+    const realized = marketStore.realizedProfit24h || 0;
+    effectiveDiffUsd = activeHoldingsPnl + realized;
+    effectiveDiffPct = totalMoneyInvestedInBought > 0 ? (effectiveDiffUsd / totalMoneyInvestedInBought) * 100 : 0;
+  } else if (portfolioMetrics.diffUsd !== 0 || portfolioMetrics.diffPct !== 0) {
+    effectiveDiffUsd = portfolioMetrics.diffUsd;
+    effectiveDiffPct = portfolioMetrics.diffPct;
+  }
+
+  // Treat micro-cent noise as 0.00
+  if (Math.abs(effectiveDiffUsd) < 0.005) {
+    effectiveDiffUsd = 0;
+  }
+  if (Math.abs(effectiveDiffPct) < 0.005) {
+    effectiveDiffPct = 0;
+  }
+
+  const isPositiveDelta = effectiveDiffUsd > 0.0049 || (effectiveDiffUsd === 0 && effectiveDiffPct > 0.0049);
+  const isNegativeDelta = effectiveDiffUsd < -0.0049 || (effectiveDiffUsd === 0 && effectiveDiffPct < -0.0049);
+  const deltaSign = isNegativeDelta ? "-" : "+";
+  const deltaColor = isNegativeDelta ? "var(--red)" : "var(--green)";
+  const absDiffUsd = Math.abs(effectiveDiffUsd);
+  const absDiffPct = Math.abs(effectiveDiffPct);
 
   const [assetTab, setAssetTab] = useState<"assets" | "buys">("assets");
 
@@ -3444,17 +3467,17 @@ function WalletView({ modal, flash, onSelectCoin, onNavigate, authUser, onOpenPr
           ${totalPortfolioValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </div>
         <div className="wallet-hero-change">
-          <span style={{ color: isUp ? "var(--green)" : "var(--red)" }}>
-            {isUp ? "+" : "-"}${Math.abs(effectiveDiffUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          <span style={{ color: deltaColor }}>
+            {deltaSign}${absDiffUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
           <span style={{ color: "var(--muted)", fontSize: 12 }}>·</span>
-          {isUp ? (
-            <TrendingUp size={14} color="var(--green)" />
-          ) : (
+          {isNegativeDelta ? (
             <TrendingDown size={14} color="var(--red)" />
+          ) : (
+            <TrendingUp size={14} color="var(--green)" />
           )}
-          <span style={{ color: isUp ? "var(--green)" : "var(--red)" }}>
-            {isUp ? "+" : ""}{effectiveDiffPct.toFixed(2)}% today
+          <span style={{ color: deltaColor }}>
+            {deltaSign}{absDiffPct.toFixed(2)}% today
           </span>
         </div>
 
@@ -5266,54 +5289,19 @@ function ProfileView({
           </p>
 
           {pushPermission === "granted" ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{
-                background: "rgba(16, 185, 129, 0.08)",
-                border: "1px solid rgba(16, 185, 129, 0.25)",
-                borderRadius: 10,
-                padding: "10px 14px",
-                fontSize: 12,
-                color: "#6EE7B7",
-                display: "flex",
-                alignItems: "center",
-                gap: 8
-              }}>
-                <CheckCircle size={16} />
-                <span>Push alerts are active on this phone. Popups and audio chimes will trigger for incoming transfers.</span>
-              </div>
-
-              <button
-                type="button"
-                disabled={pushTesting}
-                onClick={async () => {
-                  setPushTesting(true);
-                  await notificationService.showNativePhoneNotification(
-                    "🚀 Axiom Phone Alert Test",
-                    "Real-time notifications are active and delivering directly to your phone!",
-                    "/#wallet"
-                  );
-                  flash("🔔 Test alert sent to your phone!");
-                  setTimeout(() => setPushTesting(false), 1000);
-                }}
-                style={{
-                  width: "100%",
-                  background: "linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)",
-                  border: "none",
-                  color: "#FFFFFF",
-                  borderRadius: 10,
-                  padding: "12px 16px",
-                  fontSize: 13,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                  boxShadow: "0 4px 16px rgba(124, 58, 237, 0.4)"
-                }}
-              >
-                <Bell size={16} /> {pushTesting ? "Sending Test Alert..." : "⚡ Send Test Push to Phone"}
-              </button>
+            <div style={{
+              background: "rgba(16, 185, 129, 0.08)",
+              border: "1px solid rgba(16, 185, 129, 0.25)",
+              borderRadius: 10,
+              padding: "10px 14px",
+              fontSize: 12,
+              color: "#6EE7B7",
+              display: "flex",
+              alignItems: "center",
+              gap: 8
+            }}>
+              <CheckCircle size={16} />
+              <span>Push alerts are active on this phone. Real-time alerts will trigger for incoming transfers, deposits, and trades.</span>
             </div>
           ) : pushPermission === "denied" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -5428,38 +5416,6 @@ function ProfileView({
           >
             <HelpCircle size={18} /> Open 24/7 Support Desk
           </button>
-
-          <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              onClick={() => {
-                notificationService.sendLocalNotification(
-                  "🔔 Axiom Notification Test",
-                  "Audio chime & Dynamic Island alert are active and working perfectly!",
-                  "/#profile"
-                );
-                flash("🔔 Test alert & chime dispatched!");
-              }}
-              style={{
-                flex: 1,
-                background: "rgba(34, 209, 248, 0.1)",
-                border: "1px solid rgba(34, 209, 248, 0.3)",
-                color: "#22D1F8",
-                borderRadius: 10,
-                padding: "10px 14px",
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-                transition: "all 150ms"
-              }}
-            >
-              <Bell size={14} /> Test Alert & Sound
-            </button>
-          </div>
         </div>
 
         {/* Account Session Card */}
