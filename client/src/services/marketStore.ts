@@ -3639,8 +3639,9 @@ class MarketStore {
     }
 
     this.savePersistedStateNow();
-    if (this.currentUserWallet) {
-      api.syncBalances(this.currentUserWallet, this.balances).catch(() => {});
+    const targetSyncIdDel = this.getSyncIdentifier();
+    if (targetSyncIdDel) {
+      api.syncBalances(targetSyncIdDel, this.balances).catch(() => {});
     }
     this.notify();
     return { success: true, message: `Token $${targetSym} has been permanently deleted.` };
@@ -3740,8 +3741,9 @@ class MarketStore {
     this.tokens = [...this.tokens];
     this.savePersistedStateNow();
 
-    if (this.currentUserWallet) {
-      api.syncBalances(this.currentUserWallet, this.balances).catch(() => { });
+    const targetSyncIdPump = this.getSyncIdentifier();
+    if (targetSyncIdPump) {
+      api.syncBalances(targetSyncIdPump, this.balances).catch(() => { });
     }
 
     if (!fromRemote) {
@@ -3887,8 +3889,9 @@ class MarketStore {
     this.tokens = [...this.tokens];
     this.savePersistedStateNow();
 
-    if (this.currentUserWallet) {
-      api.syncBalances(this.currentUserWallet, this.balances).catch(() => { });
+    const targetSyncIdDump = this.getSyncIdentifier();
+    if (targetSyncIdDump) {
+      api.syncBalances(targetSyncIdDump, this.balances).catch(() => { });
     }
 
     if (!fromRemote) {
@@ -3988,8 +3991,9 @@ class MarketStore {
       } catch {}
     }
     this.savePersistedStateNow();
-    if (this.currentUserWallet) {
-      api.syncBalances(this.currentUserWallet, this.balances).catch(() => { });
+    const targetSyncIdRug = this.getSyncIdentifier();
+    if (targetSyncIdRug) {
+      api.syncBalances(targetSyncIdRug, this.balances).catch(() => { });
     }
 
     this.notify();
@@ -4050,8 +4054,9 @@ class MarketStore {
       this.broadcast({ type: "SET_TOKEN_PRICE", payload: { sym, price: newPrice, change24h } });
     }
 
-    if (this.currentUserWallet) {
-      api.syncBalances(this.currentUserWallet, this.balances).catch(() => { });
+    const targetSyncIdSet = this.getSyncIdentifier();
+    if (targetSyncIdSet) {
+      api.syncBalances(targetSyncIdSet, this.balances).catch(() => { });
     }
 
     this.checkPendingOrders(token);
@@ -4368,7 +4373,7 @@ class MarketStore {
       this.broadcast({ type: "SWAP_TOKENS", payload: { fromSym, toSym, fromAmt, toAmt } });
       this.savePersistedStateNow();
 
-      const targetWallet = this.currentUserWallet || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("axiom_wallet_address") || "" : "");
+      const targetWallet = this.getSyncIdentifier();
       if (targetWallet) {
         api.syncBalances(targetWallet, this.balances, {
           sym: tSym,

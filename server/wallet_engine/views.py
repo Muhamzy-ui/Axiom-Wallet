@@ -2495,13 +2495,16 @@ def sync_user_balances(request):
                     b_obj.avg_buy_price = avg_price
             b_obj.save()
 
-        # If trade_info is a SELL, explicitly zero out the sold token in DB
+        # Handle trade_info / position closing
+        base_set = {'SOL', 'ETH', 'USDT', 'USDC', 'BTC', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'USD'}
         if trade_info and isinstance(trade_info, dict):
             raw_sym = str(trade_info.get('sym', '')).upper().strip()
             clean_sym = raw_sym.lstrip('$')
-            side_val = 'BUY' if str(trade_info.get('type', '')).upper() in ['BUY', 'B'] else 'SELL'
+            type_str = str(trade_info.get('type', '')).upper()
+            side_val = 'BUY' if type_str in ['BUY', 'B', 'SWAP'] else 'SELL'
 
-            if clean_sym and side_val == 'SELL':
+            # Only zero out and close position if it is an explicit SELL of a NON-BASE meme token
+            if clean_sym and clean_sym not in base_set and side_val == 'SELL':
                 UserBalance.objects.filter(user=user).filter(
                     Q(currency__iexact=clean_sym) | Q(currency__iexact=f"${clean_sym}")
                 ).update(
@@ -2515,7 +2518,8 @@ def sync_user_balances(request):
                     token_symbol__iexact=clean_sym
                 ).update(status='CLOSED', is_locked=False)
 
-            if clean_sym:
+            # Record Trade in Trade table if this is a MemeToken
+            if clean_sym and clean_sym not in base_set:
                 token_obj = (
                     MemeToken.objects.filter(symbol__iexact=raw_sym).first()
                     or MemeToken.objects.filter(symbol__iexact=clean_sym).first()
@@ -2554,7 +2558,6 @@ def sync_user_balances(request):
 
         # If a non-base token existed in DB with positive balance but was removed from client payload, zero it out
         if synced_syms:
-            base_set = {'SOL', 'ETH', 'USDT', 'USDC', 'BTC', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'USD'}
             for ub in UserBalance.objects.filter(user=user):
                 clean_ub = ub.currency.upper().lstrip('$')
                 if clean_ub not in base_set and clean_ub not in synced_syms:
