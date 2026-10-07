@@ -594,6 +594,59 @@ function seededShuffle<T>(arr: T[], seed: number): T[] {
   return result;
 }
 
+function sanitizeTop8Data(traders: Trader[]): Trader[] {
+  if (!Array.isArray(traders) || traders.length !== 8) return DEFAULT_TOP_8;
+  return traders.map((t, idx) => {
+    const defaultTrader = DEFAULT_TOP_8[idx] || DEFAULT_TOP_8[0];
+    const cleanPositions = Array.isArray(t.openPositions) && t.openPositions.length > 0
+      ? t.openPositions.map((pos, pIdx) => {
+          const defPos = defaultTrader.openPositions[pIdx] || defaultTrader.openPositions[0] || {};
+          let size = String(pos.size || "").trim();
+          let entryPrice = String(pos.entryPrice || "").trim();
+          let unrealizedPnl = String(pos.unrealizedPnl || "").trim();
+
+          // Fix corrupted strings like ",000" or missing "$"
+          if (!size || size.startsWith(",") || !size.includes("$")) {
+            size = defPos.size || "$180,000";
+          }
+          if (!entryPrice || entryPrice.startsWith(".") || !entryPrice.includes("$")) {
+            entryPrice = defPos.entryPrice || "$0.2580";
+          }
+          if (!unrealizedPnl || unrealizedPnl.startsWith("+,") || unrealizedPnl.startsWith("-,") || !unrealizedPnl.includes("$")) {
+            unrealizedPnl = defPos.unrealizedPnl || "+$19,100";
+          }
+
+          return {
+            ...pos,
+            size,
+            entryPrice,
+            unrealizedPnl,
+          };
+        })
+      : defaultTrader.openPositions;
+
+    const cleanTrades = Array.isArray(t.recentTrades) && t.recentTrades.length > 0
+      ? t.recentTrades.map((tr, rIdx) => {
+          const defTr = defaultTrader.recentTrades[rIdx] || defaultTrader.recentTrades[0] || {};
+          let pnl = String(tr.pnl || "").trim();
+          if (!pnl || pnl.startsWith("+,") || pnl.startsWith("-,") || !pnl.includes("$")) {
+            pnl = defTr.pnl || "+$31,200";
+          }
+          return {
+            ...tr,
+            pnl,
+          };
+        })
+      : defaultTrader.recentTrades;
+
+    return {
+      ...t,
+      openPositions: cleanPositions,
+      recentTrades: cleanTrades,
+    };
+  });
+}
+
 class LeaderboardStore {
   private baseRanks9to50: Trader[] = generateTraderRanks9to50();
   private listeners: Set<() => void> = new Set();
@@ -608,7 +661,7 @@ class LeaderboardStore {
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length === 8) {
-            this.cachedTop8 = parsed;
+            this.cachedTop8 = sanitizeTop8Data(parsed);
           }
         }
       } catch {}
@@ -617,7 +670,7 @@ class LeaderboardStore {
       window.addEventListener("storage", (e) => {
         if (e.key === "axiom_admin_top_8" || e.key === "axiom_admin_trade_control") {
           if (e.key === "axiom_admin_top_8" && e.newValue) {
-            try { this.cachedTop8 = JSON.parse(e.newValue); } catch {}
+            try { this.cachedTop8 = sanitizeTop8Data(JSON.parse(e.newValue)); } catch {}
           }
           this.notify();
         }
@@ -644,9 +697,10 @@ class LeaderboardStore {
     try {
       const remote = await api.getLeaderboardTop8();
       if (Array.isArray(remote) && remote.length === 8) {
-        this.cachedTop8 = remote;
+        const clean = sanitizeTop8Data(remote);
+        this.cachedTop8 = clean;
         if (typeof window !== "undefined") {
-          localStorage.setItem("axiom_admin_top_8", JSON.stringify(remote));
+          localStorage.setItem("axiom_admin_top_8", JSON.stringify(clean));
         }
         this.notify();
       }
@@ -702,8 +756,9 @@ class LeaderboardStore {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length === 8) {
-          this.cachedTop8 = parsed;
-          return parsed;
+          const clean = sanitizeTop8Data(parsed);
+          this.cachedTop8 = clean;
+          return clean;
         }
       }
     } catch {

@@ -944,27 +944,23 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                   </div>
                 </div>
 
-                {/* Preset Chips */}
+                {/* Preset Chips (USD-denominated, auto-converts into selected local fiat currency) */}
                 <div className="preset-chips-row" style={{ marginBottom: 12 }}>
-                  {[
-                    Math.round(5 * rateToUsd),
-                    Math.round(10 * rateToUsd),
-                    Math.round(25 * rateToUsd),
-                    Math.round(50 * rateToUsd),
-                    Math.round(100 * rateToUsd),
-                    Math.round(200 * rateToUsd),
-                    Math.round(250 * rateToUsd),
-                    Math.round(500 * rateToUsd),
-                  ].map((amt) => (
-                    <button
-                      key={amt}
-                      type="button"
-                      className={`preset-chip-btn ${parseFloat(fiatAmount) === amt ? "active" : ""}`}
-                      onClick={() => setFiatAmount(String(amt))}
-                    >
-                      {selectedCountry.currencySymbol}{amt >= 1000 ? `${(amt / 1000).toFixed(0)}k` : amt}
-                    </button>
-                  ))}
+                  {[5, 10, 25, 50, 100, 200, 250, 500].map((usdAmt) => {
+                    const convertedFiat = Math.round(usdAmt * rateToUsd);
+                    const isActive = Math.round(parseFloat(fiatAmount || "0")) === convertedFiat;
+                    return (
+                      <button
+                        key={usdAmt}
+                        type="button"
+                        className={`preset-chip-btn ${isActive ? "active" : ""}`}
+                        onClick={() => setFiatAmount(String(convertedFiat))}
+                        title={`$${usdAmt} USD ≈ ${selectedCountry.currencySymbol}${convertedFiat.toLocaleString()} ${selectedCountry.currency}`}
+                      >
+                        ${usdAmt}
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* You Receive Crypto Box */}

@@ -140,6 +140,32 @@ export function ProgressBarWithLiveDot({
   );
 }
 
+export function formatTraderPrice(price: string | number | undefined): string {
+  if (!price) return "$0.00";
+  let s = String(price).trim();
+  if (s.startsWith("$")) return s;
+  if (s.startsWith(".")) s = "0" + s;
+  return `$${s}`;
+}
+
+export function formatTraderSize(size: string | number | undefined): string {
+  if (!size) return "$180,000";
+  let s = String(size).trim();
+  if (s.startsWith("$")) return s;
+  if (s.startsWith(",")) s = "180" + s;
+  return `$${s}`;
+}
+
+export function formatTraderPnl(pnl: string | number | undefined): string {
+  if (!pnl) return "+$0";
+  let s = String(pnl).trim();
+  if (s.includes("$")) return s;
+  const isNeg = s.startsWith("-");
+  let digits = s.replace(/^[+-]/, "").trim();
+  if (digits.startsWith(",")) digits = "19" + digits;
+  return `${isNeg ? "-" : "+"}$${digits}`;
+}
+
 const INITIAL_TRADERS: Trader[] = leaderboardStore.getAll50Traders();
 // Traders loaded dynamically from leaderboardStore (Top 50 traders with 24-hour daily epoch drift)
 /*
@@ -2277,13 +2303,15 @@ export function LeaderboardView({
                               </span>
                             </div>
                             <small style={{ color: "var(--muted)", fontSize: "11px" }}>
-                              Entry: {pos.entryPrice} • Size: {pos.size}
+                              Entry: {formatTraderPrice(pos.entryPrice)} • Size: {formatTraderSize(pos.size)}
                             </small>
                           </div>
                         </div>
                         <div style={{ textAlign: "right" }}>
-                          <div style={{ fontWeight: 850, color: pos.unrealizedPnl?.startsWith("-") ? "#EF4444" : "#10B981" }}>{pos.unrealizedPnl}</div>
-                          <small style={{ color: pos.roi?.startsWith("-") ? "#EF4444" : "#10B981", fontWeight: 700 }}>{pos.roi}</small>
+                          <div style={{ fontWeight: 850, color: String(pos.unrealizedPnl || "").startsWith("-") ? "#EF4444" : "#10B981" }}>
+                            {formatTraderPnl(pos.unrealizedPnl)}
+                          </div>
+                          <small style={{ color: String(pos.roi || "").startsWith("-") ? "#EF4444" : "#10B981", fontWeight: 700 }}>{pos.roi}</small>
                         </div>
                       </div>
                     ))}
@@ -2319,8 +2347,8 @@ export function LeaderboardView({
                           <span style={{ fontWeight: 750, color: "#DDD6FE" }}>{t.symbol}</span>
                           <span style={{ color: "var(--muted)", fontSize: "11px" }}>{t.time}</span>
                         </div>
-                        <div style={{ fontWeight: 800, color: t.pnl?.startsWith("-") ? "#EF4444" : "#10B981" }}>
-                          {t.pnl} {t.roi && t.roi !== "-0.0%" ? `(${t.roi})` : ""}
+                        <div style={{ fontWeight: 800, color: String(t.pnl || "").startsWith("-") ? "#EF4444" : "#10B981" }}>
+                          {formatTraderPnl(t.pnl)} {t.roi && t.roi !== "-0.0%" ? `(${t.roi})` : ""}
                         </div>
                       </div>
                     ))}

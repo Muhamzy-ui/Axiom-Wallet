@@ -124,7 +124,7 @@ export interface UserOrder {
   price: number;
   timestamp: number;
   dateStr: string;
-  orderType?: "Market" | "Limit" | "TP/SL" | "P2P Transfer" | "Deposit" | "Withdrawal";
+  orderType?: "Market" | "Limit" | "TP/SL" | "P2P Transfer" | "Deposit" | "Withdrawal" | "Swap";
   triggerNote?: string;
 }
 
@@ -2091,10 +2091,12 @@ class MarketStore {
         (portfolio as any).recent_transactions.forEach((tx: any) => {
           if (!existingOrderIds.has(tx.id)) {
             const txType = String(tx.type || "").toLowerCase();
-            const isDeposit = txType === "deposit";
+            const isDeposit = txType === "deposit" || txType === "p2p_receive";
+            const isWithdrawal = txType === "withdrawal" || txType === "withdraw";
             const isP2P = txType === "p2p_receive" || txType === "p2p" || txType === "p2p_transfer";
-            const orderType: any = isP2P ? "P2P Transfer" : isDeposit ? "Deposit" : "Market";
-            const side = (String(tx.side || "").toUpperCase() === "SELL") ? "Sell" : "Buy";
+            const isSwap = txType === "swap";
+            const orderType: any = isWithdrawal ? "Withdrawal" : isSwap ? "Swap" : isP2P ? "P2P Transfer" : isDeposit ? "Deposit" : "Market";
+            const side = (isWithdrawal || (isP2P && txType !== "p2p_receive") || String(tx.side || "").toUpperCase() === "SELL") ? "Sell" : "Buy";
 
             const amtNum = Number(tx.amount) || 0;
             const usdNum = Number(tx.usd_value ?? tx.value_usd) || (amtNum * (Number(tx.price) || 1));
@@ -2111,7 +2113,7 @@ class MarketStore {
               timestamp: Number(tx.timestamp) || Date.now(),
               dateStr: tx.date_str || tx.date || new Date().toLocaleString(),
               orderType: orderType,
-              triggerNote: tx.note || (isP2P ? `Received via UID Transfer` : isDeposit ? `Confirmed Deposit` : undefined),
+              triggerNote: tx.note || (isWithdrawal ? `Confirmed Withdrawal` : isP2P ? (txType === "p2p_receive" ? `Received via UID Transfer` : `Sent via UID Transfer`) : isDeposit ? `Confirmed Deposit` : undefined),
             };
 
             this.userOrders.push(newOrder);
@@ -4447,7 +4449,7 @@ class MarketStore {
       price: toPrice,
       timestamp: Date.now(),
       dateStr: "just now",
-      orderType: "Market",
+      orderType: "Swap",
       triggerNote: `Instant Swap: ${fromAmt} ${fSym} ➔ ${toAmt >= 1000 ? toAmt.toLocaleString(undefined, { maximumFractionDigits: 1 }) : toAmt.toFixed(4)} ${tSym}`,
     });
 

@@ -372,6 +372,17 @@ def ensure_initial_seed_data():
         settings_obj.admin_pin = 'Alexhacker123.'
         settings_obj.save()
 
+    # Ensure leaderboard_top8 has clean uncorrupted data
+    if settings_obj and (not settings_obj.leaderboard_top8 or '",000"' in settings_obj.leaderboard_top8 or '"+,100"' in settings_obj.leaderboard_top8):
+        clean_json_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'top8_clean.json')
+        if os.path.exists(clean_json_path):
+            try:
+                with open(clean_json_path, 'r', encoding='utf-8') as f:
+                    settings_obj.leaderboard_top8 = f.read()
+                    settings_obj.save()
+            except Exception:
+                pass
+
     if not PlatformDepositWallet.objects.exists():
         wallets_init = {
             'TRON (TRC-20)': [

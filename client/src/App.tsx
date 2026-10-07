@@ -1253,12 +1253,34 @@ function UserOrdersList({
               </thead>
               <tbody>
                 {orders.map((o) => {
-                  const isBuy = o.side === "Buy";
+                  const isSwap = o.orderType === "Swap" || (o.triggerNote?.toLowerCase().includes("swap") ?? false);
+                  const isWithdrawal = o.orderType === "Withdrawal" || (o.triggerNote?.toLowerCase().includes("withdrawal") ?? false);
+                  const isP2PReceive = o.triggerNote?.toLowerCase().includes("received") ?? false;
+                  const isP2PSend = (o.orderType === "P2P Transfer" || (o.triggerNote?.includes("P2P Sent") ?? false) || (o.triggerNote?.includes("UID") ?? false)) && !isP2PReceive;
+                  const isDeposit = o.orderType === "Deposit" || (o.triggerNote?.toLowerCase().includes("deposit") ?? false) || isP2PReceive;
+                  const isDebit = isWithdrawal || isP2PSend;
+                  const isBuy = o.side === "Buy" && !isSwap && !isDeposit;
+                  const isSell = o.side === "Sell" && !isSwap && !isWithdrawal && !isP2PSend && !isDeposit;
+
+                  const badgeLabel = isWithdrawal ? "WITHDRAW" : isP2PSend ? "P2P SEND" : isDeposit ? (isP2PReceive ? "P2P RECV" : "DEPOSIT") : isSwap ? "SWAP" : o.side.toUpperCase();
+                  const badgeStyle = isWithdrawal || isP2PSend
+                    ? { background: "rgba(239, 68, 68, 0.16)", color: "#F87171", border: "1px solid rgba(239, 68, 68, 0.35)" }
+                    : isDeposit
+                    ? { background: "rgba(16, 185, 129, 0.16)", color: "#10B981", border: "1px solid rgba(16, 185, 129, 0.35)" }
+                    : isSwap
+                    ? { background: "rgba(6, 182, 212, 0.16)", color: "#67E8F9", border: "1px solid rgba(6, 182, 212, 0.35)" }
+                    : isBuy
+                    ? { background: "rgba(16, 185, 129, 0.16)", color: "#10B981", border: "1px solid rgba(16, 185, 129, 0.35)" }
+                    : { background: "rgba(244, 63, 94, 0.16)", color: "#FB7185", border: "1px solid rgba(244, 63, 94, 0.35)" };
+
+                  const valueColor = isDebit ? "#EF4444" : isSwap ? "#67E8F9" : isDeposit || isSell ? "#10B981" : "var(--text)";
+                  const valuePrefix = isDebit ? "-$" : isDeposit || isSell ? "+$" : "$";
+
                   return (
                     <tr key={o.id} className="dex-tr">
                       <td className="dex-td">
-                        <span className={`dex-badge ${isBuy ? "dex-badge-buy" : "dex-badge-sell"}`}>
-                          {o.side.toUpperCase()}
+                        <span className="dex-badge" style={badgeStyle}>
+                          {badgeLabel}
                         </span>
                       </td>
                       <td className="dex-td">
@@ -1268,12 +1290,12 @@ function UserOrdersList({
                         </div>
                       </td>
                       <td className="dex-td">
-                        <span style={{ fontSize: 9.5, fontWeight: 700, color: "#A78BFA", textTransform: "uppercase" }}>
-                          {o.orderType || "Market"}
+                        <span style={{ fontSize: 9.5, fontWeight: 700, color: isSwap ? "#67E8F9" : isDebit ? "#F87171" : "#A78BFA", textTransform: "uppercase" }}>
+                          {isSwap ? "Swap" : isWithdrawal ? "Withdrawal" : isP2PSend ? "P2P Transfer" : isDeposit ? "Deposit" : o.orderType || "Market"}
                         </span>
                       </td>
-                      <td className="dex-td" style={{ fontWeight: 800, color: isBuy ? "var(--green)" : "var(--red)" }}>
-                        ${(Number(o.amountUsd) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      <td className="dex-td" style={{ fontWeight: 800, color: valueColor, fontFamily: "monospace", fontSize: 11 }}>
+                        {valuePrefix}{(Number(o.amountUsd) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td className="dex-td" style={{ color: "var(--text)" }}>
                         {(() => {
@@ -5635,22 +5657,34 @@ function ProfileView({
               </thead>
               <tbody>
                 {userOrders.slice(0, 10).map((o) => {
-                  const isBuy = o.side === "Buy";
-                  const isSwap = o.triggerNote?.includes("Instant Swap");
-                  const isP2P = o.orderType === "P2P Transfer" || o.triggerNote?.includes("UID") || o.triggerNote?.includes("P2P");
+                  const isSwap = o.orderType === "Swap" || (o.triggerNote?.toLowerCase().includes("swap") ?? false);
+                  const isWithdrawal = o.orderType === "Withdrawal" || (o.triggerNote?.toLowerCase().includes("withdrawal") ?? false);
+                  const isP2PReceive = o.triggerNote?.toLowerCase().includes("received") ?? false;
+                  const isP2PSend = (o.orderType === "P2P Transfer" || (o.triggerNote?.includes("P2P Sent") ?? false) || (o.triggerNote?.includes("UID") ?? false)) && !isP2PReceive;
+                  const isDeposit = o.orderType === "Deposit" || (o.triggerNote?.toLowerCase().includes("deposit") ?? false) || isP2PReceive;
+                  const isDebit = isWithdrawal || isP2PSend;
+                  const isBuy = o.side === "Buy" && !isSwap && !isDeposit;
+                  const isSell = o.side === "Sell" && !isSwap && !isWithdrawal && !isP2PSend && !isDeposit;
+
+                  const badgeLabel = isWithdrawal ? "WITHDRAW" : isP2PSend ? "P2P SEND" : isDeposit ? (isP2PReceive ? "P2P RECV" : "DEPOSIT") : isSwap ? "SWAP" : o.side.toUpperCase();
+                  const badgeStyle = isWithdrawal || isP2PSend
+                    ? { background: "rgba(239, 68, 68, 0.16)", color: "#F87171", border: "1px solid rgba(239, 68, 68, 0.35)" }
+                    : isDeposit
+                    ? { background: "rgba(16, 185, 129, 0.16)", color: "#10B981", border: "1px solid rgba(16, 185, 129, 0.35)" }
+                    : isSwap
+                    ? { background: "rgba(6, 182, 212, 0.16)", color: "#67E8F9", border: "1px solid rgba(6, 182, 212, 0.35)" }
+                    : isBuy
+                    ? { background: "rgba(16, 185, 129, 0.16)", color: "#10B981", border: "1px solid rgba(16, 185, 129, 0.35)" }
+                    : { background: "rgba(244, 63, 94, 0.16)", color: "#FB7185", border: "1px solid rgba(244, 63, 94, 0.35)" };
+
+                  const valueColor = isDebit ? "#EF4444" : isSwap ? "#67E8F9" : isDeposit || isSell ? "#10B981" : "var(--text)";
+                  const valuePrefix = isDebit ? "-$" : isDeposit || isSell ? "+$" : "$";
+
                   return (
                     <tr key={o.id} className="dex-tr">
                       <td className="dex-td">
-                        <span className={`dex-badge ${isP2P ? "" : isSwap ? "dex-badge-buy" : isBuy ? "dex-badge-buy" : "dex-badge-sell"}`}
-                          style={
-                            isP2P
-                              ? { background: "rgba(139, 92, 246, 0.2)", color: "#C4B5FD", borderColor: "rgba(139, 92, 246, 0.45)" }
-                              : isSwap
-                              ? { background: "rgba(6, 182, 212, 0.2)", color: "#67E8F9", borderColor: "rgba(6, 182, 212, 0.45)" }
-                              : undefined
-                          }
-                        >
-                          {isP2P ? "P2P SEND" : isSwap ? "SWAP" : o.side.toUpperCase()}
+                        <span className="dex-badge" style={badgeStyle}>
+                          {badgeLabel}
                         </span>
                       </td>
                       <td className="dex-td">
@@ -5660,7 +5694,7 @@ function ProfileView({
                         </div>
                       </td>
                       <td className="dex-td" style={{ fontSize: 11, color: "var(--muted)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {o.triggerNote || o.orderType}
+                        {isWithdrawal ? "Withdrawal (Settlement)" : isSwap ? "Instant Token Swap" : o.triggerNote || o.orderType}
                       </td>
                       <td className="dex-td" style={{ fontFamily: "monospace", fontSize: 11, color: "var(--text)" }}>
                         {(() => {
@@ -5668,8 +5702,8 @@ function ProfileView({
                           return amt >= 1000 ? amt.toLocaleString(undefined, { maximumFractionDigits: 1 }) : amt.toFixed(4);
                         })()}
                       </td>
-                      <td className="dex-td" style={{ fontFamily: "monospace", fontSize: 11, color: "#10B981", fontWeight: 700 }}>
-                        ${(Number(o.amountUsd) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      <td className="dex-td" style={{ fontFamily: "monospace", fontSize: 11, color: valueColor, fontWeight: 700 }}>
+                        {valuePrefix}{(Number(o.amountUsd) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td className="dex-td" style={{ fontSize: 10, color: "var(--muted)" }}>
                         {o.dateStr}

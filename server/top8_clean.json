@@ -1,0 +1,928 @@
+[
+  {
+    "id": "trader-1",
+    "rank": 1,
+    "rankDelta": 0,
+    "name": "SatoshiGems",
+    "handle": "@satoshigems",
+    "address": "9a8f...4e1b",
+    "avatar": "\ud83d\udc51",
+    "badge": "WHALE",
+    "pnl24h": 184420.5,
+    "roi24h": 1420.5,
+    "pnl7d": 462100.0,
+    "roi7d": 2890.0,
+    "pnl30d": 1240500.0,
+    "roi30d": 5410.0,
+    "pnlAll": 4890200.0,
+    "roiAll": 14200.0,
+    "winRate": 91.4,
+    "totalTrades": 1842,
+    "winTrades": 1684,
+    "lossTrades": 158,
+    "volume": 34200000,
+    "profitFactor": 8.4,
+    "topCoins": [
+      "MASK",
+      "POPCAT",
+      "BONK"
+    ],
+    "openPositions": [
+      {
+        "symbol": "MASK",
+        "side": "long",
+        "leverage": "25x",
+        "size": "$580,000",
+        "entryPrice": "$1.1200",
+        "markPrice": "$1.2893",
+        "unrealizedPnl": "+$87,400",
+        "roi": "+378%"
+      },
+      {
+        "symbol": "POPCAT",
+        "side": "long",
+        "leverage": "20x",
+        "size": "$420,000",
+        "entryPrice": "$0.2410",
+        "markPrice": "$0.2717",
+        "unrealizedPnl": "+$53,500",
+        "roi": "+254%"
+      },
+      {
+        "symbol": "BONK",
+        "side": "long",
+        "leverage": "15x",
+        "size": "$290,000",
+        "entryPrice": "$0.00002140",
+        "markPrice": "$0.00002510",
+        "unrealizedPnl": "+$25,100",
+        "roi": "+129%"
+      },
+      {
+        "symbol": "STONKEX",
+        "side": "long",
+        "leverage": "20x",
+        "size": "$180,000",
+        "entryPrice": "$0.00790",
+        "markPrice": "$0.00991",
+        "unrealizedPnl": "+$36,600",
+        "roi": "+203%"
+      }
+    ],
+    "recentTrades": [
+      {
+        "symbol": "MASK",
+        "side": "long",
+        "pnl": "+$94,200",
+        "roi": "+410%",
+        "time": "3m ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "HOOKED",
+        "side": "long",
+        "pnl": "+$46,800",
+        "roi": "+325%",
+        "time": "18m ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "POPCAT",
+        "side": "long",
+        "pnl": "+$38,400",
+        "roi": "+280%",
+        "time": "42m ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "CATE",
+        "side": "long",
+        "pnl": "+$31,500",
+        "roi": "+256%",
+        "time": "1h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "JUGGERNAUT",
+        "side": "long",
+        "pnl": "+$24,800",
+        "roi": "+185%",
+        "time": "2h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "BONK",
+        "side": "long",
+        "pnl": "+$19,200",
+        "roi": "+140%",
+        "time": "3h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "MANIFEST",
+        "side": "long",
+        "pnl": "+$17,300",
+        "roi": "+130%",
+        "time": "5h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "WIF",
+        "side": "long",
+        "pnl": "+$14,100",
+        "roi": "+115%",
+        "time": "7h ago",
+        "type": "closed"
+      }
+    ]
+  },
+  {
+    "id": "trader-2",
+    "rank": 2,
+    "rankDelta": 1,
+    "name": "SolanaSniper_v2",
+    "handle": "@solsniper",
+    "address": "3c2a...88ff",
+    "avatar": "\ud83c\udfaf",
+    "badge": "SNIPER",
+    "pnl24h": 118920.0,
+    "roi24h": 885.2,
+    "pnl7d": 312400.0,
+    "roi7d": 1940.0,
+    "pnl30d": 890100.0,
+    "roi30d": 3820.0,
+    "pnlAll": 2940000.0,
+    "roiAll": 9800.0,
+    "winRate": 88.2,
+    "totalTrades": 1240,
+    "winTrades": 1094,
+    "lossTrades": 146,
+    "volume": 22800000,
+    "profitFactor": 6.8,
+    "topCoins": [
+      "STONKEX",
+      "CATE",
+      "WIF"
+    ],
+    "openPositions": [
+      {
+        "symbol": "STONKEX",
+        "side": "long",
+        "leverage": "20x",
+        "size": "$310,000",
+        "entryPrice": "$0.00810",
+        "markPrice": "$0.00991",
+        "unrealizedPnl": "+$44,600",
+        "roi": "+223%"
+      },
+      {
+        "symbol": "CATE",
+        "side": "long",
+        "leverage": "25x",
+        "size": "$240,000",
+        "entryPrice": "$0.000325",
+        "markPrice": "$0.000429",
+        "unrealizedPnl": "+$38,800",
+        "roi": "+320%"
+      },
+      {
+        "symbol": "WIF",
+        "side": "long",
+        "leverage": "15x",
+        "size": "$280,000",
+        "entryPrice": "$2.10",
+        "markPrice": "$2.38",
+        "unrealizedPnl": "+$37,300",
+        "roi": "+133%"
+      },
+      {
+        "symbol": "BREW",
+        "side": "long",
+        "leverage": "10x",
+        "size": "$160,000",
+        "entryPrice": "$0.0380",
+        "markPrice": "$0.0465",
+        "unrealizedPnl": "+$18,400",
+        "roi": "+115%"
+      }
+    ],
+    "recentTrades": [
+      {
+        "symbol": "CATE",
+        "side": "long",
+        "pnl": "+$52,100",
+        "roi": "+345%",
+        "time": "8m ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "STONKEX",
+        "side": "long",
+        "pnl": "+$36,400",
+        "roi": "+240%",
+        "time": "25m ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "HOOKED",
+        "side": "long",
+        "pnl": "+$29,800",
+        "roi": "+210%",
+        "time": "55m ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "MEME",
+        "side": "long",
+        "pnl": "+$24,500",
+        "roi": "+180%",
+        "time": "1h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "WIF",
+        "side": "long",
+        "pnl": "+$21,200",
+        "roi": "+155%",
+        "time": "2h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "POPCAT",
+        "side": "long",
+        "pnl": "+$18,700",
+        "roi": "+135%",
+        "time": "4h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "BONK",
+        "side": "long",
+        "pnl": "+$15,600",
+        "roi": "+110%",
+        "time": "6h ago",
+        "type": "closed"
+      }
+    ]
+  },
+  {
+    "id": "trader-3",
+    "rank": 3,
+    "rankDelta": -1,
+    "name": "HyperLiquidDegen",
+    "handle": "@hyper_degen",
+    "address": "71e9...b204",
+    "avatar": "\u26a1",
+    "badge": "DEGEN",
+    "pnl24h": 85833.26,
+    "roi24h": 640.8,
+    "pnl7d": 215400.0,
+    "roi7d": 1420.0,
+    "pnl30d": 610000.0,
+    "roi30d": 2750.0,
+    "pnlAll": 1850000.0,
+    "roiAll": 6400.0,
+    "winRate": 84.6,
+    "totalTrades": 960,
+    "winTrades": 812,
+    "lossTrades": 148,
+    "volume": 18500000,
+    "profitFactor": 5.4,
+    "topCoins": [
+      "POPCAT",
+      "BONK",
+      "MASK"
+    ],
+    "openPositions": [
+      {
+        "symbol": "POPCAT",
+        "side": "long",
+        "leverage": "20x",
+        "size": "$180,000",
+        "entryPrice": "$0.2580",
+        "markPrice": "$0.2717",
+        "unrealizedPnl": "+$19,100",
+        "roi": "+212%"
+      },
+      {
+        "symbol": "MASK",
+        "side": "long",
+        "leverage": "25x",
+        "size": "$240,000",
+        "entryPrice": "$1.1420",
+        "markPrice": "$1.2893",
+        "unrealizedPnl": "+$48,900",
+        "roi": "+181.8%"
+      },
+      {
+        "symbol": "STONKEX",
+        "side": "long",
+        "leverage": "15x",
+        "size": "$125,000",
+        "entryPrice": "$0.00845",
+        "markPrice": "$0.00991",
+        "unrealizedPnl": "+$22,400",
+        "roi": "+173.2%"
+      },
+      {
+        "symbol": "CATE",
+        "side": "long",
+        "leverage": "20x",
+        "size": "$95,000",
+        "entryPrice": "$0.000342",
+        "markPrice": "$0.000429",
+        "unrealizedPnl": "+$34,100",
+        "roi": "+256.2%"
+      }
+    ],
+    "recentTrades": [
+      {
+        "symbol": "POPCAT",
+        "side": "long",
+        "pnl": "+$31,200",
+        "roi": "+280%",
+        "time": "18m ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "BONK",
+        "side": "long",
+        "pnl": "+$16,800",
+        "roi": "+125%",
+        "time": "1h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "HOOKED",
+        "side": "long",
+        "pnl": "+$42,500",
+        "roi": "+325%",
+        "time": "2h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "MANIFEST",
+        "side": "long",
+        "pnl": "+$18,900",
+        "roi": "+145%",
+        "time": "3h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "JUGGERNAUT",
+        "side": "long",
+        "pnl": "+$27,300",
+        "roi": "+192%",
+        "time": "4h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "BREW",
+        "side": "long",
+        "pnl": "+$14,200",
+        "roi": "+110%",
+        "time": "6h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "MEME",
+        "side": "long",
+        "pnl": "+$38,600",
+        "roi": "+240%",
+        "time": "7h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "WIF",
+        "side": "long",
+        "pnl": "+$21,500",
+        "roi": "+165%",
+        "time": "9h ago",
+        "type": "closed"
+      }
+    ]
+  },
+  {
+    "id": "trader-4",
+    "rank": 4,
+    "rankDelta": 2,
+    "name": "WhaleWatcher_99",
+    "handle": "@whalewatcher",
+    "address": "8f42...99c1",
+    "avatar": "\ud83d\udc0b",
+    "badge": "WHALE",
+    "pnl24h": 72400.0,
+    "roi24h": 512.0,
+    "pnl7d": 198000.0,
+    "roi7d": 1210.0,
+    "pnl30d": 540000.0,
+    "roi30d": 2300.0,
+    "pnlAll": 1620000.0,
+    "roiAll": 5800.0,
+    "winRate": 81.5,
+    "totalTrades": 840,
+    "winTrades": 685,
+    "lossTrades": 155,
+    "volume": 16200000,
+    "profitFactor": 4.9,
+    "topCoins": [
+      "HOOKED",
+      "MANIFEST",
+      "BREW"
+    ],
+    "openPositions": [
+      {
+        "symbol": "HOOKED",
+        "side": "long",
+        "leverage": "30x",
+        "size": "$220,000",
+        "entryPrice": "$0.00410",
+        "markPrice": "$0.00543",
+        "unrealizedPnl": "+$41,800",
+        "roi": "+325%"
+      },
+      {
+        "symbol": "MANIFEST",
+        "side": "long",
+        "leverage": "15x",
+        "size": "$175,000",
+        "entryPrice": "$0.0125",
+        "markPrice": "$0.0143",
+        "unrealizedPnl": "+$25,200",
+        "roi": "+144%"
+      },
+      {
+        "symbol": "BREW",
+        "side": "long",
+        "leverage": "20x",
+        "size": "$130,000",
+        "entryPrice": "$0.0395",
+        "markPrice": "$0.0465",
+        "unrealizedPnl": "+$23,000",
+        "roi": "+177%"
+      }
+    ],
+    "recentTrades": [
+      {
+        "symbol": "HOOKED",
+        "side": "long",
+        "pnl": "+$34,600",
+        "roi": "+295%",
+        "time": "14m ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "BREW",
+        "side": "long",
+        "pnl": "+$26,100",
+        "roi": "+210%",
+        "time": "45m ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "MANIFEST",
+        "side": "long",
+        "pnl": "+$19,400",
+        "roi": "+155%",
+        "time": "2h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "MASK",
+        "side": "long",
+        "pnl": "+$31,200",
+        "roi": "+240%",
+        "time": "3h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "STONKEX",
+        "side": "long",
+        "pnl": "+$17,500",
+        "roi": "+135%",
+        "time": "5h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "CATE",
+        "side": "long",
+        "pnl": "+$15,800",
+        "roi": "+120%",
+        "time": "8h ago",
+        "type": "closed"
+      }
+    ]
+  },
+  {
+    "id": "trader-5",
+    "rank": 5,
+    "rankDelta": 0,
+    "name": "AlphaHunter",
+    "handle": "@alphahunter",
+    "address": "44da...11e2",
+    "avatar": "\u2694\ufe0f",
+    "badge": "PRO",
+    "pnl24h": 61800.0,
+    "roi24h": 460.0,
+    "pnl7d": 175000.0,
+    "roi7d": 1100.0,
+    "pnl30d": 480000.0,
+    "roi30d": 2100.0,
+    "pnlAll": 1450000.0,
+    "roiAll": 5200.0,
+    "winRate": 79.8,
+    "totalTrades": 780,
+    "winTrades": 622,
+    "lossTrades": 158,
+    "volume": 14100000,
+    "profitFactor": 4.6,
+    "topCoins": [
+      "JUGGERNAUT",
+      "MEME",
+      "POPCAT"
+    ],
+    "openPositions": [
+      {
+        "symbol": "JUGGERNAUT",
+        "side": "long",
+        "leverage": "20x",
+        "size": "$190,000",
+        "entryPrice": "$0.00510",
+        "markPrice": "$0.00608",
+        "unrealizedPnl": "+$36,500",
+        "roi": "+192%"
+      },
+      {
+        "symbol": "MEME",
+        "side": "long",
+        "leverage": "25x",
+        "size": "$165,000",
+        "entryPrice": "$0.0142",
+        "markPrice": "$0.0176",
+        "unrealizedPnl": "+$39,500",
+        "roi": "+239%"
+      },
+      {
+        "symbol": "POPCAT",
+        "side": "long",
+        "leverage": "15x",
+        "size": "$140,000",
+        "entryPrice": "$0.2450",
+        "markPrice": "$0.2717",
+        "unrealizedPnl": "+$18,300",
+        "roi": "+131%"
+      }
+    ],
+    "recentTrades": [
+      {
+        "symbol": "MEME",
+        "side": "long",
+        "pnl": "+$35,100",
+        "roi": "+265%",
+        "time": "20m ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "JUGGERNAUT",
+        "side": "long",
+        "pnl": "+$28,400",
+        "roi": "+215%",
+        "time": "1h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "HOOKED",
+        "side": "long",
+        "pnl": "+$22,600",
+        "roi": "+175%",
+        "time": "2h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "POPCAT",
+        "side": "long",
+        "pnl": "+$16,900",
+        "roi": "+130%",
+        "time": "4h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "BONK",
+        "side": "long",
+        "pnl": "+$14,200",
+        "roi": "+110%",
+        "time": "7h ago",
+        "type": "closed"
+      }
+    ]
+  },
+  {
+    "id": "trader-6",
+    "rank": 6,
+    "rankDelta": -2,
+    "name": "PhantomQuant",
+    "handle": "@phantomquant",
+    "address": "11cb...884a",
+    "avatar": "\ud83e\udd16",
+    "badge": "ALGO",
+    "pnl24h": 53200.0,
+    "roi24h": 395.5,
+    "pnl7d": 156000.0,
+    "roi7d": 980.0,
+    "pnl30d": 420000.0,
+    "roi30d": 1850.0,
+    "pnlAll": 1300000.0,
+    "roiAll": 4700.0,
+    "winRate": 86.4,
+    "totalTrades": 1150,
+    "winTrades": 994,
+    "lossTrades": 156,
+    "volume": 19400000,
+    "profitFactor": 5.1,
+    "topCoins": [
+      "MASK",
+      "STONKEX",
+      "CATE"
+    ],
+    "openPositions": [
+      {
+        "symbol": "MASK",
+        "side": "long",
+        "leverage": "20x",
+        "size": "$175,000",
+        "entryPrice": "$1.1550",
+        "markPrice": "$1.2893",
+        "unrealizedPnl": "+$29,400",
+        "roi": "+168%"
+      },
+      {
+        "symbol": "STONKEX",
+        "side": "long",
+        "leverage": "15x",
+        "size": "$130,000",
+        "entryPrice": "$0.00860",
+        "markPrice": "$0.00991",
+        "unrealizedPnl": "+$19,800",
+        "roi": "+152%"
+      },
+      {
+        "symbol": "CATE",
+        "side": "long",
+        "leverage": "20x",
+        "size": "$110,000",
+        "entryPrice": "$0.000350",
+        "markPrice": "$0.000429",
+        "unrealizedPnl": "+$24,800",
+        "roi": "+225%"
+      }
+    ],
+    "recentTrades": [
+      {
+        "symbol": "MASK",
+        "side": "long",
+        "pnl": "+$32,400",
+        "roi": "+245%",
+        "time": "35m ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "CATE",
+        "side": "long",
+        "pnl": "+$26,700",
+        "roi": "+205%",
+        "time": "1h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "STONKEX",
+        "side": "long",
+        "pnl": "+$20,100",
+        "roi": "+160%",
+        "time": "3h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "BREW",
+        "side": "long",
+        "pnl": "+$17,300",
+        "roi": "+135%",
+        "time": "5h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "WIF",
+        "side": "long",
+        "pnl": "+$13,800",
+        "roi": "+105%",
+        "time": "8h ago",
+        "type": "closed"
+      }
+    ]
+  },
+  {
+    "id": "trader-7",
+    "rank": 7,
+    "rankDelta": 1,
+    "name": "MemeLord_Pump",
+    "handle": "@memelord",
+    "address": "55bc...3399",
+    "avatar": "\ud83d\ude80",
+    "badge": "DEGEN",
+    "pnl24h": 46900.0,
+    "roi24h": 580.0,
+    "pnl7d": 138000.0,
+    "roi7d": 890.0,
+    "pnl30d": 370000.0,
+    "roi30d": 1650.0,
+    "pnlAll": 920000.0,
+    "roiAll": 4200.0,
+    "winRate": 74.2,
+    "totalTrades": 720,
+    "winTrades": 534,
+    "lossTrades": 186,
+    "volume": 9800000,
+    "profitFactor": 3.8,
+    "topCoins": [
+      "BREW",
+      "HOOKED",
+      "BONK"
+    ],
+    "openPositions": [
+      {
+        "symbol": "BREW",
+        "side": "long",
+        "leverage": "25x",
+        "size": "$160,000",
+        "entryPrice": "$0.0385",
+        "markPrice": "$0.0465",
+        "unrealizedPnl": "+$33,200",
+        "roi": "+207%"
+      },
+      {
+        "symbol": "HOOKED",
+        "side": "long",
+        "leverage": "30x",
+        "size": "$140,000",
+        "entryPrice": "$0.00425",
+        "markPrice": "$0.00543",
+        "unrealizedPnl": "+$38,900",
+        "roi": "+278%"
+      },
+      {
+        "symbol": "BONK",
+        "side": "long",
+        "leverage": "20x",
+        "size": "$115,000",
+        "entryPrice": "$0.00002180",
+        "markPrice": "$0.00002510",
+        "unrealizedPnl": "+$17,400",
+        "roi": "+151%"
+      }
+    ],
+    "recentTrades": [
+      {
+        "symbol": "HOOKED",
+        "side": "long",
+        "pnl": "+$39,800",
+        "roi": "+310%",
+        "time": "15m ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "BREW",
+        "side": "long",
+        "pnl": "+$28,500",
+        "roi": "+225%",
+        "time": "50m ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "BONK",
+        "side": "long",
+        "pnl": "+$19,600",
+        "roi": "+160%",
+        "time": "2h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "MANIFEST",
+        "side": "long",
+        "pnl": "+$16,100",
+        "roi": "+125%",
+        "time": "4h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "POPCAT",
+        "side": "long",
+        "pnl": "+$14,300",
+        "roi": "+115%",
+        "time": "7h ago",
+        "type": "closed"
+      }
+    ]
+  },
+  {
+    "id": "trader-8",
+    "rank": 8,
+    "rankDelta": -1,
+    "name": "DexGod_Sol",
+    "handle": "@dexgod",
+    "address": "21ee...77a8",
+    "avatar": "\ud83d\udd31",
+    "badge": "PRO",
+    "pnl24h": 38750.0,
+    "roi24h": 310.0,
+    "pnl7d": 124000.0,
+    "roi7d": 790.0,
+    "pnl30d": 320000.0,
+    "roi30d": 1450.0,
+    "pnlAll": 1100000.0,
+    "roiAll": 3900.0,
+    "winRate": 78.9,
+    "totalTrades": 540,
+    "winTrades": 426,
+    "lossTrades": 114,
+    "volume": 11200000,
+    "profitFactor": 4.2,
+    "topCoins": [
+      "MANIFEST",
+      "JUGGERNAUT",
+      "WIF"
+    ],
+    "openPositions": [
+      {
+        "symbol": "MANIFEST",
+        "side": "long",
+        "leverage": "20x",
+        "size": "$145,000",
+        "entryPrice": "$0.0121",
+        "markPrice": "$0.0143",
+        "unrealizedPnl": "+$26,400",
+        "roi": "+182%"
+      },
+      {
+        "symbol": "JUGGERNAUT",
+        "side": "long",
+        "leverage": "20x",
+        "size": "$120,000",
+        "entryPrice": "$0.00520",
+        "markPrice": "$0.00608",
+        "unrealizedPnl": "+$20,300",
+        "roi": "+169%"
+      },
+      {
+        "symbol": "WIF",
+        "side": "long",
+        "leverage": "15x",
+        "size": "$110,000",
+        "entryPrice": "$2.12",
+        "markPrice": "$2.38",
+        "unrealizedPnl": "+$15,600",
+        "roi": "+123%"
+      }
+    ],
+    "recentTrades": [
+      {
+        "symbol": "MANIFEST",
+        "side": "long",
+        "pnl": "+$27,200",
+        "roi": "+210%",
+        "time": "30m ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "JUGGERNAUT",
+        "side": "long",
+        "pnl": "+$21,500",
+        "roi": "+170%",
+        "time": "1h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "WIF",
+        "side": "long",
+        "pnl": "+$16,800",
+        "roi": "+130%",
+        "time": "3h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "MEME",
+        "side": "long",
+        "pnl": "+$14,500",
+        "roi": "+115%",
+        "time": "5h ago",
+        "type": "closed"
+      },
+      {
+        "symbol": "CATE",
+        "side": "long",
+        "pnl": "+$12,900",
+        "roi": "+102%",
+        "time": "9h ago",
+        "type": "closed"
+      }
+    ]
+  }
+]

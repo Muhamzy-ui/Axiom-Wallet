@@ -57,11 +57,37 @@ function urlBase64ToUint8Array(base64String: string) {
 
 class NotificationManager {
   private lastKnownIds: Set<string> = new Set();
+  private isFirstSync: boolean = true;
   private pollingInterval: any = null;
   private currentUserIdentifier: string = "";
   private currentRole: string = "user";
   private onNewNotificationCallback?: (notif: any) => void;
   public isSubscribed: boolean = false;
+
+  constructor() {
+    this.loadSeenIds();
+  }
+
+  private loadSeenIds() {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = localStorage.getItem("axiom_seen_notif_ids");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          this.lastKnownIds = new Set(parsed);
+        }
+      }
+    } catch {}
+  }
+
+  private saveSeenIds() {
+    if (typeof window === "undefined") return;
+    try {
+      const arr = Array.from(this.lastKnownIds).slice(-300);
+      localStorage.setItem("axiom_seen_notif_ids", JSON.stringify(arr));
+    } catch {}
+  }
 
   public getPermissionState(): "granted" | "denied" | "default" | "unsupported" {
     if (typeof window === "undefined" || !("Notification" in window)) {
@@ -178,20 +204,39 @@ class NotificationManager {
     try {
       const res = await api.getUserNotifications(this.currentUserIdentifier, this.currentRole);
       if (res && res.notifications && Array.isArray(res.notifications)) {
+        // If this is the initial load upon opening the app, ingest existing backlog as known
+        // without spamming the user with a storm of audio bells and phone lockscreen notifications!
+        if (this.isFirstSync) {
+          this.isFirstSync = false;
+          for (const notif of res.notifications) {
+            this.lastKnownIds.add(notif.id);
+          }
+          this.saveSeenIds();
+          return;
+        }
+
+        let newAlertsCount = 0;
         for (const notif of res.notifications) {
           if (!this.lastKnownIds.has(notif.id)) {
             this.lastKnownIds.add(notif.id);
-            // If unread, trigger instant audio chime, in-app banner, AND native OS lockscreen notification
+            // Only genuinely new unread notifications that arrive while the user is using the app trigger alerts
             if (!notif.is_read) {
-              this.showNativePhoneNotification(
-                notif.title || "Axiom Wallet Alert",
-                notif.message || "You have a new transaction update.",
-                notif.link_url || "/#wallet",
-                notif.id
-              );
+              newAlertsCount++;
+              // Only chime/push for the latest incoming notification if multiple arrive in the same tick
+              if (newAlertsCount <= 1) {
+                this.showNativePhoneNotification(
+                  notif.title || "Axiom Wallet Alert",
+                  notif.message || "You have a new transaction update.",
+                  notif.link_url || "/#wallet",
+                  notif.id
+                );
+              }
               if (this.onNewNotificationCallback) this.onNewNotificationCallback(notif);
             }
           }
+        }
+        if (newAlertsCount > 0) {
+          this.saveSeenIds();
         }
       }
     } catch (err) {
@@ -203,7 +248,11 @@ class NotificationManager {
     if (typeof window === "undefined") return;
     this.stopPolling();
 
-    this.currentUserIdentifier = userIdentifier || "";
+    const newId = userIdentifier || "";
+    if (this.currentUserIdentifier !== newId) {
+      this.isFirstSync = true;
+    }
+    this.currentUserIdentifier = newId;
     this.currentRole = role || "user";
     this.onNewNotificationCallback = onNewNotification;
 
