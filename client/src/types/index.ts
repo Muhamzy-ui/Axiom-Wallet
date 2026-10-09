@@ -7,12 +7,14 @@ export interface WalletBalance {
   usd_value: string;
   change_24h: string;
   icon: string;
+  is_sell_blocked?: boolean;
 }
 
 export interface PortfolioData {
   wallet_address: string;
   total_net_worth_usd: string;
   balances: WalletBalance[];
+  blocked_tokens?: string[];
 }
 
 export interface MemeToken {
@@ -29,6 +31,7 @@ export interface MemeToken {
   contract_address?: string;
   is_active: boolean;
   is_rugged: boolean;
+  is_sell_blocked?: boolean;
   pair_currency?: string;
   created_at: string;
   chart_points?: { price: number; timestamp: string }[];

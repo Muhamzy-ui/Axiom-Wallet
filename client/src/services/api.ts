@@ -562,6 +562,33 @@ export const api = {
     return res.json();
   },
 
+  async setTokenSellBlock(symbol: string, blocked: boolean): Promise<{ success: boolean; is_sell_blocked: boolean; message: string; blocked_tokens?: string[] }> {
+    try {
+      const res = await fetch(`${API_BASE}/admin-api/tokens/sell-block/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol, is_sell_blocked: blocked }),
+      });
+      if (res.ok) return await res.json();
+    } catch {}
+
+    // Fallback to direct control endpoint
+    const fallback = await fetch(`${API_BASE}/admin-api/tokens/${encodeURIComponent(symbol)}/control/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'toggle_sell_block', is_sell_blocked: blocked }),
+    });
+    return fallback.json();
+  },
+
+  async getSellBlockedTokens(): Promise<{ success: boolean; blocked_tokens: string[] }> {
+    try {
+      const res = await fetch(`${API_BASE}/tokens/sell-blocked/`);
+      if (res.ok) return await res.json();
+    } catch {}
+    return { success: true, blocked_tokens: [] };
+  },
+
   async getAdminTrades(symbol?: string, side?: string): Promise<any[]> {
     try {
       const params = new URLSearchParams();

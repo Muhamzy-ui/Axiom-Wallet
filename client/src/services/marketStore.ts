@@ -959,6 +959,23 @@ class MarketStore {
         console.warn("Failed to parse sell blocked tokens from localStorage:", e);
       }
     }
+    // Asynchronously fetch server-persisted sell blocked tokens
+    api.getSellBlockedTokens().then(res => {
+      if (res && Array.isArray(res.blocked_tokens)) {
+        res.blocked_tokens.forEach(sym => {
+          const s = sym.toUpperCase().replace(/^\$/, "");
+          this.sellBlockedTokens[s] = true;
+          const tok = this.tokens.find(t => t.sym.toUpperCase() === s);
+          if (tok) tok.is_sell_blocked = true;
+        });
+        if (typeof localStorage !== "undefined") {
+          try {
+            localStorage.setItem("axiom_admin_sell_blocked_tokens", JSON.stringify(this.sellBlockedTokens));
+          } catch {}
+        }
+        this.notify();
+      }
+    }).catch(() => {});
   }
 
   isTokenSellBlocked(sym: string): boolean {
@@ -980,7 +997,7 @@ class MarketStore {
     return false;
   }
 
-  setTokenSellBlocked(sym: string, blocked: boolean) {
+  setTokenSellBlocked(sym: string, blocked: boolean, fromSync = false) {
     if (!sym) return;
     const s = sym.toUpperCase().replace(/^\$/, "");
     if (this.isMajorToken(s)) return;
@@ -995,6 +1012,12 @@ class MarketStore {
       }
     }
     this.savePersistedStateNow();
+    if (!fromSync) {
+      this.broadcast({ type: "TOKEN_SELL_BLOCK_UPDATE", payload: { sym: s, blocked } });
+      api.setTokenSellBlock(s, blocked).catch(err => {
+        console.warn("Failed to sync sell block to backend:", err);
+      });
+    }
     this.notify();
   }
 
@@ -1138,7 +1161,11 @@ class MarketStore {
             total_buyers_count: Math.max(bt.total_buyers_count || 0, current.buyers || 0),
             is_verified: bt.is_verified !== undefined ? bt.is_verified : (current.is_verified ?? this.isTokenVerified(sym)),
             is_liquidity_locked: bt.is_liquidity_locked !== undefined ? bt.is_liquidity_locked : (current.is_liquidity_locked ?? this.isTokenLiquidityLocked(sym)),
+            is_sell_blocked: bt.is_sell_blocked !== undefined ? bt.is_sell_blocked : (current.is_sell_blocked ?? this.isTokenSellBlocked(sym)),
           };
+          if (bt.is_sell_blocked !== undefined) {
+            this.sellBlockedTokens[sym] = Boolean(bt.is_sell_blocked);
+          }
           this.tokens[idx] = updated;
 
           const priceDiff = Math.abs(effectivePrice - current.numericPrice);
@@ -1214,7 +1241,11 @@ class MarketStore {
             total_buyers_count: bt.total_buyers_count || 0,
             is_verified: bt.is_verified !== undefined ? bt.is_verified : this.isTokenVerified(sym),
             is_liquidity_locked: bt.is_liquidity_locked !== undefined ? bt.is_liquidity_locked : this.isTokenLiquidityLocked(sym),
+            is_sell_blocked: bt.is_sell_blocked !== undefined ? bt.is_sell_blocked : this.isTokenSellBlocked(sym),
           };
+          if (bt.is_sell_blocked !== undefined) {
+            this.sellBlockedTokens[sym] = Boolean(bt.is_sell_blocked);
+          }
 
           const majorsCount = this.tokens.filter(t => this.isMajorToken(t.sym)).length;
           this.tokens.splice(majorsCount, 0, newToken);
@@ -1890,6 +1921,18 @@ class MarketStore {
         this.updateToken(sym, updates, true);
         break;
       }
+      case "TOKEN_SELL_BLOCK_UPDATE": {
+        const { sym, blocked } = msg.payload;
+        if (sym) {
+          const s = sym.toUpperCase().replace(/^\$/, "");
+          this.sellBlockedTokens[s] = Boolean(blocked);
+          const tok = this.tokens.find(t => t.sym.toUpperCase() === s);
+          if (tok) tok.is_sell_blocked = Boolean(blocked);
+          this.savePersistedStateNow();
+          this.notify();
+        }
+        break;
+      }
       case "ORDER_PLACED": {
         const { sym, balances, trade, newPrice, isUp } = msg.payload;
         if (balances) {
@@ -1959,6 +2002,15 @@ class MarketStore {
       const portfolio = await api.getPortfolio(targetIdentifier);
       if (!portfolio) return;
 
+      if (portfolio && Array.isArray((portfolio as any).blocked_tokens)) {
+        (portfolio as any).blocked_tokens.forEach((bSym: string) => {
+          const s = bSym.toUpperCase().replace(/^\$/, "");
+          this.sellBlockedTokens[s] = true;
+          const tok = this.tokens.find(t => t.sym.toUpperCase() === s);
+          if (tok) tok.is_sell_blocked = true;
+        });
+      }
+
       let hasUpdates = false;
 
       // 1. Sync Balances
@@ -1967,6 +2019,12 @@ class MarketStore {
           const rawSym = (item.currency || "").toUpperCase().trim();
           const sym = rawSym.replace(/^\$/, "");
           if (!sym) return;
+
+          if (item.is_sell_blocked !== undefined) {
+            this.sellBlockedTokens[sym] = Boolean(item.is_sell_blocked);
+            const existingTok = this.tokens.find(t => t.sym.toUpperCase() === sym);
+            if (existingTok) existingTok.is_sell_blocked = Boolean(item.is_sell_blocked);
+          }
 
           const availAmt = parseFloat(item.available_amount || "0") || 0;
           const lockedAmt = parseFloat(item.locked_amount || "0") || 0;
@@ -3484,6 +3542,13 @@ class MarketStore {
       };
     } else {
       // Limit Sell
+      const cleanSym = sym.replace(/^\$/, "");
+      if (this.isTokenSellBlocked(cleanSym)) {
+        return {
+          success: false,
+          message: `⚠️ Selling is currently restricted for $${cleanSym} by the token issuer. Trading protection active (Only Buying Allowed).`
+        };
+      }
       const availableToken = this.balances[sym]?.bal || 0;
       if (amount > availableToken) {
         return { success: false, message: `Insufficient ${sym} balance! Available: ${availableToken.toLocaleString()}` };
@@ -3542,6 +3607,13 @@ class MarketStore {
     slPct?: number;
   }): { success: boolean; message: string; orderId?: string } {
     const { sym, amountTokens, tpPrice, slPrice, tpPct, slPct } = params;
+    const cleanSym = sym.replace(/^\$/, "");
+    if (this.isTokenSellBlocked(cleanSym)) {
+      return {
+        success: false,
+        message: `⚠️ Setting Take Profit / Stop Loss (Sell order) is currently restricted for $${cleanSym} by the token issuer.`
+      };
+    }
     const token = this.getToken(sym);
     if (!token) return { success: false, message: "Token not found" };
     if (amountTokens <= 0) return { success: false, message: "Enter an amount greater than 0" };
@@ -4907,6 +4979,10 @@ class MarketStore {
           stateChanged = true;
           continue;
         } else if (order.side === "Sell" && order.targetPrice && currentP >= order.targetPrice) {
+          if (this.isTokenSellBlocked(order.sym)) {
+            ordersToKeep.push(order);
+            continue;
+          }
           // Trigger Limit Sell!
           const fillPrice = order.targetPrice;
           const usdReceived = order.amount * fillPrice;
@@ -4958,6 +5034,10 @@ class MarketStore {
           continue;
         }
         if (order.tpPrice && currentP >= order.tpPrice) {
+          if (this.isTokenSellBlocked(order.sym)) {
+            ordersToKeep.push(order);
+            continue;
+          }
           // TAKE PROFIT TRIGGERED!
           const fillPrice = currentP;
           const sellAmt = Math.min(order.amount, this.balances[order.sym]?.bal || 0);
@@ -5010,6 +5090,10 @@ class MarketStore {
             continue;
           }
         } else if (order.slPrice && currentP <= order.slPrice) {
+          if (this.isTokenSellBlocked(order.sym)) {
+            ordersToKeep.push(order);
+            continue;
+          }
           // STOP LOSS TRIGGERED!
           const fillPrice = currentP;
           const sellAmt = Math.min(order.amount, this.balances[order.sym]?.bal || 0);

@@ -45,6 +45,21 @@ export const SendPage: React.FC<SendPageProps> = ({
 
   const numAmt = parseFloat(sendAmt) || 0;
 
+  const formatExactAmount = (raw: string, num: number) => {
+    if (raw && raw.trim() && !isNaN(parseFloat(raw))) {
+      return raw.trim();
+    }
+    return String(num);
+  };
+  const formatBalanceDisplay = (val: number) => {
+    if (!val || val === 0) return "0.00";
+    if (val < 0.0001) return val.toFixed(8).replace(/\.?0+$/, "");
+    if (val < 0.01) return val.toFixed(6).replace(/\.?0+$/, "");
+    if (val < 1) return val.toFixed(4).replace(/\.?0+$/, "");
+    return val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  };
+  const displayAmt = formatExactAmount(sendAmt, numAmt);
+
   const handleReview = () => {
     setError(null);
     if (isNaN(numAmt) || numAmt <= 0) {
@@ -69,7 +84,7 @@ export const SendPage: React.FC<SendPageProps> = ({
     }
 
     if (numAmt > availableBalance) {
-      setError(`Insufficient ${sendCoin} balance! Available: ${availableBalance.toFixed(sendCoin === "BTC" || sendCoin === "ETH" || sendCoin === "SOL" ? 4 : 2)} ${sendCoin}`);
+      setError(`Insufficient ${sendCoin} balance! Available: ${formatBalanceDisplay(availableBalance)} ${sendCoin}`);
       return;
     }
 
@@ -118,15 +133,15 @@ export const SendPage: React.FC<SendPageProps> = ({
       setResultData({
         status: "COMPLETED",
         tx_hash: txHashVal,
-        amount: numAmt.toFixed(sendCoin === "BTC" || sendCoin === "ETH" || sendCoin === "SOL" ? 6 : 2),
+        amount: displayAmt,
         currency: sendCoin,
         network: "Axiom Internal P2P (Zero Fee)",
         destination_address: cleanUid,
-        message: `Instant transfer of ${numAmt.toFixed(4)} ${sendCoin} to UID ${cleanUid} completed.`,
+        message: `Instant transfer of ${displayAmt} ${sendCoin} to UID ${cleanUid} completed.`,
       });
 
       setStep("result");
-      if (flash) flash(`Sent ${numAmt.toFixed(sendCoin === "BTC" || sendCoin === "ETH" || sendCoin === "SOL" ? 4 : 2)} ${sendCoin} to UID ${cleanUid}!`);
+      if (flash) flash(`Sent ${displayAmt} ${sendCoin} to UID ${cleanUid}!`);
     } catch (err: any) {
       setError(err.message || "Failed to complete transfer. Please try again.");
       setStep("form");
@@ -306,7 +321,7 @@ export const SendPage: React.FC<SendPageProps> = ({
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
                 <span style={{ color: "var(--muted)" }}>Amount to Send:</span>
                 <span style={{ fontWeight: 800, fontSize: 16, color: "var(--text)" }}>
-                  {numAmt.toFixed(sendCoin === "BTC" || sendCoin === "ETH" || sendCoin === "SOL" ? 6 : 2)} {sendCoin}
+                  {displayAmt} {sendCoin}
                 </span>
               </div>
 
@@ -408,7 +423,7 @@ export const SendPage: React.FC<SendPageProps> = ({
                   >
                     <span className="asset-pill-sym">{sym}</span>
                     <span className="asset-pill-price">
-                      {(balances[sym]?.bal || 0).toFixed(sym === "BTC" || sym === "ETH" || sym === "SOL" ? 4 : 2)}
+                      {formatBalanceDisplay(balances[sym]?.bal || 0)}
                     </span>
                   </button>
                 ))}
@@ -507,8 +522,14 @@ export const SendPage: React.FC<SendPageProps> = ({
                     className="preset-chip-btn"
                     onClick={() => {
                       const fraction = pct === "25%" ? 0.25 : pct === "50%" ? 0.5 : pct === "75%" ? 0.75 : 1.0;
-                      const val = (availableBalance * fraction);
-                      setSendAmt(sendCoin === "BTC" || sendCoin === "ETH" || sendCoin === "SOL" ? val.toFixed(6) : val.toFixed(2));
+                      const val = availableBalance * fraction;
+                      if (pct === "MAX") {
+                        const maxStr = availableBalance.toFixed(8).replace(/\.?0+$/, "");
+                        setSendAmt(maxStr);
+                      } else {
+                        const valStr = val.toFixed(6).replace(/\.?0+$/, "");
+                        setSendAmt(valStr);
+                      }
                       setError(null);
                     }}
                   >

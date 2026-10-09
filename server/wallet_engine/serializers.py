@@ -90,7 +90,7 @@ class MemeTokenListSerializer(serializers.ModelSerializer):
             'id', 'name', 'symbol', 'logo_url', 'description',
             'total_supply', 'current_price_usd', 'market_cap_usd',
             'liquidity_usd', 'change_24h', 'contract_address', 'is_active', 'is_rugged', 'pair_currency',
-            'is_verified', 'is_liquidity_locked', 'total_buyers_count',
+            'is_verified', 'is_liquidity_locked', 'is_sell_blocked', 'total_buyers_count',
             'created_at', 'user_holders_count', 'real_buyers_count', 'total_user_buy_volume_usd', 'user_circulating_tokens'
         ]
 
@@ -144,7 +144,7 @@ class MemeTokenSerializer(serializers.ModelSerializer):
             'id', 'name', 'symbol', 'logo_url', 'description',
             'total_supply', 'current_price_usd', 'market_cap_usd',
             'liquidity_usd', 'change_24h', 'contract_address', 'is_active', 'is_rugged', 'pair_currency',
-            'is_verified', 'is_liquidity_locked', 'total_buyers_count',
+            'is_verified', 'is_liquidity_locked', 'is_sell_blocked', 'total_buyers_count',
             'created_at', 'price_points',
             'user_holders_count', 'real_buyers_count', 'total_user_buy_volume_usd', 'user_circulating_tokens'
         ]

@@ -128,6 +128,7 @@ class MemeToken(models.Model):
     is_rugged = models.BooleanField(default=False)
     is_verified = models.BooleanField(default=False)
     is_liquidity_locked = models.BooleanField(default=False)
+    is_sell_blocked = models.BooleanField(default=False, db_index=True)
     user_holders_count = models.IntegerField(default=25)
     total_buyers_count = models.IntegerField(default=18)
     pair_currency = models.CharField(max_length=10, default='SOL', blank=True)
@@ -237,6 +238,7 @@ class PlatformSettings(models.Model):
     usd_rate = models.DecimalField(max_digits=12, decimal_places=2, default=1600.0)
     swiftsats_url = models.CharField(max_length=255, default='http://localhost:5173')
     leaderboard_top8 = models.TextField(blank=True, default='')
+    sell_blocked_tokens = models.TextField(blank=True, default='[]')
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):

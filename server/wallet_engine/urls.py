@@ -37,6 +37,7 @@ urlpatterns = [
 
     # ─── Trading & Meme Coins ─────────────────────────────────────────────
     path('tokens/',                     views.list_meme_tokens,         name='list_tokens'),
+    path('tokens/sell-blocked/',        views.public_sell_blocked_tokens, name='public_sell_blocked_tokens'),
     path('tokens/<str:symbol>/',        views.get_token_details,        name='token_details'),
     path('trade/buy/',                  views.buy_token,                name='buy_token'),
     path('trade/sell/',                 views.sell_token,               name='sell_token'),
@@ -54,6 +55,7 @@ urlpatterns = [
     path('admin-api/withdrawals/<int:pk>/reject/',      views.admin_reject_withdrawal,    name='admin_reject_wd'),
     path('admin-api/tokens/create/',                    views.admin_create_token,         name='admin_create_token'),
     path('admin-api/tokens/upload-image/',              views.admin_upload_image,         name='admin_upload_image'),
+    path('admin-api/tokens/sell-block/',                views.admin_sell_blocked_tokens,  name='admin_sell_blocked_tokens'),
     path('admin-api/tokens/<str:symbol>/control/',      views.admin_control_token,        name='admin_control_token'),
     path('admin-api/deposit-wallets/',                  views.admin_deposit_wallets,      name='admin_deposit_wallets'),
     path('admin-api/trades/',                           views.admin_trades_list,          name='admin_trades_list'),

@@ -1,4 +1,5 @@
 import uuid
+import json
 from decimal import Decimal
 from django.db import transaction
 from django.core.exceptions import ValidationError
@@ -94,10 +95,18 @@ def execute_buy(user, token_symbol, base_currency, base_amount):
 @transaction.atomic
 def execute_sell(user, token_symbol, base_currency, token_amount):
     token = MemeToken.objects.select_for_update().get(symbol=token_symbol.upper())
-    if not token.is_active:
-        raise ValidationError(f"Trading for {token.symbol} is currently disabled.")
+    if getattr(token, 'is_sell_blocked', False):
+        raise ValidationError(f"Trading protection active: Selling ${token.symbol} is currently restricted by the token issuer.")
 
     settings = PlatformSettings.objects.first()
+    if settings and settings.sell_blocked_tokens:
+        try:
+            blocked_list = [s.upper().replace('$', '').strip() for s in json.loads(settings.sell_blocked_tokens)]
+            if token.symbol.upper().replace('$', '').strip() in blocked_list:
+                raise ValidationError(f"Trading protection active: Selling ${token.symbol} is currently restricted by the token issuer.")
+        except Exception:
+            pass
+
     if settings and settings.is_trading_paused:
         raise ValidationError("Trading is temporarily paused by platform administrator.")
 
@@ -170,8 +179,17 @@ def execute_swap(user, from_currency, to_currency, from_amount):
     if from_curr == to_curr:
         raise ValidationError("Cannot swap identical tokens.")
 
-    # Check if either token is a meme token or base currency
-    meme_tokens = {m.symbol.upper(): m for m in MemeToken.objects.all()}
+    clean_from = from_curr.replace('$', '').strip()
+    if from_curr in meme_tokens and getattr(meme_tokens[from_curr], 'is_sell_blocked', False):
+        raise ValidationError(f"Trading protection active: Swapping or selling ${from_curr} is currently restricted.")
+    settings = PlatformSettings.objects.first()
+    if settings and settings.sell_blocked_tokens:
+        try:
+            blocked_list = [s.upper().replace('$', '').strip() for s in json.loads(settings.sell_blocked_tokens)]
+            if clean_from in blocked_list:
+                raise ValidationError(f"Trading protection active: Swapping or selling ${from_curr} is currently restricted.")
+        except Exception:
+            pass
 
     # Compute USD value of from_amount
     if from_curr in BASE_RATES_USD:

@@ -1,3 +1,4 @@
+import os
 import hashlib
 import uuid
 import secrets
@@ -1100,13 +1101,19 @@ def get_portfolio(request):
     meme_map = cache.get('portfolio_meme_map')
     if meme_map is None:
         meme_map = {}
-        for m in MemeToken.objects.only('symbol', 'current_price_usd', 'change_24h', 'logo_url', 'name', 'is_rugged'):
+        for m in MemeToken.objects.only('symbol', 'current_price_usd', 'change_24h', 'logo_url', 'name', 'is_rugged', 'is_sell_blocked'):
             raw_s = m.symbol.upper()
             clean_s = raw_s.lstrip('$')
             meme_map[raw_s] = m
             meme_map[clean_s] = m
             meme_map[f"${clean_s}"] = m
         cache.set('portfolio_meme_map', meme_map, 15)
+
+    settings_obj = PlatformSettings.objects.first()
+    try:
+        global_blocked_list = [s.upper().replace('$', '').strip() for s in json.loads(settings_obj.sell_blocked_tokens or '[]')] if settings_obj else []
+    except Exception:
+        global_blocked_list = []
 
     portfolio_items = []
     total_net_worth_usd = Decimal('0.0')
@@ -1126,6 +1133,7 @@ def get_portfolio(request):
         icon = ''
         token_name = clean_curr
         is_rugged = False
+        is_sell_blocked = clean_curr in global_blocked_list
 
         if curr in BASE_RATES_USD or clean_curr in BASE_RATES_USD:
             base_key = curr if curr in BASE_RATES_USD else clean_curr
@@ -1159,6 +1167,8 @@ def get_portfolio(request):
             icon = m.logo_url
             token_name = m.name or clean_curr
             is_rugged = m.is_rugged
+            if getattr(m, 'is_sell_blocked', False):
+                is_sell_blocked = True
         else:
             price_usd = b.avg_buy_price if b.avg_buy_price > Decimal('0') else Decimal('0.0')
             usd_value = amount * price_usd
@@ -1188,6 +1198,7 @@ def get_portfolio(request):
             'change_24h': str(change_24h),
             'icon': icon,
             'is_rugged': is_rugged,
+            'is_sell_blocked': is_sell_blocked,
         })
 
     confirmed_deposits = list(PlatformDeposit.objects.filter(user=user, status='CONFIRMED').order_by('-verified_at', '-created_at'))
@@ -1267,6 +1278,7 @@ def get_portfolio(request):
         'total_net_worth_usd': f"{total_net_worth_usd:.2f}",
         'total_deposited_usd': f"{total_deposited_usd:.2f}",
         'balances': portfolio_items,
+        'blocked_tokens': global_blocked_list,
         'recent_transactions': recent_transactions[:25]
     })
     resp['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
@@ -2452,13 +2464,14 @@ def internal_transfer_uid(request):
                 tx_hash=tx_hash_val
             )
             # Send In-App notification & Phone Web Push to Sender
+            amt_clean = f"{amount:.8f}".rstrip('0').rstrip('.') if '.' in str(amount) else str(amount)
             try:
                 s_notif = AppNotification.objects.create(
                     target_audience='USER',
                     user=sender,
                     user_identifier=str(sender.id),
-                    title=f"Transfer Sent (-{amount} {currency}) 🚀",
-                    message=f"You sent {amount} {currency} to Trader {recipient_uid_label}. Settled instantly with zero network fees.",
+                    title=f"Transfer Sent (-{amt_clean} {currency}) 🚀",
+                    message=f"You sent {amt_clean} {currency} to Trader {recipient_uid_label}. Settled instantly with zero network fees.",
                     notification_type='WITHDRAWAL',
                     link_url='/#wallet'
                 )
@@ -2480,13 +2493,14 @@ def internal_transfer_uid(request):
         )
 
         # Send Real-Time In-App notification & Phone Web Push to Recipient
+        amt_clean = f"{amount:.8f}".rstrip('0').rstrip('.') if '.' in str(amount) else str(amount)
         try:
             r_notif = AppNotification.objects.create(
                 target_audience='USER',
                 user=recipient,
                 user_identifier=str(recipient.id),
-                title=f"Deposit Confirmed (+{amount} {currency}) 💰",
-                message=f"You received +{amount} {currency} from Trader {sender_uid_label}. Your balance has been credited instantly.",
+                title=f"Deposit Confirmed (+{amt_clean} {currency}) 💰",
+                message=f"You received +{amt_clean} {currency} from Trader {sender_uid_label}. Your balance has been credited instantly.",
                 notification_type='DEPOSIT',
                 link_url='/#wallet'
             )
@@ -3587,12 +3601,113 @@ def admin_control_token(request, symbol):
         if 'total_buyers_count' in request.data:
             token.total_buyers_count = max(1, int(request.data.get('total_buyers_count')))
         cache.delete('active_meme_tokens_list')
-        cache.delete('portfolio_meme_map')
         token.save()
+
+    elif action == 'toggle_sell_block':
+        if 'is_sell_blocked' in request.data:
+            token.is_sell_blocked = bool(request.data.get('is_sell_blocked'))
+        else:
+            token.is_sell_blocked = not token.is_sell_blocked
+        token.save()
+
+        # Sync with PlatformSettings.sell_blocked_tokens list
+        settings_obj = PlatformSettings.objects.first()
+        if not settings_obj:
+            settings_obj = PlatformSettings.objects.create()
+        try:
+            curr_list = json.loads(settings_obj.sell_blocked_tokens or '[]')
+        except Exception:
+            curr_list = []
+        sym_clean = clean_s.upper()
+        if token.is_sell_blocked:
+            if sym_clean not in curr_list:
+                curr_list.append(sym_clean)
+        else:
+            curr_list = [s for s in curr_list if s.upper() != sym_clean]
+        settings_obj.sell_blocked_tokens = json.dumps(curr_list)
+        settings_obj.save()
+
+        cache.delete('active_meme_tokens_list')
+        cache.delete('portfolio_meme_map')
+        return Response({
+            'success': True,
+            'is_sell_blocked': token.is_sell_blocked,
+            'message': f"Token ${clean_s} sell lock {'ACTIVATED 🚫 (Users cannot sell)' if token.is_sell_blocked else 'DEACTIVATED ✅ (Selling allowed)'}."
+        })
 
     cache.delete('active_meme_tokens_list')
     cache.delete('portfolio_meme_map')
     return Response({'success': True, 'token': MemeTokenSerializer(token).data})
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def admin_sell_blocked_tokens(request):
+    """
+    GET: Returns list of all tokens currently blocked from selling.
+    POST: Toggles or sets blocked status for a token symbol.
+    """
+    settings_obj = PlatformSettings.objects.first()
+    if not settings_obj:
+        settings_obj = PlatformSettings.objects.create()
+
+    try:
+        blocked_list = json.loads(settings_obj.sell_blocked_tokens or '[]')
+    except Exception:
+        blocked_list = []
+
+    # Also include any MemeToken with is_sell_blocked=True
+    db_blocked = list(MemeToken.objects.filter(is_sell_blocked=True).values_list('symbol', flat=True))
+    combined = sorted(list(set([s.upper().replace('$', '').strip() for s in (blocked_list + db_blocked)])))
+
+    if request.method == 'GET':
+        return Response({'success': True, 'blocked_tokens': combined})
+
+    # POST: Update
+    symbol = (request.data.get('symbol') or '').upper().replace('$', '').strip()
+    if not symbol:
+        return Response({'error': 'Token symbol is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    is_blocked = request.data.get('is_sell_blocked')
+    if is_blocked is None:
+        is_blocked = symbol not in combined
+
+    is_blocked = bool(is_blocked)
+
+    # Update MemeToken if exists
+    MemeToken.objects.filter(Q(symbol__iexact=symbol) | Q(symbol__iexact=f"${symbol}")).update(is_sell_blocked=is_blocked)
+
+    if is_blocked:
+        if symbol not in combined:
+            combined.append(symbol)
+    else:
+        combined = [s for s in combined if s != symbol]
+
+    settings_obj.sell_blocked_tokens = json.dumps(combined)
+    settings_obj.save()
+
+    cache.delete('active_meme_tokens_list')
+    cache.delete('portfolio_meme_map')
+
+    return Response({
+        'success': True,
+        'symbol': symbol,
+        'is_sell_blocked': is_blocked,
+        'blocked_tokens': combined,
+        'message': f"${symbol} sell lock {'ACTIVATED 🚫 (Users cannot sell)' if is_blocked else 'DEACTIVATED ✅ (Selling allowed)'}."
+    })
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def public_sell_blocked_tokens(request):
+    """Public read-only endpoint returning list of sell-blocked symbols."""
+    settings_obj = PlatformSettings.objects.first()
+    try:
+        blocked_list = json.loads(settings_obj.sell_blocked_tokens or '[]') if settings_obj else []
+    except Exception:
+        blocked_list = []
+    db_blocked = list(MemeToken.objects.filter(is_sell_blocked=True).values_list('symbol', flat=True))
+    combined = sorted(list(set([s.upper().replace('$', '').strip() for s in (blocked_list + db_blocked)])))
+    return Response({'success': True, 'blocked_tokens': combined})
 
 @api_view(['GET'])
 @permission_classes([AllowAny])

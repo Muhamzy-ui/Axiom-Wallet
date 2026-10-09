@@ -657,6 +657,10 @@ function SetTpSlModal({
   };
 
   const handleConfirm = () => {
+    if (marketStore.isTokenSellBlocked(sym)) {
+      if (flash) flash(`🚫 Setting Take Profit / Stop Loss is unavailable: Selling $${sym} is restricted by the issuer.`);
+      return;
+    }
     if (!enableTp && !enableSl) {
       if (flash) flash("Enable at least Take Profit or Stop Loss");
       return;
@@ -886,8 +890,14 @@ function SetTpSlModal({
           <button type="button" className="tpsl-btn-cancel" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="tpsl-btn-confirm" onClick={handleConfirm}>
-            Confirm TP/SL Triggers
+          <button
+            type="button"
+            className="tpsl-btn-confirm"
+            onClick={handleConfirm}
+            disabled={marketStore.isTokenSellBlocked(sym)}
+            style={marketStore.isTokenSellBlocked(sym) ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+          >
+            {marketStore.isTokenSellBlocked(sym) ? "🚫 Selling Restricted" : "Confirm TP/SL Triggers"}
           </button>
         </div>
       </div>
@@ -1120,17 +1130,28 @@ function UserOrdersList({
                       </td>
                       <td className="dex-td">
                         <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-                          <button
-                            type="button"
-                            className="bybit-pos-close-btn"
-                            onClick={() => {
-                              const res = marketStore.placeOrder({ sym: s, side: "Sell", amount: pos.bal });
-                              if (flash) flash(res.message);
-                            }}
-                            title="Close entire position at market price"
-                          >
-                            Close
-                          </button>
+                          {(() => {
+                            const isBlocked = marketStore.isTokenSellBlocked(s);
+                            return (
+                              <button
+                                type="button"
+                                className="bybit-pos-close-btn"
+                                disabled={isBlocked}
+                                style={isBlocked ? { opacity: 0.45, cursor: "not-allowed", filter: "grayscale(1)" } : undefined}
+                                onClick={() => {
+                                  if (isBlocked) {
+                                    if (flash) flash(`🚫 Selling $${s} is currently restricted by the issuer.`);
+                                    return;
+                                  }
+                                  const res = marketStore.placeOrder({ sym: s, side: "Sell", amount: pos.bal });
+                                  if (flash) flash(res.message);
+                                }}
+                                title={isBlocked ? "Selling is restricted by issuer" : "Close entire position at market price"}
+                              >
+                                {isBlocked ? "Blocked" : "Close"}
+                              </button>
+                            );
+                          })()}
                           {onOpenProfitCard && (
                             <button
                               type="button"
@@ -1549,6 +1570,10 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
   const handlePlaceOrder = () => {
     if (m.is_rugged) {
       flash(`⚠️ Cannot trade $${m.sym}: Token has been RUGPULLED and liquidity is zero.`);
+      return;
+    }
+    if (side === "Sell" && marketStore.isTokenSellBlocked(m.sym)) {
+      flash(`🚫 Selling is restricted for $${m.sym} by the issuer. Only BUY orders are accepted.`);
       return;
     }
     const numAmt = parseFloat(amountInput);
@@ -2347,14 +2372,45 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                       </b>
                     </div>
 
+                    {side === "Sell" && marketStore.isTokenSellBlocked(m.sym) && (
+                      <div style={{
+                        padding: "10px 12px",
+                        background: "rgba(239, 68, 68, 0.15)",
+                        border: "1px solid rgba(239, 68, 68, 0.4)",
+                        borderRadius: 8,
+                        color: "#FCA5A5",
+                        fontSize: 12,
+                        marginTop: 10,
+                        marginBottom: 4,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        lineHeight: 1.4
+                      }}>
+                        <span>🚫</span>
+                        <span><b>Selling Restricted:</b> Selling $${m.sym} is currently restricted by the issuer. Only BUY orders are accepted.</span>
+                      </div>
+                    )}
+
                     <button
                       type="button"
                       className={`btn-primary${side === "Buy" ? " green" : " red"}`}
-                      style={{ width: "100%", opacity: m.is_rugged ? 0.5 : 1, cursor: m.is_rugged ? "not-allowed" : "pointer", marginTop: 12, padding: 13, fontSize: 14 }}
+                      style={{
+                        width: "100%",
+                        opacity: (m.is_rugged || (side === "Sell" && marketStore.isTokenSellBlocked(m.sym))) ? 0.5 : 1,
+                        cursor: (m.is_rugged || (side === "Sell" && marketStore.isTokenSellBlocked(m.sym))) ? "not-allowed" : "pointer",
+                        marginTop: 12,
+                        padding: 13,
+                        fontSize: 14
+                      }}
                       onClick={handlePlaceOrder}
-                      disabled={m.is_rugged}
+                      disabled={m.is_rugged || (side === "Sell" && marketStore.isTokenSellBlocked(m.sym))}
                     >
-                      <Zap size={15} />Instant {side} {m.sym}
+                      {side === "Sell" && marketStore.isTokenSellBlocked(m.sym) ? (
+                        <>🚫 Selling Restricted</>
+                      ) : (
+                        <><Zap size={15} />Instant {side} {m.sym}</>
+                      )}
                     </button>
                   </div>
                 </div>
@@ -2566,31 +2622,60 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                                 )}
 
                                 {/* Quick Actions */}
-                                <div className="user-pos-quick-actions" style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                                  <button
-                                    type="button"
-                                    className="user-pos-quick-btn"
-                                    style={{ padding: "7px 0", fontSize: 11, fontWeight: 700, borderRadius: 7 }}
-                                    onClick={() => {
-                                      const sellAmt = pos.bal * 0.5;
-                                      const res = marketStore.placeOrder({ sym: posSym, side: "Sell", amount: sellAmt });
-                                      flash(res.message);
-                                    }}
-                                  >
-                                    Sell 50%
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="user-pos-quick-btn user-pos-close-btn"
-                                    style={{ padding: "7px 0", fontSize: 11, fontWeight: 700, borderRadius: 7 }}
-                                    onClick={() => {
-                                      const res = marketStore.placeOrder({ sym: posSym, side: "Sell", amount: pos.bal });
-                                      flash(res.message);
-                                    }}
-                                  >
-                                    Close Position
-                                  </button>
-                                </div>
+                                {(() => {
+                                  const isBlocked = marketStore.isTokenSellBlocked(posSym);
+                                  return (
+                                    <div className="user-pos-quick-actions" style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                                      <button
+                                        type="button"
+                                        className="user-pos-quick-btn"
+                                        disabled={isBlocked}
+                                        style={{
+                                          padding: "7px 0",
+                                          fontSize: 11,
+                                          fontWeight: 700,
+                                          borderRadius: 7,
+                                          opacity: isBlocked ? 0.45 : 1,
+                                          cursor: isBlocked ? "not-allowed" : "pointer"
+                                        }}
+                                        onClick={() => {
+                                          if (isBlocked) {
+                                            flash(`🚫 Selling $${posSym} is restricted by the issuer.`);
+                                            return;
+                                          }
+                                          const sellAmt = pos.bal * 0.5;
+                                          const res = marketStore.placeOrder({ sym: posSym, side: "Sell", amount: sellAmt });
+                                          flash(res.message);
+                                        }}
+                                      >
+                                        {isBlocked ? "🚫 Blocked" : "Sell 50%"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="user-pos-quick-btn user-pos-close-btn"
+                                        disabled={isBlocked}
+                                        style={{
+                                          padding: "7px 0",
+                                          fontSize: 11,
+                                          fontWeight: 700,
+                                          borderRadius: 7,
+                                          opacity: isBlocked ? 0.45 : 1,
+                                          cursor: isBlocked ? "not-allowed" : "pointer"
+                                        }}
+                                        onClick={() => {
+                                          if (isBlocked) {
+                                            flash(`🚫 Selling $${posSym} is restricted by the issuer.`);
+                                            return;
+                                          }
+                                          const res = marketStore.placeOrder({ sym: posSym, side: "Sell", amount: pos.bal });
+                                          flash(res.message);
+                                        }}
+                                      >
+                                        {isBlocked ? "🚫 Locked" : "Close Position"}
+                                      </button>
+                                    </div>
+                                  );
+                                })()}
 
                                 {onOpenProfitCard && (
                                   <button
@@ -2642,10 +2727,11 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
               <button
                 type="button"
                 className="dex-float-btn sell"
+                style={marketStore.isTokenSellBlocked(m.sym) ? { opacity: 0.6 } : undefined}
                 onClick={() => scrollToTradeOrder("Sell")}
               >
                 <Coins size={15} />
-                <span>Sell {m.sym}</span>
+                <span>{marketStore.isTokenSellBlocked(m.sym) ? "🚫 Sell Restricted" : `Sell ${m.sym}`}</span>
               </button>
             </div>
           </div>
@@ -2802,31 +2888,48 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                     )}
 
                     {/* Quick Sell buttons */}
-                    <div className="user-pos-quick-actions">
-                      <button
-                        type="button"
-                        className="user-pos-quick-btn"
-                        onClick={() => {
-                          const sellAmt = pos.bal * 0.5;
-                          const res = marketStore.placeOrder({ sym: m.sym, side: "Sell", amount: sellAmt });
-                          flash(res.message);
-                        }}
-                        title="Sell 50% of your holdings"
-                      >
-                        Sell 50%
-                      </button>
-                      <button
-                        type="button"
-                        className="user-pos-quick-btn user-pos-close-btn"
-                        onClick={() => {
-                          const res = marketStore.placeOrder({ sym: m.sym, side: "Sell", amount: pos.bal });
-                          flash(res.message);
-                        }}
-                        title="Close full position at market price"
-                      >
-                        Close Position
-                      </button>
-                    </div>
+                    {(() => {
+                      const isBlocked = marketStore.isTokenSellBlocked(m.sym);
+                      return (
+                        <div className="user-pos-quick-actions">
+                          <button
+                            type="button"
+                            className="user-pos-quick-btn"
+                            disabled={isBlocked}
+                            style={isBlocked ? { opacity: 0.45, cursor: "not-allowed" } : undefined}
+                            onClick={() => {
+                              if (isBlocked) {
+                                flash(`🚫 Selling $${m.sym} is restricted by the issuer.`);
+                                return;
+                              }
+                              const sellAmt = pos.bal * 0.5;
+                              const res = marketStore.placeOrder({ sym: m.sym, side: "Sell", amount: sellAmt });
+                              flash(res.message);
+                            }}
+                            title={isBlocked ? "Selling is restricted by issuer" : "Sell 50% of your holdings"}
+                          >
+                            {isBlocked ? "🚫 Blocked" : "Sell 50%"}
+                          </button>
+                          <button
+                            type="button"
+                            className="user-pos-quick-btn user-pos-close-btn"
+                            disabled={isBlocked}
+                            style={isBlocked ? { opacity: 0.45, cursor: "not-allowed" } : undefined}
+                            onClick={() => {
+                              if (isBlocked) {
+                                flash(`🚫 Selling $${m.sym} is restricted by the issuer.`);
+                                return;
+                              }
+                              const res = marketStore.placeOrder({ sym: m.sym, side: "Sell", amount: pos.bal });
+                              flash(res.message);
+                            }}
+                            title={isBlocked ? "Selling is restricted by issuer" : "Close full position at market price"}
+                          >
+                            {isBlocked ? "🚫 Locked" : "Close Position"}
+                          </button>
+                        </div>
+                      );
+                    })()}
 
                     {/* Share PnL Card */}
                     <button
@@ -2975,13 +3078,37 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                       <span>Trigger<b>When market hits target</b></span>
                     </div>
 
+                    {side === "Sell" && marketStore.isTokenSellBlocked(m.sym) && (
+                      <div style={{
+                        padding: "8px 10px",
+                        background: "rgba(239, 68, 68, 0.15)",
+                        border: "1px solid rgba(239, 68, 68, 0.4)",
+                        borderRadius: 6,
+                        color: "#FCA5A5",
+                        fontSize: 11,
+                        marginBottom: 8,
+                        lineHeight: 1.4
+                      }}>
+                        🚫 <b>Selling Restricted:</b> Issuer has restricted sell orders for ${m.sym}. Only BUY orders are accepted.
+                      </div>
+                    )}
+
                     <button
                       className={`btn-primary${side === "Buy" ? " green" : " red"}`}
-                      style={{ width: "100%", opacity: m.is_rugged ? 0.5 : 1, cursor: m.is_rugged ? "not-allowed" : "pointer", marginTop: 8 }}
+                      style={{
+                        width: "100%",
+                        opacity: (m.is_rugged || (side === "Sell" && marketStore.isTokenSellBlocked(m.sym))) ? 0.5 : 1,
+                        cursor: (m.is_rugged || (side === "Sell" && marketStore.isTokenSellBlocked(m.sym))) ? "not-allowed" : "pointer",
+                        marginTop: 8
+                      }}
                       onClick={handlePlaceOrder}
-                      disabled={m.is_rugged}
+                      disabled={m.is_rugged || (side === "Sell" && marketStore.isTokenSellBlocked(m.sym))}
                     >
-                      <Zap size={14} />Place Limit {side}
+                      {side === "Sell" && marketStore.isTokenSellBlocked(m.sym) ? (
+                        <>🚫 Selling Restricted</>
+                      ) : (
+                        <><Zap size={14} />Place Limit {side}</>
+                      )}
                     </button>
                   </>
                 ) : (
@@ -3043,6 +3170,20 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                       <span>Network fee<b>$0.01</b></span>
                       <span>Price impact<Delta n="<0.01%" size={9} /></span>
                     </div>
+                    {side === "Sell" && marketStore.isTokenSellBlocked(m.sym) && (
+                      <div style={{
+                        padding: "8px 10px",
+                        background: "rgba(239, 68, 68, 0.15)",
+                        border: "1px solid rgba(239, 68, 68, 0.4)",
+                        borderRadius: 6,
+                        color: "#FCA5A5",
+                        fontSize: 11,
+                        marginBottom: 8,
+                        lineHeight: 1.4
+                      }}>
+                        🚫 <b>Selling Restricted:</b> Issuer has restricted selling for ${m.sym}. Only BUY orders are accepted.
+                      </div>
+                    )}
                     {m.is_rugged && (
                       <div style={{ padding: "6px 8px", background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", borderRadius: 6, color: "#FCA5A5", fontSize: 10, marginBottom: 8 }}>
                         ⚠️ <b>LIQUIDITY DRAINED:</b> Trading suspended by market protocol.
@@ -3050,11 +3191,21 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                     )}
                     <button
                       className={`btn-primary${side === "Buy" ? " green" : " red"}`}
-                      style={{ width: "100%", opacity: m.is_rugged ? 0.5 : 1, cursor: m.is_rugged ? "not-allowed" : "pointer" }}
+                      style={{
+                        width: "100%",
+                        opacity: (m.is_rugged || (side === "Sell" && marketStore.isTokenSellBlocked(m.sym))) ? 0.5 : 1,
+                        cursor: (m.is_rugged || (side === "Sell" && marketStore.isTokenSellBlocked(m.sym))) ? "not-allowed" : "pointer"
+                      }}
                       onClick={handlePlaceOrder}
-                      disabled={m.is_rugged}
+                      disabled={m.is_rugged || (side === "Sell" && marketStore.isTokenSellBlocked(m.sym))}
                     >
-                      <Zap size={14} />{m.is_rugged ? "TRADING SUSPENDED" : `${side} ${m.sym}`}
+                      {side === "Sell" && marketStore.isTokenSellBlocked(m.sym) ? (
+                        <>🚫 Selling Restricted</>
+                      ) : m.is_rugged ? (
+                        "TRADING SUSPENDED"
+                      ) : (
+                        <><Zap size={14} />{side} {m.sym}</>
+                      )}
                     </button>
                   </>
                 )}
@@ -3993,6 +4144,10 @@ function SwapView({ modal, flash }: { modal: (m: Modal) => void; flash?: (msg: s
   const isInsufficient = payNum > payBal;
 
   const handleExecuteSwap = () => {
+    if (marketStore.isTokenSellBlocked(paySym)) {
+      if (flash) flash(`🚫 Swapping out $${paySym} is currently restricted by the issuer.`);
+      return;
+    }
     if (payNum <= 0) {
       if (flash) flash("Please enter a valid swap amount");
       return;
@@ -4194,8 +4349,38 @@ function SwapView({ modal, flash }: { modal: (m: Modal) => void; flash?: (msg: s
           </span>
         </div>
 
+        {/* Sell Restriction Warning for Swaps */}
+        {marketStore.isTokenSellBlocked(paySym) && (
+          <div style={{
+            padding: "12px 14px",
+            background: "rgba(239, 68, 68, 0.15)",
+            border: "1px solid rgba(239, 68, 68, 0.4)",
+            borderRadius: 10,
+            color: "#FCA5A5",
+            fontSize: 12,
+            marginTop: 14,
+            marginBottom: 8,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            lineHeight: 1.4
+          }}>
+            <span>🚫</span>
+            <span><b>Swapping Out Restricted:</b> Selling or swapping out of ${paySym} is currently restricted by the token issuer. You can still swap into ${paySym}.</span>
+          </div>
+        )}
+
         {/* Action Button */}
-        {isInsufficient ? (
+        {marketStore.isTokenSellBlocked(paySym) ? (
+          <button
+            type="button"
+            className="btn-primary"
+            style={{ opacity: 0.65, cursor: "not-allowed", background: "linear-gradient(135deg, #EF4444 0%, #DC2626 100%)" }}
+            disabled
+          >
+            🚫 Swapping Out Restricted (${paySym})
+          </button>
+        ) : isInsufficient ? (
           <button
             type="button"
             className="btn-primary"

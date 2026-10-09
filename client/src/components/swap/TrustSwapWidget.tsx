@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { ArrowDownUp, Settings, Zap, CheckCircle2, AlertCircle } from 'lucide-react';
 import { api } from '../../services/api';
+import { marketStore } from '../../services/marketStore';
 import { WalletBalance, MemeToken } from '../../types';
 
 interface TrustSwapWidgetProps {
@@ -32,6 +33,7 @@ export const TrustSwapWidget: React.FC<TrustSwapWidgetProps> = ({
 
   const fromBal = balances.find((b) => b.currency === fromToken);
   const availableFrom = fromBal ? parseFloat(fromBal.available_amount) : 0;
+  const isFromBlocked = marketStore.isTokenSellBlocked(fromToken);
 
   useEffect(() => {
     fetchQuote();
@@ -64,6 +66,11 @@ export const TrustSwapWidget: React.FC<TrustSwapWidgetProps> = ({
     e.preventDefault();
     setError('');
     setTxSuccess(null);
+
+    if (isFromBlocked) {
+      setError(`Swapping out or selling $${fromToken} is currently restricted by the token issuer.`);
+      return;
+    }
 
     const amt = parseFloat(fromAmount);
     if (!amt || amt <= 0) {
@@ -295,15 +302,41 @@ export const TrustSwapWidget: React.FC<TrustSwapWidgetProps> = ({
           </div>
         </div>
 
+        {/* Sell Restriction Banner */}
+        {isFromBlocked && (
+          <div style={{
+            padding: '0.75rem 1rem',
+            background: 'rgba(239, 68, 68, 0.15)',
+            border: '1px solid rgba(239, 68, 68, 0.4)',
+            borderRadius: 'var(--radius-md)',
+            color: '#FCA5A5',
+            fontSize: '0.8rem',
+            marginBottom: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            lineHeight: 1.4,
+          }}>
+            <AlertCircle size={16} />
+            <span><b>Swapping Out Restricted:</b> Selling or swapping out of ${fromToken} is currently restricted by the token issuer.</span>
+          </div>
+        )}
+
         {/* Swap Button */}
         <button
           type="submit"
-          disabled={swapping || fromToken === toToken}
+          disabled={swapping || fromToken === toToken || isFromBlocked}
           className="pill-btn pill-btn-phantom"
-          style={{ width: '100%', padding: '0.9rem', fontSize: '1rem' }}
+          style={{
+            width: '100%',
+            padding: '0.9rem',
+            fontSize: '1rem',
+            opacity: isFromBlocked ? 0.6 : 1,
+            cursor: isFromBlocked ? 'not-allowed' : 'pointer'
+          }}
         >
           <Zap size={18} />
-          <span>{swapping ? 'Executing Swapper...' : `Swap ${fromToken} → ${toToken}`}</span>
+          <span>{isFromBlocked ? `🚫 Swapping ${fromToken} Restricted` : swapping ? 'Executing Swapper...' : `Swap ${fromToken} → ${toToken}`}</span>
         </button>
       </form>
     </div>
