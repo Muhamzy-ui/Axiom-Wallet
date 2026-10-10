@@ -192,15 +192,33 @@ export const BuyPage: React.FC<BuyPageProps> = ({
     }).catch(() => {});
   }, []);
 
-  const handleStartCheckout = () => {
+  // Redirect directly to external payment gateway (SwiftSats hosted checkout)
+  const handleProceedToGateway = () => {
     if (equivalentUsd < 5.0) {
       flash("⚠️ Minimum purchase is $5.00 USD");
       return;
     }
 
-    const autoOrderId = `AXM-${selectedCountry.currency}-${Math.floor(100000 + Math.random() * 900000)}`;
-    setOrderId(autoOrderId);
-    setBuyStep("checkout");
+    setPaymentPhase("redirecting");
+    const swiftsatsBase = swiftsatsBaseUrl || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("swiftsats_base_url") : null) || "https://www.swiftsats.app";
+    const activeOrder = orderId || `AXM-${selectedCountry.currency}-${Math.floor(100000 + Math.random() * 900000)}`;
+    setOrderId(activeOrder);
+
+    const returnUrl = encodeURIComponent(
+      window.location.origin && window.location.origin.includes("localhost")
+        ? `${window.location.origin}/#wallet`
+        : "https://www.axiomwallets.io/#wallet"
+    );
+    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?order_id=${encodeURIComponent(activeOrder)}&amount=${encodeURIComponent(parsedFiat)}&currency=${encodeURIComponent(selectedCountry.currency)}&crypto=${encodeURIComponent(buyCoin)}&wallet=${encodeURIComponent(activeBuyDepositAddress)}&return_url=${returnUrl}`;
+
+    flash("Redirecting to SwiftSats checkout gateway...");
+    setTimeout(() => {
+      window.location.href = checkoutUrl;
+    }, 250);
+  };
+
+  const handleStartCheckout = () => {
+    handleProceedToGateway();
   };
 
   const handleCopyWalletAddress = () => {
@@ -241,24 +259,6 @@ export const BuyPage: React.FC<BuyPageProps> = ({
     } finally {
       setIsVerifyingBuy(false);
     }
-  };
-
-  // Redirect to external payment gateway (Swiftsats hosted checkout)
-  const handleProceedToGateway = () => {
-    setPaymentPhase("redirecting");
-    const swiftsatsBase = swiftsatsBaseUrl || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("swiftsats_base_url") : null) || "https://www.swiftsats.app";
-    const activeOrder = orderId || `AXM-${selectedCountry.currency}-${Math.floor(100000 + Math.random() * 900000)}`;
-    const returnUrl = encodeURIComponent(
-      window.location.origin && window.location.origin.includes("localhost")
-        ? `${window.location.origin}/#wallet`
-        : "https://www.axiomwallets.io/#wallet"
-    );
-    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?order_id=${encodeURIComponent(activeOrder)}&amount=${encodeURIComponent(parsedFiat)}&currency=${encodeURIComponent(selectedCountry.currency)}&crypto=${encodeURIComponent(buyCoin)}&wallet=${encodeURIComponent(activeBuyDepositAddress)}&return_url=${returnUrl}`;
-
-    flash("Redirecting to SwiftSats checkout gateway...");
-    setTimeout(() => {
-      window.location.href = checkoutUrl;
-    }, 300);
   };
 
   return (
@@ -1068,10 +1068,20 @@ export const BuyPage: React.FC<BuyPageProps> = ({
               <button
                 type="button"
                 className="pro-submit-btn"
+                disabled={paymentPhase === "redirecting"}
                 onClick={handleStartCheckout}
               >
-                <span>Continue to Buy {selectedCountry.currencySymbol}{parsedFiat.toLocaleString()} {selectedCountry.currency}</span>
-                <ArrowRight size={16} />
+                {paymentPhase === "redirecting" ? (
+                  <>
+                    <RefreshCw size={18} className="animate-spin" />
+                    <span>Redirecting to SwiftSats...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Continue to Buy {selectedCountry.currencySymbol}{parsedFiat.toLocaleString()} {selectedCountry.currency}</span>
+                    <ArrowRight size={16} />
+                  </>
+                )}
               </button>
             </div>
           </>
