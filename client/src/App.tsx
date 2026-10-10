@@ -6133,8 +6133,10 @@ function AppShell({
 
       const payment = searchParams.get("payment") || hashParams.get("payment");
       const orderId = searchParams.get("orderId") || hashParams.get("orderId") || searchParams.get("order_id") || hashParams.get("order_id");
-      const coin = (searchParams.get("coin") || hashParams.get("coin") || searchParams.get("crypto") || hashParams.get("crypto") || "USDT").toUpperCase();
+      const rawCoin = (searchParams.get("coin") || hashParams.get("coin") || searchParams.get("crypto") || hashParams.get("crypto") || "USDT").toUpperCase();
+      const coin = rawCoin.includes("USDT") ? "USDT" : rawCoin.includes("USDC") ? "USDC" : rawCoin;
       const amountStr = searchParams.get("amount") || hashParams.get("amount");
+      const txHash = searchParams.get("tx_hash") || hashParams.get("tx_hash") || searchParams.get("txHash") || hashParams.get("txHash") || undefined;
 
       if (payment === "success" && orderId) {
         const creditedAmount = parseFloat(amountStr || "0");
@@ -6142,12 +6144,16 @@ function AppShell({
           marketStore.depositFunds(coin, creditedAmount);
         }
 
-        const userAddr = authUser?.wallet_address || authUser?.email || localStorage.getItem("axiom_wallet_address") || "axiom_user";
+        const userAddr = authUser?.wallet_address || authUser?.user_id || authUser?.email || localStorage.getItem("axiom_wallet_address") || localStorage.getItem("axiom_user_id") || "axiom_user";
         api.creditSwiftsatsOrder({
           address: userAddr,
           order_id: orderId,
+          tx_hash: txHash,
           amount_usd: amountStr || "10.0",
           currency: coin,
+        }).then(() => {
+          marketStore.syncBackendPortfolio(true);
+          notificationService.triggerImmediateSync();
         }).catch(() => {});
 
         // Clean query parameters from URL without reloading

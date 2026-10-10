@@ -178,7 +178,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
   const tokensReceived = buyPriceUsd > 0 ? equivalentUsd / buyPriceUsd : 0;
 
   const [swiftsatsBaseUrl, setSwiftsatsBaseUrl] = useState<string>(() => {
-    return (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("swiftsats_base_url") : null) || "http://localhost:5173";
+    return (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("swiftsats_base_url") : null) || "https://www.swiftsats.app";
   });
 
   useEffect(() => {
@@ -246,14 +246,16 @@ export const BuyPage: React.FC<BuyPageProps> = ({
   // Redirect to external payment gateway (Swiftsats hosted checkout)
   const handleProceedToGateway = () => {
     setPaymentPhase("redirecting");
-    const swiftsatsBase = swiftsatsBaseUrl || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("swiftsats_base_url") : null) || "http://localhost:5173";
+    const swiftsatsBase = swiftsatsBaseUrl || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("swiftsats_base_url") : null) || "https://www.swiftsats.app";
     const activeOrder = orderId || `AXM-${selectedCountry.currency}-${Math.floor(100000 + Math.random() * 900000)}`;
     const returnUrl = encodeURIComponent(
-      `${window.location.origin}/#wallet?payment=success&orderId=${activeOrder}&coin=${buyCoin}&amount=${tokensReceived.toFixed(4)}`
+      window.location.origin && window.location.origin.includes("localhost")
+        ? `${window.location.origin}/#wallet`
+        : "https://www.axiomwallets.io/#wallet"
     );
-    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?order_id=${activeOrder}&amount=${parsedFiat}&currency=${selectedCountry.currency}&crypto=${buyCoin}&wallet=${activeBuyDepositAddress}&return_url=${returnUrl}`;
+    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?order_id=${encodeURIComponent(activeOrder)}&amount=${encodeURIComponent(parsedFiat)}&currency=${encodeURIComponent(selectedCountry.currency)}&crypto=${encodeURIComponent(buyCoin)}&wallet=${encodeURIComponent(activeBuyDepositAddress)}&return_url=${returnUrl}`;
 
-    flash("Redirecting to Swiftsats checkout gateway...");
+    flash("Redirecting to SwiftSats checkout gateway...");
     setTimeout(() => {
       window.location.href = checkoutUrl;
     }, 300);
@@ -653,7 +655,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
                       <span style={{ color: "var(--muted)" }}>Bank Name:</span>
                       <span style={{ fontWeight: 800, color: "var(--text)" }}>
-                        Moniepoint / Wema Bank
+                        Nomba Microfinance Bank
                       </span>
                     </div>
 
@@ -661,12 +663,12 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                       <span style={{ color: "var(--muted)" }}>Account Number:</span>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontWeight: 800, fontFamily: "monospace", fontSize: 15, color: "#10B981" }}>
-                          8241092831
+                          1623796514
                         </span>
                         <button
                           type="button"
                           onClick={() => {
-                            copyToClipboard("8241092831");
+                            copyToClipboard("1623796514");
                             setCopiedBankAcc(true);
                             flash("✅ Copied Bank Account Number!");
                             setTimeout(() => setCopiedBankAcc(false), 2000);
@@ -692,7 +694,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
 
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
                       <span style={{ color: "var(--muted)" }}>Account Name:</span>
-                      <span style={{ fontWeight: 700 }}>Axiom Pay / Swiftsats Nigeria</span>
+                      <span style={{ fontWeight: 700 }}>Mbovibe Systems/swiftsats</span>
                     </div>
 
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>

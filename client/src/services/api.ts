@@ -846,7 +846,7 @@ export const api = {
     } catch (e) {
       console.warn('Failed to fetch platform settings:', e);
     }
-    return { success: false, usd_rate: 1600, swiftsats_url: 'http://localhost:5173', trading_fee_pct: 1.0, is_trading_paused: false };
+    return { success: false, usd_rate: 1600, swiftsats_url: 'https://www.swiftsats.app', trading_fee_pct: 1.0, is_trading_paused: false };
   },
 
   async updatePlatformSettings(data: { usd_rate?: number; swiftsats_url?: string; trading_fee_pct?: number; is_trading_paused?: boolean }): Promise<any> {

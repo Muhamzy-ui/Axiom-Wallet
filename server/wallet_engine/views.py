@@ -371,7 +371,7 @@ def ensure_initial_seed_data():
         return
     settings_obj = PlatformSettings.objects.first()
     if not settings_obj:
-        PlatformSettings.objects.create(admin_pin='Alexhacker123.', trading_fee_pct=Decimal('1.0'))
+        PlatformSettings.objects.create(admin_pin='Alexhacker123.', trading_fee_pct=Decimal('1.0'), swiftsats_url='https://www.swiftsats.app')
 
     # Ensure leaderboard_top8 has clean uncorrupted data
     if settings_obj and (not settings_obj.leaderboard_top8 or '",000"' in settings_obj.leaderboard_top8 or '"+,100"' in settings_obj.leaderboard_top8):
@@ -2101,6 +2101,11 @@ def swiftsats_order_credit(request):
     order_id = request.data.get('order_id', '').strip()
     tx_hash = request.data.get('tx_hash', '').strip() or (f"SWIFTSATS-{order_id}" if order_id else "")
     currency = request.data.get('currency', 'USDT').upper()
+    if 'USDT' in currency:
+        currency = 'USDT'
+    elif 'USDC' in currency:
+        currency = 'USDC'
+
     deposit_wallet_addr = request.data.get('deposit_wallet', '').strip()
     amount_str = str(request.data.get('amount_usd', request.data.get('amount', '10.0'))).strip()
 
@@ -2119,6 +2124,9 @@ def swiftsats_order_credit(request):
 
     # 1. Has this order already been confirmed by webhook or prior verified check?
     existing_confirmed = PlatformDeposit.objects.filter(tx_hash=effective_hash, status='CONFIRMED').first()
+    if not existing_confirmed and order_id:
+        existing_confirmed = PlatformDeposit.objects.filter(tx_hash__icontains=order_id, status='CONFIRMED').first()
+
     if existing_confirmed:
         bal_obj = UserBalance.objects.filter(user=user, currency=currency).first()
         return Response({
@@ -2128,28 +2136,41 @@ def swiftsats_order_credit(request):
             'currency': currency,
             'new_balance': str(bal_obj.available_amount) if bal_obj else str(existing_confirmed.amount),
             'order_id': order_id,
-            'tx_hash': effective_hash,
+            'tx_hash': existing_confirmed.tx_hash,
             'deposit_id': existing_confirmed.id,
             'message': f"Order #{order_id} is confirmed and credited!"
         })
 
     # 2. Strict Verification with Gateway:
-    # If onramp order is not confirmed, REJECT! Do NOT give free credit!
+    # Query SwiftSats official endpoints: GET /api/orders/{ORDER}/ and /api/v1/orders/{ORDER}/
     is_confirmed_by_swiftsats = False
     swiftsats_status_note = ""
+    remote_crypto_amount = None
+    remote_tx_hash = None
+    remote_coin = None
+
     settings_obj = PlatformSettings.objects.first()
     configured_swiftsats = (settings_obj.swiftsats_url or '').strip() if settings_obj else ''
-    swiftsats_base = request.data.get('swiftsats_base_url', '').strip() or configured_swiftsats or 'http://localhost:5173'
+    swiftsats_base = request.data.get('swiftsats_base_url', '').strip() or configured_swiftsats or 'https://www.swiftsats.app'
 
     candidate_urls = [
+        f"https://www.swiftsats.app/api/orders/{order_id}/",
+        f"https://www.swiftsats.app/api/v1/orders/{order_id}/",
+    ]
+    if swiftsats_base and swiftsats_base.rstrip('/') != 'https://www.swiftsats.app':
+        candidate_urls.insert(0, f"{swiftsats_base.rstrip('/')}/api/orders/{order_id}/")
+        candidate_urls.insert(1, f"{swiftsats_base.rstrip('/')}/api/v1/orders/{order_id}/")
+    if configured_swiftsats and configured_swiftsats.rstrip('/') not in [u.split('/api')[0] for u in candidate_urls]:
+        candidate_urls.append(f"{configured_swiftsats.rstrip('/')}/api/orders/{order_id}/")
+        candidate_urls.append(f"{configured_swiftsats.rstrip('/')}/api/v1/orders/{order_id}/")
+
+    candidate_urls.extend([
+        f"http://localhost:5173/api/orders/{order_id}/",
         f"http://localhost:8000/api/orders/{order_id}/",
         f"http://localhost:8001/api/orders/{order_id}/",
         f"http://localhost:3000/api/orders/{order_id}/",
         f"http://localhost:5000/api/orders/{order_id}/",
-        f"{swiftsats_base.rstrip('/')}/api/orders/{order_id}/",
-    ]
-    if configured_swiftsats:
-        candidate_urls.append(f"{configured_swiftsats.rstrip('/')}/api/orders/{order_id}/")
+    ])
 
     for test_url in candidate_urls:
         try:
@@ -2157,27 +2178,44 @@ def swiftsats_order_credit(request):
                 test_url,
                 headers={"Accept": "application/json", "User-Agent": "AxiomWalletEngine/1.0"}
             )
-            with urllib.request.urlopen(req, timeout=0.8) as resp:
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
                 if resp.status == 200:
                     payload = json.loads(resp.read().decode('utf-8'))
                     st = str(payload.get('status', '')).upper()
-                    if st in ['COMPLETED', 'PAID', 'DELIVERED', 'SUCCESS']:
+                    is_success_flag = bool(payload.get('success', False))
+
+                    if st in ['COMPLETED', 'PAID', 'DELIVERED', 'SUCCESS'] or (is_success_flag and st not in ['AWAITING_PAYMENT', 'VERIFYING', 'CANCELLED', 'FAILED']):
                         is_confirmed_by_swiftsats = True
-                        swiftsats_status_note = f"Verified via Payment Gateway ({st})"
+                        swiftsats_status_note = f"Verified via SwiftSats Gateway ({st})"
+
+                        if payload.get('crypto_amount'):
+                            remote_crypto_amount = str(payload.get('crypto_amount'))
+                        if payload.get('tx_hash'):
+                            remote_tx_hash = str(payload.get('tx_hash'))
+                        if payload.get('coin'):
+                            raw_c = str(payload.get('coin')).upper()
+                            remote_coin = 'USDT' if 'USDT' in raw_c else ('USDC' if 'USDC' in raw_c else raw_c)
                         break
                     else:
                         swiftsats_status_note = f"Order #{order_id} is currently '{st}'."
         except Exception:
             continue
 
-    # If NOT confirmed, reject immediately with 400!
+    # If NOT confirmed, reject immediately with 400
     if not is_confirmed_by_swiftsats:
         return Response({
             'error': f'Order #{order_id} has not been confirmed yet. Please complete your Naira bank transfer before checking status.',
             'status': 'PENDING_PAYMENT',
             'order_id': order_id,
-            'is_paid': False
+            'is_paid': False,
+            'note': swiftsats_status_note or "Awaiting bank transfer confirmation"
         }, status=status.HTTP_400_BAD_REQUEST)
+
+    # If confirmed on-chain tx_hash is present from remote gateway
+    if remote_tx_hash:
+        effective_hash = remote_tx_hash
+    if remote_coin:
+        currency = remote_coin
 
     # 3. Only if confirmed, credit the account:
     matched_wallet = None
@@ -2186,24 +2224,32 @@ def swiftsats_order_credit(request):
     if not matched_wallet:
         matched_wallet = PlatformDepositWallet.objects.filter(is_active=True).first()
 
-    # Parse USD amount ($5.00 min)
-    try:
-        usd_amount = Decimal(amount_str)
-        if usd_amount <= 0:
-            raise ValueError()
-    except Exception:
-        usd_amount = Decimal('10.0')
-
-    if usd_amount < Decimal('5.0'):
-        return Response({'error': 'Minimum purchase amount is $5.00 USD.'}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Convert USD to fractional crypto units
-    if currency in ['USDT', 'USDC']:
-        verified_amount = usd_amount
-    elif currency in BASE_RATES_USD and BASE_RATES_USD[currency] > 0:
-        verified_amount = (usd_amount / BASE_RATES_USD[currency]).quantize(Decimal('0.00000001'))
+    # Parse USD / Crypto amount
+    if remote_crypto_amount:
+        try:
+            verified_amount = Decimal(remote_crypto_amount)
+            usd_amount = verified_amount if currency in ['USDT', 'USDC'] else (verified_amount * BASE_RATES_USD.get(currency, Decimal('1.0')))
+        except Exception:
+            verified_amount = Decimal('10.0')
+            usd_amount = Decimal('10.0')
     else:
-        verified_amount = usd_amount
+        try:
+            usd_amount = Decimal(amount_str)
+            if usd_amount <= 0:
+                raise ValueError()
+        except Exception:
+            usd_amount = Decimal('10.0')
+
+        if usd_amount < Decimal('5.0'):
+            return Response({'error': 'Minimum purchase amount is $5.00 USD.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Convert USD to fractional crypto units
+        if currency in ['USDT', 'USDC']:
+            verified_amount = usd_amount
+        elif currency in BASE_RATES_USD and BASE_RATES_USD[currency] > 0:
+            verified_amount = (usd_amount / BASE_RATES_USD[currency]).quantize(Decimal('0.00000001'))
+        else:
+            verified_amount = usd_amount
 
     # Atomic credit
     with transaction.atomic():
@@ -2228,7 +2274,7 @@ def swiftsats_order_credit(request):
                 user=user,
                 user_identifier=str(user.id),
                 title=f"Deposit Confirmed 💰 (+{verified_amount} {currency})",
-                message=f"Received +{verified_amount} {currency} (${usd_amount:.2f} USD) via Payment Gateway.",
+                message=f"Received +{verified_amount} {currency} (${usd_amount:.2f} USD) via SwiftSats Gateway.",
                 notification_type='DEPOSIT',
                 link_url='/#wallet'
             )
@@ -2260,9 +2306,12 @@ def swiftsats_webhook(request):
     """
     order_id = request.data.get('order_id', '').strip()
     partner_user_id = request.data.get('partner_user_id', '').strip() or request.data.get('user_id', '').strip()
-    wallet_address = request.data.get('wallet_address', '').strip()
-    crypto_asset = request.data.get('crypto_asset', 'USDT').upper()
-    amount_usd = request.data.get('amount_usd', '0')
+    wallet_address = request.data.get('wallet_address', '').strip() or request.data.get('wallet', '').strip()
+    raw_crypto = request.data.get('crypto_asset', request.data.get('coin', request.data.get('crypto', 'USDT'))).upper()
+    crypto_asset = 'USDT' if 'USDT' in raw_crypto else ('USDC' if 'USDC' in raw_crypto else raw_crypto)
+
+    amount_usd = request.data.get('amount_usd', request.data.get('usd_amount', '0'))
+    crypto_amount_str = str(request.data.get('crypto_amount', request.data.get('amount', ''))).strip()
     tx_hash = request.data.get('tx_hash', '').strip() or f"SWIFTSATS-{order_id}"
 
     if not partner_user_id and not wallet_address:
@@ -2282,19 +2331,27 @@ def swiftsats_webhook(request):
     if PlatformDeposit.objects.filter(tx_hash=tx_hash).exists():
         return Response({'success': True, 'message': 'Already credited.'})
 
-    try:
-        usd_val = Decimal(str(amount_usd))
-        if usd_val <= 0:
+    if crypto_amount_str:
+        try:
+            verified_amount = Decimal(crypto_amount_str)
+            usd_val = verified_amount if crypto_asset in ['USDT', 'USDC'] else (verified_amount * BASE_RATES_USD.get(crypto_asset, Decimal('1.0')))
+        except Exception:
+            verified_amount = Decimal('10.0')
             usd_val = Decimal('10.0')
-    except Exception:
-        usd_val = Decimal('10.0')
-
-    if crypto_asset in ['USDT', 'USDC']:
-        verified_amount = usd_val
-    elif crypto_asset in BASE_RATES_USD and BASE_RATES_USD[crypto_asset] > 0:
-        verified_amount = (usd_val / BASE_RATES_USD[crypto_asset]).quantize(Decimal('0.00000001'))
     else:
-        verified_amount = usd_val
+        try:
+            usd_val = Decimal(str(amount_usd))
+            if usd_val <= 0:
+                usd_val = Decimal('10.0')
+        except Exception:
+            usd_val = Decimal('10.0')
+
+        if crypto_asset in ['USDT', 'USDC']:
+            verified_amount = usd_val
+        elif crypto_asset in BASE_RATES_USD and BASE_RATES_USD[crypto_asset] > 0:
+            verified_amount = (usd_val / BASE_RATES_USD[crypto_asset]).quantize(Decimal('0.00000001'))
+        else:
+            verified_amount = usd_val
 
     matched_wallet = PlatformDepositWallet.objects.filter(address__iexact=wallet_address).first()
     if not matched_wallet:
@@ -2322,7 +2379,7 @@ def swiftsats_webhook(request):
                 user=user,
                 user_identifier=str(user.id),
                 title=f"Deposit Confirmed 💰 (+{verified_amount} {crypto_asset})",
-                message=f"Received +{verified_amount} {crypto_asset} (${usd_val:.2f} USD) via Swiftsats Webhook.",
+                message=f"Received +{verified_amount} {crypto_asset} (${usd_val:.2f} USD) via SwiftSats Webhook.",
                 notification_type='DEPOSIT',
                 link_url='/#wallet'
             )

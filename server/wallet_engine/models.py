@@ -236,7 +236,7 @@ class PlatformSettings(models.Model):
     trading_fee_pct = models.DecimalField(max_digits=5, decimal_places=2, default=1.0)
     is_trading_paused = models.BooleanField(default=False)
     usd_rate = models.DecimalField(max_digits=12, decimal_places=2, default=1600.0)
-    swiftsats_url = models.CharField(max_length=255, default='http://localhost:5173')
+    swiftsats_url = models.CharField(max_length=255, default='https://www.swiftsats.app')
     leaderboard_top8 = models.TextField(blank=True, default='')
     sell_blocked_tokens = models.TextField(blank=True, default='[]')
     verified_tokens = models.TextField(blank=True, default='{}')

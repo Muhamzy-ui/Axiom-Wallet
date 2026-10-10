@@ -5691,7 +5691,7 @@ function TradesPage({ metrics, loading, search }: { metrics: AdminMetrics; loadi
 /* ══════════════════════ PAGE 7: SETTINGS ════════════════════════ */
 function SettingsPage({ loading }: { loading: boolean }) {
   const [s, setS]         = useState({ fee: '0.30', minW: '10', maintenance: false, networks: { Solana: true, Ethereum: true, BSC: false, Polygon: true } as Record<string, boolean> });
-  const [swiftsatsUrl, setSwiftsatsUrl] = useState(() => localStorage.getItem('swiftsats_base_url') || 'http://localhost:5173');
+  const [swiftsatsUrl, setSwiftsatsUrl] = useState(() => localStorage.getItem('swiftsats_base_url') || 'https://www.swiftsats.app');
   const [swiftsatsRate, setSwiftsatsRate] = useState(() => String(getCustomDollarRate() || 1600));
   const [savingRate, setSavingRate] = useState(false);
   const [copiedHook, setCopiedHook] = useState(false);
@@ -5713,7 +5713,7 @@ function SettingsPage({ loading }: { loading: boolean }) {
   }, []);
 
   const save = async () => {
-    const cleanUrl = swiftsatsUrl.trim() || 'http://localhost:5173';
+    const cleanUrl = swiftsatsUrl.trim() || 'https://www.swiftsats.app';
     const numRate = parseFloat(swiftsatsRate) || 1600;
 
     localStorage.setItem('swiftsats_base_url', cleanUrl);
@@ -5788,7 +5788,7 @@ function SettingsPage({ loading }: { loading: boolean }) {
             type="text"
             value={swiftsatsUrl}
             onChange={e => setSwiftsatsUrl(e.target.value)}
-            placeholder="http://localhost:5173 or https://pay.example.com"
+            placeholder="https://www.swiftsats.app"
             style={{ ...INP, marginBottom: 12 }}
           />
 
@@ -5811,12 +5811,16 @@ function SettingsPage({ loading }: { loading: boolean }) {
           <label style={LBL}>Webhook Receiver URL (Paste into Gateway)</label>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
             <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#C4B5FD', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {`${(import.meta.env.VITE_API_URL || window.location.origin).replace(/\/$/, '')}/api/webhooks/swiftsats/`}
+              {window.location.origin && window.location.origin.includes('localhost')
+                ? `${(import.meta.env.VITE_API_URL || window.location.origin).replace(/\/$/, '')}/api/webhooks/swiftsats/`
+                : 'https://www.axiomwallets.io/api/webhooks/swiftsats/'}
             </span>
             <button
               type="button"
               onClick={() => {
-                const hookUrl = `${(import.meta.env.VITE_API_URL || window.location.origin).replace(/\/$/, '')}/api/webhooks/swiftsats/`;
+                const hookUrl = window.location.origin && window.location.origin.includes('localhost')
+                  ? `${(import.meta.env.VITE_API_URL || window.location.origin).replace(/\/$/, '')}/api/webhooks/swiftsats/`
+                  : 'https://www.axiomwallets.io/api/webhooks/swiftsats/';
                 copyToClipboard(hookUrl);
                 setCopiedHook(true);
                 setTimeout(() => setCopiedHook(false), 2000);
