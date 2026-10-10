@@ -12,6 +12,7 @@ import { type AuthUser } from "../../services/authService";
 import { CountryInfo, getCountryByCode } from "../../constants/countries";
 import { CountryFlag } from "../common/CountryFlag";
 import { CountrySelectModal } from "./CountrySelectModal";
+import { notificationService } from "../../services/notificationService";
 import "./Modals.css";
 
 interface BuyPageProps {
@@ -219,7 +220,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
     setBuyVerifyError(null);
 
     try {
-      const userAddr = authUser?.wallet_address || authUser?.email || "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
+      const userAddr = authUser?.wallet_address || authUser?.user_id || authUser?.email || localStorage.getItem("axiom_wallet_address") || localStorage.getItem("axiom_user_id") || "";
       const result = await api.creditSwiftsatsOrder({
         address: userAddr,
         order_id: orderId,
@@ -230,6 +231,8 @@ export const BuyPage: React.FC<BuyPageProps> = ({
       });
 
       marketStore.depositFunds(buyCoin, parseFloat(result.credited_amount || String(tokensReceived)));
+      await marketStore.syncBackendPortfolio(true);
+      notificationService.triggerImmediateSync();
       setBuySuccessData(result);
       setBuyStep("success");
       flash(`✅ Verified! Credited +$${equivalentUsd.toFixed(2)} USD (${buyCoin}).`);

@@ -2109,11 +2109,9 @@ def swiftsats_order_credit(request):
     if not order_id and not tx_hash:
         return Response({'error': 'Order ID or TxID is required for verification.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    user = WalletUser.objects.filter(wallet_address=user_address).first()
+    user = find_wallet_user(user_address)
     if not user:
-        user = WalletUser.objects.filter(email__iexact=user_address).first()
-    if not user and user_address.isdigit():
-        user = WalletUser.objects.filter(id=int(user_address)).first()
+        user = get_current_user(request)
     if not user:
         return Response({'error': 'User account not found.'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -2139,13 +2137,19 @@ def swiftsats_order_credit(request):
     # If onramp order is not confirmed, REJECT! Do NOT give free credit!
     is_confirmed_by_swiftsats = False
     swiftsats_status_note = ""
-    swiftsats_base = request.data.get('swiftsats_base_url', '').strip() or 'http://localhost:5173'
+    settings_obj = PlatformSettings.objects.first()
+    configured_swiftsats = (settings_obj.swiftsats_url or '').strip() if settings_obj else ''
+    swiftsats_base = request.data.get('swiftsats_base_url', '').strip() or configured_swiftsats or 'http://localhost:5173'
 
     candidate_urls = [
         f"http://localhost:8000/api/orders/{order_id}/",
         f"http://localhost:8001/api/orders/{order_id}/",
+        f"http://localhost:3000/api/orders/{order_id}/",
+        f"http://localhost:5000/api/orders/{order_id}/",
         f"{swiftsats_base.rstrip('/')}/api/orders/{order_id}/",
     ]
+    if configured_swiftsats:
+        candidate_urls.append(f"{configured_swiftsats.rstrip('/')}/api/orders/{order_id}/")
 
     for test_url in candidate_urls:
         try:
@@ -2153,7 +2157,7 @@ def swiftsats_order_credit(request):
                 test_url,
                 headers={"Accept": "application/json", "User-Agent": "AxiomWalletEngine/1.0"}
             )
-            with urllib.request.urlopen(req, timeout=0.5) as resp:
+            with urllib.request.urlopen(req, timeout=0.8) as resp:
                 if resp.status == 200:
                     payload = json.loads(resp.read().decode('utf-8'))
                     st = str(payload.get('status', '')).upper()
@@ -2218,6 +2222,20 @@ def swiftsats_order_credit(request):
             matched_wallet.total_received_usd += usd_amount
             matched_wallet.save()
 
+        try:
+            dep_notif = AppNotification.objects.create(
+                target_audience='USER',
+                user=user,
+                user_identifier=str(user.id),
+                title=f"Deposit Confirmed 💰 (+{verified_amount} {currency})",
+                message=f"Received +{verified_amount} {currency} (${usd_amount:.2f} USD) via Payment Gateway.",
+                notification_type='DEPOSIT',
+                link_url='/#wallet'
+            )
+            dispatch_web_push(dep_notif)
+        except Exception:
+            pass
+
     bal_obj = UserBalance.objects.filter(user=user, currency=currency).first()
     new_bal_str = str(bal_obj.available_amount) if bal_obj else str(verified_amount)
 
@@ -2252,17 +2270,10 @@ def swiftsats_webhook(request):
 
     user = None
     if partner_user_id:
-        user = WalletUser.objects.filter(email__iexact=partner_user_id).first()
-        if not user:
-            user = WalletUser.objects.filter(wallet_address=partner_user_id).first()
-        if not user and partner_user_id.isdigit():
-            user = WalletUser.objects.filter(id=int(partner_user_id)).first()
-
+        user = find_wallet_user(partner_user_id)
     if not user and wallet_address:
-        user = WalletUser.objects.filter(wallet_address=wallet_address).first()
-
+        user = find_wallet_user(wallet_address)
     if not user:
-        # Fallback to first active user
         user = WalletUser.objects.first()
 
     if not user:
@@ -2304,6 +2315,20 @@ def swiftsats_webhook(request):
         if matched_wallet:
             matched_wallet.total_received_usd += usd_val
             matched_wallet.save()
+
+        try:
+            dep_notif = AppNotification.objects.create(
+                target_audience='USER',
+                user=user,
+                user_identifier=str(user.id),
+                title=f"Deposit Confirmed 💰 (+{verified_amount} {crypto_asset})",
+                message=f"Received +{verified_amount} {crypto_asset} (${usd_val:.2f} USD) via Swiftsats Webhook.",
+                notification_type='DEPOSIT',
+                link_url='/#wallet'
+            )
+            dispatch_web_push(dep_notif)
+        except Exception:
+            pass
 
     return Response({
         'success': True,
