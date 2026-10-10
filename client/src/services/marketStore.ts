@@ -805,22 +805,22 @@ class MarketStore {
         this.fetchRealMarketData();
       }, 2500);
 
-      // 3. Periodic portfolio sync (4s) to detect incoming UID transfers and deposits
+      // 3. Periodic portfolio sync (3s) to detect incoming UID transfers and deposits
       setInterval(() => {
         if (typeof document !== "undefined" && document.hidden) return;
-        if (this.currentUserWallet) {
+        if (this.getSyncIdentifier()) {
           this.syncBackendPortfolio();
         }
-      }, 4000);
+      }, 3000);
 
       // Instant refresh on tab focus / app resume (Safari <-> Home Screen PWA switching)
       window.addEventListener("focus", () => {
-        if (this.currentUserWallet) {
+        if (this.getSyncIdentifier()) {
           this.syncBackendPortfolio(true);
         }
       });
       document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "visible" && this.currentUserWallet) {
+        if (document.visibilityState === "visible" && this.getSyncIdentifier()) {
           this.syncBackendPortfolio(true);
         }
       });
@@ -2529,7 +2529,7 @@ class MarketStore {
   }
 
   // Transfer funds directly to another Axiom user by UID (Instant, Zero Network Fee)
-  transferFundsToUid(sym: string, amount: number, recipientUid: string): { success: boolean; message: string; newBalance?: number } {
+  transferFundsToUid(sym: string, amount: number, recipientUid: string, skipApiSync: boolean = false): { success: boolean; message: string; newBalance?: number } {
     if (amount <= 0 || isNaN(amount)) {
       return { success: false, message: "Enter a valid transfer amount" };
     }
@@ -2616,9 +2616,11 @@ class MarketStore {
 
     this.lastTradeOrSwapTime = Date.now();
     this.savePersistedStateNow();
-    const targetSyncId = this.getSyncIdentifier();
-    if (targetSyncId) {
-      api.syncBalances(targetSyncId, this.balances).catch(() => {});
+    if (!skipApiSync) {
+      const targetSyncId = this.getSyncIdentifier();
+      if (targetSyncId) {
+        api.syncBalances(targetSyncId, this.balances).catch(() => {});
+      }
     }
     this.notify();
 

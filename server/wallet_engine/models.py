@@ -239,6 +239,10 @@ class PlatformSettings(models.Model):
     swiftsats_url = models.CharField(max_length=255, default='http://localhost:5173')
     leaderboard_top8 = models.TextField(blank=True, default='')
     sell_blocked_tokens = models.TextField(blank=True, default='[]')
+    verified_tokens = models.TextField(blank=True, default='{}')
+    trade_control = models.TextField(blank=True, default='{}')
+    block_sell_all_new = models.BooleanField(default=False)
+    custom_prices = models.TextField(blank=True, default='{}')
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):

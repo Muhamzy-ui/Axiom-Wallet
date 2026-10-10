@@ -27,8 +27,8 @@ export const MAJOR_CONFIGS: MajorPoolConfig[] = [
     name: "Bitcoin",
     network: "eth",
     poolAddress: "0x99ac8ca7087fa4a2a1fb6357269965a2014abc35",
-    fallbackPrice: 84492.49,
-    fallbackChange: -0.35,
+    fallbackPrice: 83050.00,
+    fallbackChange: 0.02,
     supply: 19750000,
     imageUrl: "https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png",
   },
@@ -466,10 +466,78 @@ export async function fetchGeckoMajors(): Promise<MarketToken[]> {
       }
     }
   } catch (_binanceErr) {
-    // If client direct Binance connection is blocked (e.g. restrictive network), fall through to backend proxy
+    // If client direct Binance connection is blocked (e.g. restrictive network), try Bybit Spot directly
   }
 
-  // 2. Secondary: Backend API proxy to Binance (same-origin fallback)
+  // 1b. Secondary direct: Bybit Spot API (CORS-enabled, accessible globally)
+  try {
+    const resBybit = await fetch("https://api.bybit.com/v5/market/tickers?category=spot", { headers: { Accept: "application/json" } });
+    if (resBybit.ok) {
+      const dataBybit = await resBybit.json();
+      const list = dataBybit?.result?.list || [];
+      if (Array.isArray(list) && list.length > 0) {
+        const liveMap = new Map<string, any>();
+        list.forEach((item: any) => {
+          const sym = binanceMap[item.symbol];
+          if (sym) liveMap.set(sym, item);
+        });
+
+        const solItem = liveMap.get("SOL");
+        const solPrice = solItem ? parseFloat(solItem.lastPrice) : 118.28;
+
+        const results: MarketToken[] = MAJOR_CONFIGS.map(cfg => {
+          const live = liveMap.get(cfg.sym);
+          if (!live) return buildFallbackMajorToken(cfg);
+
+          const numPrice = parseFloat(live.lastPrice) || cfg.fallbackPrice;
+          const chgRatio = parseFloat(live.price24hPcnt) || 0;
+          const changeNum = Number((chgRatio * 100.0).toFixed(2));
+          const pos = changeNum >= 0;
+          const volUsd = parseFloat(live.turnover24h) || 50000000;
+          const mcap = numPrice * cfg.supply;
+          const solP = cfg.sym === "SOL" ? 1 : numPrice / solPrice;
+
+          return {
+            sym: cfg.sym,
+            name: cfg.name,
+            price: formatPrice(numPrice),
+            numericPrice: numPrice,
+            solPrice: `${solP.toFixed(solP < 0.01 ? 6 : cfg.sym === "SOL" ? 4 : 2)} SOL`,
+            change: `${pos ? "+" : ""}${changeNum.toFixed(2)}%`,
+            changeNum,
+            cap: formatUsdShort(mcap),
+            fdv: formatUsdShort(mcap * 1.05),
+            liq: formatUsdShort(volUsd * 0.08),
+            pos,
+            supply: cfg.supply,
+            m5: { val: `${Math.abs(changeNum * 0.04).toFixed(2)}%`, up: pos },
+            h1: { val: `${Math.abs(changeNum * 0.18).toFixed(2)}%`, up: pos },
+            h6: { val: `${Math.abs(changeNum * 0.55).toFixed(2)}%`, up: pos },
+            h24: { val: `${Math.abs(changeNum).toFixed(2)}%`, up: pos },
+            txns: 12500,
+            buys: Math.round(12500 * (pos ? 0.53 : 0.47)),
+            sells: Math.round(12500 * (pos ? 0.47 : 0.53)),
+            vol: Number((volUsd / 1e6).toFixed(2)),
+            buyVol: Number(((volUsd * (pos ? 0.53 : 0.47)) / 1e6).toFixed(2)),
+            sellVol: Number(((volUsd * (pos ? 0.47 : 0.53)) / 1e6).toFixed(2)),
+            traders: 8500,
+            buyers: 4500,
+            sellers: 4000,
+            network: cfg.network,
+            poolAddress: cfg.poolAddress,
+            imageUrl: cfg.imageUrl,
+            isMajor: true,
+          };
+        });
+
+        cachedMajors = results;
+        lastMajorsFetchTime = now;
+        return results;
+      }
+    }
+  } catch (_bybitErr) {}
+
+  // 2. Tertiary: Backend API proxy (Binance + Bybit + CoinCap multi-source)
   try {
     const res = await fetch(`${API_BASE}/market/majors/?_t=${now}`, {
       cache: "no-store",

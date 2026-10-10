@@ -6089,6 +6089,7 @@ function AppShell({
       const detail = e.detail;
       if (detail && detail.message) {
         flash(detail.message);
+        marketStore.syncBackendPortfolio(true);
       }
     };
     window.addEventListener("axiom_realtime_alert", handleRealtimeAlert);

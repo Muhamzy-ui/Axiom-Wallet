@@ -104,31 +104,32 @@ export const SendPage: React.FC<SendPageProps> = ({
     const cleanUid = recipientUid.trim().toUpperCase();
 
     try {
-      const localRes = marketStore.transferFundsToUid(sendCoin, numAmt, cleanUid);
-      if (!localRes.success) {
-        setError(localRes.message);
-        setIsSubmitting(false);
-        setStep("form");
-        return;
-      }
+      // 1. Process transfer atomically on backend ledger FIRST
+      let txHashVal = `P2P-${Date.now().toString(36).toUpperCase()}`;
+      let recipientName = cleanUid;
 
-      // Backend API sync
-      let txHashVal = `axm_p2p_${Date.now().toString(36)}`;
-      try {
-        const apiRes = await api.internalTransferUid({
-          sender_address: userAddr,
-          recipient_uid: cleanUid,
-          currency: sendCoin,
-          amount: numAmt,
-        });
-        if (apiRes && apiRes.tx_hash) {
+      const apiRes = await api.internalTransferUid({
+        sender_address: userAddr,
+        recipient_uid: cleanUid,
+        currency: sendCoin,
+        amount: numAmt,
+      });
+
+      if (apiRes) {
+        if (apiRes.tx_hash) {
           txHashVal = apiRes.tx_hash;
         }
-        notificationService.triggerImmediateSync();
-      } catch (err: any) {
-        console.warn("Backend internal transfer sync warning:", err);
+        if (apiRes.recipient_name) {
+          recipientName = apiRes.recipient_name;
+        }
       }
 
+      // 2. Update local in-memory store without triggering conflicting syncBalances
+      marketStore.transferFundsToUid(sendCoin, numAmt, cleanUid, true);
+      await marketStore.syncBackendPortfolio(true);
+
+      // 3. Trigger immediate notification check
+      notificationService.triggerImmediateSync();
 
       setResultData({
         status: "COMPLETED",
@@ -137,13 +138,15 @@ export const SendPage: React.FC<SendPageProps> = ({
         currency: sendCoin,
         network: "Axiom Internal P2P (Zero Fee)",
         destination_address: cleanUid,
+        recipient_name: recipientName,
         message: `Instant transfer of ${displayAmt} ${sendCoin} to UID ${cleanUid} completed.`,
       });
 
       setStep("result");
       if (flash) flash(`Sent ${displayAmt} ${sendCoin} to UID ${cleanUid}!`);
     } catch (err: any) {
-      setError(err.message || "Failed to complete transfer. Please try again.");
+      console.error("Internal transfer error:", err);
+      setError(err.message || "Failed to complete transfer. Please check UID and balance.");
       setStep("form");
     } finally {
       setIsSubmitting(false);
