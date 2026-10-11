@@ -387,21 +387,21 @@ def ensure_initial_seed_data():
     if not PlatformDepositWallet.objects.exists():
         wallets_init = {
             'TRON (TRC-20)': [
-                ('TYD9yZ7G8gM2tY9vK8nP7wE6rT5yU4iO3p', 'TRON Hot Vault #1 (Primary)'),
+                ('TRwHndDNkm2vpE6SiszKjowv6aKaKD7RZT', 'TRON Hot Vault #1 (Primary)'),
                 ('TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t', 'TRON Hot Vault #2 (Secondary)'),
                 ('TUpMhErRtPqW1vYz7KbX3nMaQ8pL6sD9jF', 'TRON Hot Vault #3 (Reserve)'),
                 ('TPY9xK8mL2nQ7wE6rT5yU4iO3pA2sD1fGh', 'TRON Hot Vault #4 (High Volume)'),
                 ('TQn8vB2mK8pL7wE6rT5yU4iO3pA2sD1fXy', 'TRON Hot Vault #5 (Cold Buffer)'),
             ],
             'BNB Chain (BEP-20)': [
-                ('0x71C836e522F5b8Fbe40d34341A5a507E78e1215B', 'BNB Chain Vault #1 (Primary)'),
+                ('0x36b25000587762425F2682d721A57eD7d74671F0', 'BNB Chain Vault #1 (Primary)'),
                 ('0x8894E0a0c962CB723c1976a4421c95949bE2D4E3', 'BNB Chain Vault #2 (Secondary)'),
                 ('0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE', 'BNB Chain Vault #3 (Reserve)'),
                 ('0xD551234Ae421e3BCBA99A0Da6d736074f22192FF', 'BNB Chain Vault #4 (High Volume)'),
                 ('0x564286362092D8e7936f0549571a803B203aAceA', 'BNB Chain Vault #5 (Cold Buffer)'),
             ],
             'Solana (SPL)': [
-                ('8ZgC8Q3f8sC9b9T4vB2nK8mP7wE6rT5yU4iO3pA2sD1f', 'Solana Hot Vault #1 (Primary)'),
+                ('4F7JuhSiALdZNwDi14x7mVa3T8Pie9QmgBGUPDk32jWC', 'Solana Hot Vault #1 (Primary)'),
                 ('AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU', 'Solana Hot Vault #2 (Secondary)'),
                 ('5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1', 'Solana Hot Vault #3 (Reserve)'),
                 ('9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM', 'Solana Hot Vault #4 (High Volume)'),

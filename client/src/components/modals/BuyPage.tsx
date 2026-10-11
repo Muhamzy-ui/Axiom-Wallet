@@ -137,10 +137,10 @@ export const BuyPage: React.FC<BuyPageProps> = ({
   }, [buyCoin, buyNetwork, authUser?.wallet_address]);
 
   const getFallbackAddress = (net: string) => {
-    if (net.includes("TRON")) return "TYD9yZ7G8gM2tY9vK8nP7wE6rT5yU4iO3p";
-    if (net.includes("BNB") || net.includes("Ethereum")) return "0x71C836e522F5b8Fbe40d34341A5a507E78e1215B";
-    if (net.includes("Bitcoin")) return "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq";
-    return "8ZgC8Q3f8sC9b9T4vB2nK8mP7wE6rT5yU4iO3pA2sD1f";
+    if (net.includes("TRON")) return "TRwHndDNkm2vpE6SiszKjowv6aKaKD7RZT";
+    if (net.includes("BNB") || net.includes("Ethereum")) return "0x36b25000587762425F2682d721A57eD7d74671F0";
+    if (net.includes("Bitcoin")) return "bc1qv4vq3xzpszeflkqnpvzsx37juu65lwd974fd9e";
+    return "4F7JuhSiALdZNwDi14x7mVa3T8Pie9QmgBGUPDk32jWC";
   };
 
   const activeBuyDepositAddress = assignedBuyWallet?.address || getFallbackAddress(buyNetwork);
@@ -184,7 +184,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
   // Redirect directly to external payment gateway (SwiftSats hosted checkout)
   const handleProceedToGateway = () => {
     if (equivalentUsd < 5.0) {
-      flash("⚠️ Minimum purchase is $5.00 USD");
+      flash("Minimum purchase is $5.00 USD");
       return;
     }
 
@@ -194,8 +194,24 @@ export const BuyPage: React.FC<BuyPageProps> = ({
     const activeOrder = orderId || `AXM-NGN-${Math.floor(100000 + Math.random() * 900000)}`;
     setOrderId(activeOrder);
 
+    // Map selected coin & network to explicit SwiftSats coin code
+    let mappedCoin: string = buyCoin;
+    if (buyCoin === "USDT") {
+      if (buyNetwork.includes("TRON") || buyNetwork.includes("TRC")) mappedCoin = "USDT_TRC20";
+      else if (buyNetwork.includes("BNB") || buyNetwork.includes("BEP")) mappedCoin = "USDT_BEP20";
+      else if (buyNetwork.includes("Solana")) mappedCoin = "SOL";
+      else if (buyNetwork.includes("Ethereum")) mappedCoin = "USDT_ERC20";
+      else mappedCoin = "USDT_TRC20";
+    }
+
+    // Ensure valid deposit destination address
+    const targetWallet = activeBuyDepositAddress || getFallbackAddress(buyNetwork);
+
+    // Calculate Naira amount accurately at 1425 rate
+    const nairaAmount = Math.round(equivalentUsd * 1425.00);
+
     const returnUrl = encodeURIComponent("https://www.axiomwallets.io/#wallet");
-    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?source=axiom&order_id=${encodeURIComponent(activeOrder)}&amount=${encodeURIComponent(parsedFiat)}&currency=NGN&crypto=${encodeURIComponent(buyCoin)}&wallet=${encodeURIComponent(activeBuyDepositAddress)}&return_url=${returnUrl}`;
+    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?source=axiom&order_id=${encodeURIComponent(activeOrder)}&amount=${encodeURIComponent(nairaAmount)}&amount_usd=${encodeURIComponent(equivalentUsd.toFixed(2))}&currency=NGN&crypto=${encodeURIComponent(mappedCoin)}&coin=${encodeURIComponent(mappedCoin)}&wallet=${encodeURIComponent(targetWallet)}&return_url=${returnUrl}`;
 
     flash("Redirecting to SwiftSats checkout gateway...");
     setTimeout(() => {
