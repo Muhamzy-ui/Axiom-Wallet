@@ -161,13 +161,34 @@ export const BuyPage: React.FC<BuyPageProps> = ({
       ? 77724.0
       : 2650.0;
 
-  // 1. DOLLAR EXCHANGE RATE: fixed baseline rate of ₦1,398.99 / $1.00 USD
-  const rateToUsd = selectedCountry.code === "NG" ? 1398.99 : (selectedCountry.rateToUsd || 1398.99);
+  // 1. DOLLAR EXCHANGE RATE: fixed baseline rate of ₦1,425.00 / $1.00 USD
+  const rateToUsd = selectedCountry.code === "NG" ? 1425.0 : (selectedCountry.rateToUsd || 1425.0);
   const parsedFiat = parseFloat(fiatAmount) || 0;
   const equivalentUsd = rateToUsd > 0 ? parsedFiat / rateToUsd : parsedFiat;
   const tokensReceived = buyPriceUsd > 0 ? equivalentUsd / buyPriceUsd : 0;
-  // Exact fiat payable matches user's on-screen selection (zero discrepancy)
-  const totalPayableFiat = Math.round(parsedFiat || (equivalentUsd * rateToUsd));
+
+  // AXIOM TIERED ORDER CHARGES:
+  // - $2.00 to $25.00: ₦1,700
+  // - $25.00 to $100.00: ₦3,400
+  // - $100.00 upward: $3.00 USD (₦4,275 at 1,425 rate)
+  const getBuyOrderFee = (usd: number): { feeNgn: number; feeUsd: number; label: string } => {
+    if (usd < 25.0) {
+      return { feeNgn: 1700, feeUsd: 1700 / 1425.0, label: "₦1,700" };
+    }
+    if (usd < 100.0) {
+      return { feeNgn: 3400, feeUsd: 3400 / 1425.0, label: "₦3,400" };
+    }
+    const feeUsd = 3.0;
+    const feeNgn = Math.round(feeUsd * 1425.0);
+    return { feeNgn, feeUsd, label: "$3.00 USD (₦4,275)" };
+  };
+
+  const currentOrderFee = getBuyOrderFee(equivalentUsd);
+  const feeInLocalCurrency = selectedCountry.code === "NG"
+    ? currentOrderFee.feeNgn
+    : Math.round(currentOrderFee.feeUsd * (selectedCountry.rateToUsd || 1));
+  const baseSubtotalFiat = Math.round(equivalentUsd * rateToUsd);
+  const totalPayableFiat = baseSubtotalFiat + feeInLocalCurrency;
 
   const [swiftsatsBaseUrl, setSwiftsatsBaseUrl] = useState<string>(() => {
     const saved = typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("swiftsats_base_url") : null;
@@ -233,14 +254,13 @@ export const BuyPage: React.FC<BuyPageProps> = ({
     // 3. Official Reserve Deposit Addresses (no dummy addresses, no invalid Base58 'O')
     const targetWallet = getReserveDepositAddress(mappedCoin, buyNetwork);
 
-    // 1. DOLLAR EXCHANGE RATE: fixed baseline rate of ₦1,398.99 / $1.00 USD
-    // Calculate exact Naira matching user's on-screen amount (zero discrepancy)
-    const exactNaira = Math.round(parsedFiat || (equivalentUsd * 1398.99));
+    // 1. DOLLAR EXCHANGE RATE: fixed baseline rate of ₦1,425.00 / $1.00 USD
+    // Pass total Naira including Axiom's tiered order fee so SwiftSats collects the exact total
     const amountUsdStr = equivalentUsd.toFixed(2);
 
     // 4. RETURN CALLBACK
     const returnUrl = encodeURIComponent("https://www.axiomwallets.io/#wallet");
-    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?source=axiom&order_id=${encodeURIComponent(activeOrder)}&amount=${exactNaira}&amount_ngn=${exactNaira}&amount_usd=${amountUsdStr}&currency=NGN&crypto=${encodeURIComponent(mappedCoin)}&coin=${encodeURIComponent(mappedCoin)}&wallet=${encodeURIComponent(targetWallet)}&return_url=${returnUrl}`;
+    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?source=axiom&order_id=${encodeURIComponent(activeOrder)}&amount=${totalPayableFiat}&amount_ngn=${totalPayableFiat}&amount_usd=${amountUsdStr}&fee=${feeInLocalCurrency}&currency=NGN&crypto=${encodeURIComponent(mappedCoin)}&coin=${encodeURIComponent(mappedCoin)}&wallet=${encodeURIComponent(targetWallet)}&return_url=${returnUrl}`;
 
     flash("Redirecting to SwiftSats checkout gateway...");
     setTimeout(() => {
@@ -1019,9 +1039,45 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                   </div>
                 </div>
 
+                {/* Transparent Order Fee & Total Card */}
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    background: "rgba(124, 58, 237, 0.08)",
+                    border: "1px solid rgba(124, 58, 237, 0.2)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    fontSize: 12,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ color: "var(--muted)" }}>Crypto Subtotal:</span>
+                    <span style={{ fontWeight: 600, color: "var(--text)" }}>
+                      {selectedCountry.currencySymbol}{baseSubtotalFiat.toLocaleString()} {selectedCountry.currency} (≈ ${equivalentUsd.toFixed(2)} USD)
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ color: "var(--muted)" }}>
+                      Processing Fee ({equivalentUsd < 25 ? "$2–$25: ₦1,700" : equivalentUsd < 100 ? "$25–$100: ₦3,400" : "$100+: $3.00 USD"}):
+                    </span>
+                    <span style={{ fontWeight: 700, color: "#F59E0B" }}>
+                      +{selectedCountry.currencySymbol}{feeInLocalCurrency.toLocaleString()} {selectedCountry.currency}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 6, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
+                    <span style={{ fontWeight: 800, color: "var(--text)" }}>Total to Pay:</span>
+                    <span style={{ fontWeight: 900, fontSize: 14, color: "var(--violet, #7C3AED)" }}>
+                      {selectedCountry.currencySymbol}{totalPayableFiat.toLocaleString()} {selectedCountry.currency}
+                    </span>
+                  </div>
+                </div>
+
                 <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8, display: "flex", justifyContent: "space-between" }}>
                   <span>Rate: 1 USD ≈ {selectedCountry.currencySymbol}{rateToUsd >= 100 ? rateToUsd.toLocaleString() : rateToUsd} {selectedCountry.currency}</span>
-                  <span style={{ color: "#10B981", fontWeight: 700 }}>0% Processing Markup</span>
+                  <span style={{ color: "#C4B5FD", fontWeight: 600 }}>Tiers: $2–$25 (₦1,700) • $25–$100 (₦3,400) • $100+ ($3)</span>
                 </div>
               </div>
 
