@@ -162,8 +162,21 @@ export const BuyPage: React.FC<BuyPageProps> = ({
     "TJpieRWnh9KkKT5ch6CmfLDaHwU5cTT3t7",
   ];
 
+  const SOL_VAULT_ADDRESSES = [
+    "BPFJfq7jYCeu7vAo1PJx9GDLnoJo6BNnkhPCGTrRvJWi",
+    "8hLG4k5K8y5k39xX6owJXkDnu1ScnsW7tfGenPp9cV8k",
+    "DiYfaZxHnC4Hf48E8qHxSA4dLe9gRwey6NdFmMiCy11G",
+    "AE5g1aVsRAoWAqTaFQVxC3uomWNCsAyauQesPVcn4RVc",
+    "7xzCEtZzywDimHzbNNSjaRRaPEbpJkztT5JdhhaQmwVk",
+  ];
+
   const getReserveDepositAddress = (coin: string, net: string): string => {
-    if (coin === "SOL" || net.includes("Solana")) return "4F7JuhSiALdZNwDi14x7mVa3T8Pie9QmgBGUPDk32jWC";
+    if (coin === "SOL" || net.includes("Solana")) {
+      if (assignedBuyWallet?.address && assignedBuyWallet.address.length >= 32 && !assignedBuyWallet.address.startsWith("0x") && !assignedBuyWallet.address.startsWith("bc1") && !assignedBuyWallet.address.startsWith("T")) {
+        return assignedBuyWallet.address;
+      }
+      return SOL_VAULT_ADDRESSES[0];
+    }
     if (coin === "BTC" || net.includes("Bitcoin")) {
       if (assignedBuyWallet?.address && assignedBuyWallet.address.startsWith("bc1")) {
         return assignedBuyWallet.address;

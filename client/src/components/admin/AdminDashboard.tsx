@@ -4576,7 +4576,7 @@ const SUPPORTED_CHAINS: ChainConfig[] = [
     formatGuide: 'Solana Base58 address (32 to 44 characters)',
     iconBg: 'linear-gradient(135deg, #8B5CF6, #6D28D9)',
     iconSymbol: 'SOL',
-    placeholder: '8ZgC8Q3f8sC9b9T4vB2nK8mP7wE6rT5yU4iO3pA2sD1f',
+    placeholder: 'BPFJfq7jYCeu7vAo1PJx9GDLnoJo6BNnkhPCGTrRvJWi',
     validate: (addr: string) => {
       const a = addr.trim();
       if (!a) return { isValid: false, warning: 'Address is required to receive Solana deposits' };

@@ -401,9 +401,11 @@ def ensure_initial_seed_data():
                 ('0x1AB8ab2CD87E4F09140ced079cC62d0bAe83CA6F', 'BNB Chain Vault #5 (Cold Buffer)'),
             ],
             'Solana (SPL)': [
-                ('4F7JuhSiALdZNwDi14x7mVa3T8Pie9QmgBGUPDk32jWC', 'Solana Hot Vault #1 (Primary)'),
-                ('AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU', 'Solana Hot Vault #2 (Secondary)'),
-                ('5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1', 'Solana Hot Vault #3 (Reserve)'),
+                ('BPFJfq7jYCeu7vAo1PJx9GDLnoJo6BNnkhPCGTrRvJWi', 'Solana Hot Vault #1 (Primary)'),
+                ('8hLG4k5K8y5k39xX6owJXkDnu1ScnsW7tfGenPp9cV8k', 'Solana Hot Vault #2 (Secondary)'),
+                ('DiYfaZxHnC4Hf48E8qHxSA4dLe9gRwey6NdFmMiCy11G', 'Solana Hot Vault #3 (Reserve)'),
+                ('AE5g1aVsRAoWAqTaFQVxC3uomWNCsAyauQesPVcn4RVc', 'Solana Hot Vault #4 (High Volume)'),
+                ('7xzCEtZzywDimHzbNNSjaRRaPEbpJkztT5JdhhaQmwVk', 'Solana Hot Vault #5 (Cold Buffer)'),
             ],
             'Ethereum (ERC-20)': [
                 ('0x36b25000587762425F2682d721A57eD7d74671F0', 'Ethereum Vault #1 (Primary)'),
@@ -516,6 +518,37 @@ def ensure_initial_seed_data():
                 PlatformDepositWallet.objects.create(
                     order_index=max_idx,
                     network='TRON (TRC-20)',
+                    label=lbl,
+                    address=addr,
+                    is_active=True,
+                    total_received_usd=Decimal('0.0')
+                )
+    except Exception:
+        pass
+
+    # Ensure all Solana (SPL) vault addresses in database match the 5 official addresses
+    sol_vault_configs = [
+        ('BPFJfq7jYCeu7vAo1PJx9GDLnoJo6BNnkhPCGTrRvJWi', 'Solana Hot Vault #1 (Primary)'),
+        ('8hLG4k5K8y5k39xX6owJXkDnu1ScnsW7tfGenPp9cV8k', 'Solana Hot Vault #2 (Secondary)'),
+        ('DiYfaZxHnC4Hf48E8qHxSA4dLe9gRwey6NdFmMiCy11G', 'Solana Hot Vault #3 (Reserve)'),
+        ('AE5g1aVsRAoWAqTaFQVxC3uomWNCsAyauQesPVcn4RVc', 'Solana Hot Vault #4 (High Volume)'),
+        ('7xzCEtZzywDimHzbNNSjaRRaPEbpJkztT5JdhhaQmwVk', 'Solana Hot Vault #5 (Cold Buffer)'),
+    ]
+    try:
+        sol_wallets = list(PlatformDepositWallet.objects.filter(network__icontains='solana').order_by('order_index'))
+        for i, (addr, lbl) in enumerate(sol_vault_configs):
+            if i < len(sol_wallets):
+                sw = sol_wallets[i]
+                if sw.address != addr or sw.label != lbl:
+                    sw.address = addr
+                    sw.label = lbl
+                    sw.is_active = True
+                    sw.save()
+            else:
+                max_idx = PlatformDepositWallet.objects.count() + 1
+                PlatformDepositWallet.objects.create(
+                    order_index=max_idx,
+                    network='Solana (SPL)',
                     label=lbl,
                     address=addr,
                     is_active=True,
@@ -1420,6 +1453,14 @@ TRC20_VAULT_ADDRESSES = [
     'TJpieRWnh9KkKT5ch6CmfLDaHwU5cTT3t7',
 ]
 
+SOL_VAULT_ADDRESSES = [
+    'BPFJfq7jYCeu7vAo1PJx9GDLnoJo6BNnkhPCGTrRvJWi',
+    '8hLG4k5K8y5k39xX6owJXkDnu1ScnsW7tfGenPp9cV8k',
+    'DiYfaZxHnC4Hf48E8qHxSA4dLe9gRwey6NdFmMiCy11G',
+    'AE5g1aVsRAoWAqTaFQVxC3uomWNCsAyauQesPVcn4RVc',
+    '7xzCEtZzywDimHzbNNSjaRRaPEbpJkztT5JdhhaQmwVk',
+]
+
 def get_user_dedicated_address(user_id: int or str, network: str = 'TRON (TRC-20)', currency: str = 'USDT') -> str:
     """
     Generates a 100% deterministic, unique, dedicated on-chain deposit address for each user.
@@ -1433,7 +1474,8 @@ def get_user_dedicated_address(user_id: int or str, network: str = 'TRON (TRC-20
         h = int(hashlib.sha256(seed).hexdigest()[:8], 16)
         return TRC20_VAULT_ADDRESSES[h % len(TRC20_VAULT_ADDRESSES)]
     elif 'solana' in net_lower or currency.upper() == 'SOL':
-        return b58encode(seed)
+        h = int(hashlib.sha256(seed).hexdigest()[:8], 16)
+        return SOL_VAULT_ADDRESSES[h % len(SOL_VAULT_ADDRESSES)]
     elif 'bitcoin' in net_lower or currency.upper() == 'BTC':
         h = int(hashlib.sha256(seed).hexdigest()[:8], 16)
         return BTC_VAULT_ADDRESSES[h % len(BTC_VAULT_ADDRESSES)]
