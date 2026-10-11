@@ -6164,7 +6164,7 @@ function AppShell({
         hashParams.get("txHash") ||
         undefined;
 
-      // Determine USD amount: if amount is large (e.g. Naira > 500), convert at 1425 baseline
+      // Determine USD amount: if amount is large (e.g. Naira > 500), convert at 1398.99 baseline
       let effectiveUsd = 10.0;
       if (amountUsdParam && parseFloat(amountUsdParam) > 0) {
         effectiveUsd = parseFloat(amountUsdParam);
