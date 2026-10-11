@@ -28,6 +28,39 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+    <!-- Security, Anti-Phishing & Anti-Cloning Protections -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <script>
+      // Anti-Clickjacking Framebuster (prevents unauthorized phishing iframe embedding)
+      if (window.top !== window.self) {
+        try {
+          window.top.location = window.self.location.href;
+        } catch (e) {
+          window.location.replace('about:blank');
+        }
+      }
+
+      // Anti-Cloning Domain Guard: automatically redirects unauthorized clone mirrors to the official domain
+      (function() {
+        try {
+          var host = window.location.hostname.toLowerCase();
+          var isOfficial = host === 'axiomwallets.io' ||
+            host === 'www.axiomwallets.io' ||
+            host.endsWith('.axiomwallets.io') ||
+            host.endsWith('.onrender.com') ||
+            host === 'localhost' ||
+            host === '127.0.0.1' ||
+            host.startsWith('192.168.') ||
+            host.startsWith('10.') ||
+            host === '';
+          if (!isOfficial) {
+            window.location.replace('https://axiomwallets.io' + window.location.pathname + window.location.search);
+          }
+        } catch (e) {}
+      })();
+    </script>
     <script>
       (function() {
         try {

@@ -9,16 +9,30 @@ import os
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-# In production, load from environment variable.
-SECRET_KEY = os.environ.get(
-    'DJANGO_SECRET_KEY',
-    'django-insecure-x5j&_qh@j_rcc%!44cg^&$v5&ywd)@43+_qj%m*)3q(dl_911='
-)
+import secrets
+
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
+if not SECRET_KEY:
+    if os.environ.get('RENDER', '').lower() == 'true':
+        SECRET_KEY = secrets.token_urlsafe(50)
+    else:
+        SECRET_KEY = 'django-insecure-x5j&_qh@j_rcc%!44cg^&$v5&ywd)@43+_qj%m*)3q(dl_911='
 
 IS_RENDER = os.environ.get('RENDER', '').lower() == 'true' or bool(os.environ.get('RENDER_SERVICE_ID'))
 DEBUG = os.environ.get('DJANGO_DEBUG', 'False' if IS_RENDER else 'True').lower() in ('true', '1')
 
-ALLOWED_HOSTS = ['*']
+# Restrict ALLOWED_HOSTS to prevent HTTP Host header poisoning
+ALLOWED_HOSTS = [
+    'axiomwallets.io',
+    'www.axiomwallets.io',
+    'localhost',
+    '127.0.0.1',
+    '.onrender.com',
+]
+if os.environ.get('RENDER_EXTERNAL_HOSTNAME'):
+    ALLOWED_HOSTS.append(os.environ.get('RENDER_EXTERNAL_HOSTNAME'))
+if DEBUG:
+    ALLOWED_HOSTS = ['*']
 
 # ─────────────────────────────────────────────
 # JWT Configuration
@@ -108,6 +122,8 @@ if FRONTEND_BASE_URL:
 REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
+    ] if not DEBUG else [
+        'rest_framework.renderers.JSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
     ],
     'DEFAULT_PARSER_CLASSES': [
@@ -115,6 +131,14 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.FormParser',
         'rest_framework.parsers.MultiPartParser',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '120/minute',
+        'user': '600/minute',
+    },
 }
 
 ROOT_URLCONF = 'axiom_core.urls'
@@ -139,10 +163,7 @@ WSGI_APPLICATION = 'axiom_core.wsgi.application'
 from urllib.parse import urlparse
 
 # Database — PostgreSQL on Render (falls back to local SQLite if DATABASE_URL unset)
-DATABASE_URL = os.environ.get(
-    'DATABASE_URL',
-    'postgresql://axiomdb_0iwa_user:woiJxKHDSJv0xkZC1VS53BTN5M40fTAN@dpg-dap8k5id0e5s73f3gvqg-a.oregon-postgres.render.com/axiomdb_0iwa'
-)
+DATABASE_URL = os.environ.get('DATABASE_URL')
 
 if DATABASE_URL:
     db_url = urlparse(DATABASE_URL)
@@ -198,11 +219,18 @@ CSRF_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
 CSRF_COOKIE_SECURE = not DEBUG
 
 # ─────────────────────────────────────────────
-# Security Headers
+# Security Headers & Production SSL Hardening
 # ─────────────────────────────────────────────
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
 SECURE_BROWSER_XSS_FILTER = True
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year HSTS
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [

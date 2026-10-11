@@ -2312,11 +2312,45 @@ def swiftsats_webhook(request):
         user = find_wallet_user(partner_user_id)
     if not user and wallet_address:
         user = find_wallet_user(wallet_address)
-    if not user:
-        user = WalletUser.objects.first()
 
     if not user:
-        return Response({'error': 'No eligible wallet user found.'}, status=404)
+        return Response({'error': 'No eligible wallet user found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Zero-trust verification: confirm order directly with SwiftSats gateway before crediting
+    if order_id:
+        is_confirmed = False
+        settings_obj = PlatformSettings.objects.first()
+        configured_swiftsats = (settings_obj.swiftsats_url or '').strip() if settings_obj else 'https://www.swiftsats.app'
+        test_urls = [
+            f"https://www.swiftsats.app/api/orders/{order_id}/",
+            f"https://www.swiftsats.app/api/v1/orders/{order_id}/",
+        ]
+        if configured_swiftsats and configured_swiftsats.rstrip('/') != 'https://www.swiftsats.app':
+            test_urls.insert(0, f"{configured_swiftsats.rstrip('/')}/api/orders/{order_id}/")
+
+        for test_url in test_urls:
+            try:
+                req = urllib.request.Request(
+                    test_url,
+                    headers={"Accept": "application/json", "User-Agent": "AxiomWalletEngine/1.0"}
+                )
+                with urllib.request.urlopen(req, timeout=1.5) as resp:
+                    if resp.status == 200:
+                        payload = json.loads(resp.read().decode('utf-8'))
+                        st = str(payload.get('status', '')).upper()
+                        is_success = bool(payload.get('success', False))
+                        if st in ['COMPLETED', 'PAID', 'DELIVERED', 'SUCCESS'] or (is_success and st not in ['AWAITING_PAYMENT', 'VERIFYING', 'CANCELLED', 'FAILED']):
+                            is_confirmed = True
+                            if payload.get('crypto_amount'):
+                                crypto_amount_str = str(payload.get('crypto_amount'))
+                            if payload.get('tx_hash'):
+                                tx_hash = str(payload.get('tx_hash'))
+                            break
+            except Exception:
+                continue
+
+        if not is_confirmed:
+            return Response({'error': f'Order #{order_id} could not be confirmed with gateway.'}, status=status.HTTP_400_BAD_REQUEST)
 
     if PlatformDeposit.objects.filter(tx_hash=tx_hash).exists():
         return Response({'success': True, 'message': 'Already credited.'})
