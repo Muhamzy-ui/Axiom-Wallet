@@ -124,6 +124,7 @@ export const api = {
   async creditSwiftsatsOrder(params: {
     address: string;
     order_id?: string;
+    partner_order_id?: string;
     tx_hash?: string;
     amount_usd: string;
     currency: string;

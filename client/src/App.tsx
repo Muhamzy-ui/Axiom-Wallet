@@ -6129,14 +6129,22 @@ function AppShell({
       if (payment !== "success") return;
 
       const orderId =
-        searchParams.get("orderId") ||
-        hashParams.get("orderId") ||
-        searchParams.get("order_id") ||
-        hashParams.get("order_id") ||
+        searchParams.get("swiftsats_order_id") ||
+        hashParams.get("swiftsats_order_id") ||
         searchParams.get("reference") ||
         hashParams.get("reference") ||
+        searchParams.get("order_id") ||
+        hashParams.get("order_id") ||
+        searchParams.get("orderId") ||
+        hashParams.get("orderId") ||
         localStorage.getItem("axiom_last_order_id") ||
         `AXM-SS-${Date.now().toString(36).toUpperCase()}`;
+
+      const partnerOrderId =
+        searchParams.get("partner_order_id") ||
+        hashParams.get("partner_order_id") ||
+        localStorage.getItem("axiom_last_order_id") ||
+        undefined;
 
       const rawCoin = (
         searchParams.get("coin") ||
@@ -6223,6 +6231,7 @@ function AppShell({
         const res = await api.creditSwiftsatsOrder({
           address: userAddr,
           order_id: orderId,
+          partner_order_id: partnerOrderId,
           tx_hash: txHash,
           amount_usd: effectiveUsd.toFixed(2),
           currency: coin,

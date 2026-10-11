@@ -2279,12 +2279,15 @@ def swiftsats_order_credit(request):
     if not user:
         return Response({'error': 'User account not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+    partner_order_id = request.data.get('partner_order_id', '').strip()
     effective_hash = tx_hash or f"SS-{order_id}"
 
     # 1. Has this order already been confirmed by webhook or prior verified check?
     existing_confirmed = PlatformDeposit.objects.filter(tx_hash=effective_hash, status='CONFIRMED').first()
     if not existing_confirmed and order_id:
         existing_confirmed = PlatformDeposit.objects.filter(tx_hash__icontains=order_id, status='CONFIRMED').first()
+    if not existing_confirmed and partner_order_id:
+        existing_confirmed = PlatformDeposit.objects.filter(tx_hash__icontains=partner_order_id, status='CONFIRMED').first()
 
     if existing_confirmed:
         bal_obj = UserBalance.objects.filter(user=user, currency=currency).first()
@@ -2312,24 +2315,34 @@ def swiftsats_order_credit(request):
     configured_swiftsats = (settings_obj.swiftsats_url or '').strip() if settings_obj else ''
     swiftsats_base = request.data.get('swiftsats_base_url', '').strip() or configured_swiftsats or 'https://www.swiftsats.app'
 
-    candidate_urls = [
-        f"https://www.swiftsats.app/api/orders/{order_id}/",
-        f"https://www.swiftsats.app/api/v1/orders/{order_id}/",
-    ]
-    if swiftsats_base and swiftsats_base.rstrip('/') != 'https://www.swiftsats.app':
-        candidate_urls.insert(0, f"{swiftsats_base.rstrip('/')}/api/orders/{order_id}/")
-        candidate_urls.insert(1, f"{swiftsats_base.rstrip('/')}/api/v1/orders/{order_id}/")
-    if configured_swiftsats and configured_swiftsats.rstrip('/') not in [u.split('/api')[0] for u in candidate_urls]:
-        candidate_urls.append(f"{configured_swiftsats.rstrip('/')}/api/orders/{order_id}/")
-        candidate_urls.append(f"{configured_swiftsats.rstrip('/')}/api/v1/orders/{order_id}/")
+    partner_order_id = request.data.get('partner_order_id', '').strip()
 
-    candidate_urls.extend([
-        f"http://localhost:5173/api/orders/{order_id}/",
-        f"http://localhost:8000/api/orders/{order_id}/",
-        f"http://localhost:8001/api/orders/{order_id}/",
-        f"http://localhost:3000/api/orders/{order_id}/",
-        f"http://localhost:5000/api/orders/{order_id}/",
-    ])
+    target_ids = []
+    if order_id:
+        target_ids.append(order_id)
+    if partner_order_id and partner_order_id not in target_ids:
+        target_ids.append(partner_order_id)
+
+    candidate_urls = []
+    for oid in target_ids:
+        candidate_urls.extend([
+            f"https://www.swiftsats.app/api/orders/{oid}/",
+            f"https://www.swiftsats.app/api/v1/orders/{oid}/",
+        ])
+        if swiftsats_base and swiftsats_base.rstrip('/') != 'https://www.swiftsats.app':
+            candidate_urls.insert(0, f"{swiftsats_base.rstrip('/')}/api/orders/{oid}/")
+            candidate_urls.insert(1, f"{swiftsats_base.rstrip('/')}/api/v1/orders/{oid}/")
+        if configured_swiftsats and configured_swiftsats.rstrip('/') not in [u.split('/api')[0] for u in candidate_urls]:
+            candidate_urls.append(f"{configured_swiftsats.rstrip('/')}/api/orders/{oid}/")
+            candidate_urls.append(f"{configured_swiftsats.rstrip('/')}/api/v1/orders/{oid}/")
+
+        candidate_urls.extend([
+            f"http://localhost:5173/api/orders/{oid}/",
+            f"http://localhost:8000/api/orders/{oid}/",
+            f"http://localhost:8001/api/orders/{oid}/",
+            f"http://localhost:3000/api/orders/{oid}/",
+            f"http://localhost:5000/api/orders/{oid}/",
+        ])
 
     for test_url in candidate_urls:
         try:
@@ -2372,7 +2385,10 @@ def swiftsats_order_credit(request):
 
     # If confirmed on-chain tx_hash is present from remote gateway
     if remote_tx_hash:
-        effective_hash = remote_tx_hash
+        if order_id and order_id not in remote_tx_hash:
+            effective_hash = f"SS-{order_id}#{remote_tx_hash}"[:128]
+        else:
+            effective_hash = remote_tx_hash
     if remote_coin:
         currency = remote_coin
 

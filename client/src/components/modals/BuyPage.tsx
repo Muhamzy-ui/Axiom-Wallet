@@ -312,8 +312,9 @@ export const BuyPage: React.FC<BuyPageProps> = ({
     const amountUsdStr = equivalentUsd.toFixed(2);
 
     // 4. RETURN CALLBACK
+    const userIdentifier = authUser?.wallet_address || authUser?.user_id || authUser?.email || localStorage.getItem("axiom_wallet_address") || localStorage.getItem("axiom_user_id") || "";
     const returnUrl = encodeURIComponent("https://www.axiomwallets.io/#wallet");
-    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?source=axiom&order_id=${encodeURIComponent(activeOrder)}&amount=${totalPayableFiat}&amount_ngn=${totalPayableFiat}&amount_usd=${amountUsdStr}&fee=${feeInLocalCurrency}&currency=NGN&crypto=${encodeURIComponent(mappedCoin)}&coin=${encodeURIComponent(mappedCoin)}&wallet=${encodeURIComponent(targetWallet)}&return_url=${returnUrl}`;
+    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?source=axiom&order_id=${encodeURIComponent(activeOrder)}&user_id=${encodeURIComponent(userIdentifier)}&partner_user_id=${encodeURIComponent(userIdentifier)}&amount=${totalPayableFiat}&amount_ngn=${totalPayableFiat}&amount_usd=${amountUsdStr}&fee=${feeInLocalCurrency}&currency=NGN&crypto=${encodeURIComponent(mappedCoin)}&coin=${encodeURIComponent(mappedCoin)}&wallet=${encodeURIComponent(targetWallet)}&return_url=${returnUrl}`;
 
     flash("Redirecting to SwiftSats checkout gateway...");
     setTimeout(() => {
@@ -350,6 +351,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
       const result = await api.creditSwiftsatsOrder({
         address: userAddr,
         order_id: orderId,
+        partner_order_id: orderId,
         tx_hash: txHash.trim() || undefined,
         amount_usd: equivalentUsd.toFixed(2),
         currency: buyCoin,
