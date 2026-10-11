@@ -75,11 +75,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
     const baseUsd = 50;
     const newRate = country.rateToUsd || 1;
     setFiatAmount(String(Math.round(baseUsd * newRate)));
-    if (country.code === "NG") {
-      setPaymentMethod("bank_transfer");
-    } else {
-      setPaymentMethod("card");
-    }
+    setPaymentMethod("bank_transfer");
   };
 
   useEffect(() => {
@@ -99,16 +95,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
     const initialCountry = getCountryByCode(savedCode);
     return String(Math.round(50 * (initialCountry.rateToUsd || 1)));
   });
-  const [paymentMethod, setPaymentMethod] = useState<string>(() => {
-    const savedCode = localStorage.getItem("axiom_user_country") || "US";
-    return savedCode === "NG" ? "bank_transfer" : "card";
-  });
-
-  useEffect(() => {
-    if (selectedCountry.code !== "NG") {
-      setPaymentMethod("card");
-    }
-  }, [selectedCountry.code]);
+  const [paymentMethod, setPaymentMethod] = useState<string>("bank_transfer");
 
   // Step state: "form" (select coin, amount & method) -> "checkout" (order summary & buy/copy wallet) -> "success"
   const [buyStep, setBuyStep] = useState<"form" | "checkout" | "success">("form");
@@ -999,37 +986,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {/* Bank transfer strictly for Nigerian accounts */}
-                  {selectedCountry.code === "NG" && (
-                    <label
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                        padding: "12px 14px",
-                        borderRadius: 12,
-                        border: paymentMethod === "bank_transfer" ? "1.5px solid var(--violet, #7C3AED)" : "1px solid rgba(255, 255, 255, 0.08)",
-                        background: paymentMethod === "bank_transfer" ? "rgba(124, 58, 237, 0.15)" : "rgba(255, 255, 255, 0.03)",
-                        cursor: "pointer",
-                      }}
-                      onClick={() => setPaymentMethod("bank_transfer")}
-                    >
-                      <Building2 size={20} color="#C4B5FD" />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
-                          Instant Nigerian Bank Transfer (NIBSS / Swiftsats)
-                        </div>
-                        <div style={{ fontSize: 11, color: "var(--muted)" }}>
-                          Direct transfer from any Nigerian bank app. Immediate vault credit.
-                        </div>
-                      </div>
-                      <span style={{ fontSize: 10.5, fontWeight: 800, padding: "2px 6px", borderRadius: 6, background: "rgba(16, 185, 129, 0.15)", color: "#10B981" }}>
-                        RECOMMENDED
-                      </span>
-                    </label>
-                  )}
-
-                  {/* Debit / Credit Card & Apple Pay: Shown for all, recommended for non-NG */}
+                  {/* Instant Bank Transfer */}
                   <label
                     style={{
                       display: "flex",
@@ -1037,27 +994,54 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                       gap: 12,
                       padding: "12px 14px",
                       borderRadius: 12,
-                      border: paymentMethod === "card" ? "1.5px solid var(--violet, #7C3AED)" : "1px solid rgba(255, 255, 255, 0.08)",
-                      background: paymentMethod === "card" ? "rgba(124, 58, 237, 0.15)" : "rgba(255, 255, 255, 0.03)",
+                      border: "1.5px solid var(--violet, #7C3AED)",
+                      background: "rgba(124, 58, 237, 0.15)",
                       cursor: "pointer",
                     }}
-                    onClick={() => setPaymentMethod("card")}
+                    onClick={() => setPaymentMethod("bank_transfer")}
                   >
-                    <CreditCard size={20} color="#60A5FA" />
+                    <Building2 size={20} color="#C4B5FD" />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
+                        Instant Bank Transfer (NIBSS / SwiftSats)
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                        Direct transfer from any banking app. Immediate vault credit.
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 10.5, fontWeight: 800, padding: "2px 6px", borderRadius: 6, background: "rgba(16, 185, 129, 0.15)", color: "#10B981" }}>
+                      RECOMMENDED
+                    </span>
+                  </label>
+
+                  {/* Debit / Credit Card & Apple Pay: Coming Soon */}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "12px 14px",
+                      borderRadius: 12,
+                      border: "1px dashed rgba(255, 255, 255, 0.12)",
+                      background: "rgba(255, 255, 255, 0.02)",
+                      cursor: "pointer",
+                      opacity: 0.75,
+                    }}
+                    onClick={() => flash("ℹ️ Debit / Credit Card & Apple Pay is coming soon! Please use Instant Bank Transfer.")}
+                  >
+                    <CreditCard size={20} color="#94A3B8" />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 6 }}>
                         <span>Debit / Credit Card & Apple Pay</span>
-                        {selectedCountry.code !== "NG" && (
-                          <span style={{ fontSize: 10, fontWeight: 800, padding: "1px 6px", borderRadius: 6, background: "rgba(16, 185, 129, 0.15)", color: "#10B981" }}>
-                            RECOMMENDED
-                          </span>
-                        )}
+                        <span style={{ fontSize: 9.5, fontWeight: 800, padding: "2px 6px", borderRadius: 6, background: "rgba(245, 158, 11, 0.15)", color: "#F59E0B", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
+                          COMING SOON
+                        </span>
                       </div>
                       <div style={{ fontSize: 11, color: "var(--muted)" }}>
-                        Visa, Mastercard, AMEX & 1-Click Apple Pay via Swiftsats.
+                        Visa, Mastercard, AMEX & 1-Click Apple Pay via SwiftSats.
                       </div>
                     </div>
-                  </label>
+                  </div>
                 </div>
               </div>
             </div>
