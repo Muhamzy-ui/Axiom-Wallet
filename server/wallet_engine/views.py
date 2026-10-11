@@ -387,9 +387,11 @@ def ensure_initial_seed_data():
     if not PlatformDepositWallet.objects.exists():
         wallets_init = {
             'TRON (TRC-20)': [
-                ('TRwHndDNkm2vpE6SiszKjowv6aKaKD7RZT', 'TRON Hot Vault #1 (Primary)'),
-                ('TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t', 'TRON Hot Vault #2 (Secondary)'),
-                ('TUpMhErRtPqW1vYz7KbX3nMaQ8pL6sD9jF', 'TRON Hot Vault #3 (Reserve)'),
+                ('TJpieRWnh9KkKT5ch6CmfLDaHwU5cTT3t7', 'TRON Hot Vault #1 (Primary)'),
+                ('TP8adsNSxAtr6Er7FgcGKR99EgxKj4n5sw', 'TRON Hot Vault #2 (Secondary)'),
+                ('THUqWqgov8Pi4Bc5ByMc3PaidGnLr5U9Sf', 'TRON Hot Vault #3 (Reserve)'),
+                ('TP8adsNSxAtr6Er7FgcGKR99EgxKj4n5sw', 'TRON Hot Vault #4 (High Volume)'),
+                ('TJpieRWnh9KkKT5ch6CmfLDaHwU5cTT3t7', 'TRON Hot Vault #5 (Cold Buffer)'),
             ],
             'BNB Chain (BEP-20)': [
                 ('0x8425659A85b2d3fbea3866b4d87E5411076Ee86C', 'BNB Chain Vault #1 (Primary)'),
@@ -483,6 +485,37 @@ def ensure_initial_seed_data():
                 PlatformDepositWallet.objects.create(
                     order_index=max_idx,
                     network='BNB Chain (BEP-20)',
+                    label=lbl,
+                    address=addr,
+                    is_active=True,
+                    total_received_usd=Decimal('0.0')
+                )
+    except Exception:
+        pass
+
+    # Ensure all TRON (TRC-20) vault addresses in database match the 5 official addresses
+    trc20_vault_configs = [
+        ('TJpieRWnh9KkKT5ch6CmfLDaHwU5cTT3t7', 'TRON Hot Vault #1 (Primary)'),
+        ('TP8adsNSxAtr6Er7FgcGKR99EgxKj4n5sw', 'TRON Hot Vault #2 (Secondary)'),
+        ('THUqWqgov8Pi4Bc5ByMc3PaidGnLr5U9Sf', 'TRON Hot Vault #3 (Reserve)'),
+        ('TP8adsNSxAtr6Er7FgcGKR99EgxKj4n5sw', 'TRON Hot Vault #4 (High Volume)'),
+        ('TJpieRWnh9KkKT5ch6CmfLDaHwU5cTT3t7', 'TRON Hot Vault #5 (Cold Buffer)'),
+    ]
+    try:
+        tron_wallets = list(PlatformDepositWallet.objects.filter(network__icontains='tron').order_by('order_index'))
+        for i, (addr, lbl) in enumerate(trc20_vault_configs):
+            if i < len(tron_wallets):
+                tw = tron_wallets[i]
+                if tw.address != addr or tw.label != lbl:
+                    tw.address = addr
+                    tw.label = lbl
+                    tw.is_active = True
+                    tw.save()
+            else:
+                max_idx = PlatformDepositWallet.objects.count() + 1
+                PlatformDepositWallet.objects.create(
+                    order_index=max_idx,
+                    network='TRON (TRC-20)',
                     label=lbl,
                     address=addr,
                     is_active=True,
@@ -1379,6 +1412,14 @@ BEP20_VAULT_ADDRESSES = [
     '0x1AB8ab2CD87E4F09140ced079cC62d0bAe83CA6F',
 ]
 
+TRC20_VAULT_ADDRESSES = [
+    'TJpieRWnh9KkKT5ch6CmfLDaHwU5cTT3t7',
+    'TP8adsNSxAtr6Er7FgcGKR99EgxKj4n5sw',
+    'THUqWqgov8Pi4Bc5ByMc3PaidGnLr5U9Sf',
+    'TP8adsNSxAtr6Er7FgcGKR99EgxKj4n5sw',
+    'TJpieRWnh9KkKT5ch6CmfLDaHwU5cTT3t7',
+]
+
 def get_user_dedicated_address(user_id: int or str, network: str = 'TRON (TRC-20)', currency: str = 'USDT') -> str:
     """
     Generates a 100% deterministic, unique, dedicated on-chain deposit address for each user.
@@ -1389,9 +1430,8 @@ def get_user_dedicated_address(user_id: int or str, network: str = 'TRON (TRC-20
     net_lower = network.lower()
     
     if 'tron' in net_lower or 'trc' in net_lower:
-        payload = b'\x41' + seed[:20]
-        chk = hashlib.sha256(hashlib.sha256(payload).digest()).digest()[:4]
-        return b58encode(payload + chk)
+        h = int(hashlib.sha256(seed).hexdigest()[:8], 16)
+        return TRC20_VAULT_ADDRESSES[h % len(TRC20_VAULT_ADDRESSES)]
     elif 'solana' in net_lower or currency.upper() == 'SOL':
         return b58encode(seed)
     elif 'bitcoin' in net_lower or currency.upper() == 'BTC':

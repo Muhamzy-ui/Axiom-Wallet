@@ -4534,7 +4534,7 @@ const SUPPORTED_CHAINS: ChainConfig[] = [
     formatGuide: 'TRON address starts with uppercase "T" (34 characters)',
     iconBg: 'linear-gradient(135deg, #EF4444, #B91C1C)',
     iconSymbol: 'TRX',
-    placeholder: 'TYD9yZ7G8gM2tY9vK8nP7wE6rT5yU4iO3p',
+    placeholder: 'TJpieRWnh9KkKT5ch6CmfLDaHwU5cTT3t7',
     validate: (addr: string) => {
       const a = addr.trim();
       if (!a) return { isValid: false, warning: 'Address is required to receive USDT TRC-20' };

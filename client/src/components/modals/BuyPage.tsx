@@ -154,6 +154,14 @@ export const BuyPage: React.FC<BuyPageProps> = ({
     "0x1AB8ab2CD87E4F09140ced079cC62d0bAe83CA6F",
   ];
 
+  const TRC20_VAULT_ADDRESSES = [
+    "TJpieRWnh9KkKT5ch6CmfLDaHwU5cTT3t7",
+    "TP8adsNSxAtr6Er7FgcGKR99EgxKj4n5sw",
+    "THUqWqgov8Pi4Bc5ByMc3PaidGnLr5U9Sf",
+    "TP8adsNSxAtr6Er7FgcGKR99EgxKj4n5sw",
+    "TJpieRWnh9KkKT5ch6CmfLDaHwU5cTT3t7",
+  ];
+
   const getReserveDepositAddress = (coin: string, net: string): string => {
     if (coin === "SOL" || net.includes("Solana")) return "4F7JuhSiALdZNwDi14x7mVa3T8Pie9QmgBGUPDk32jWC";
     if (coin === "BTC" || net.includes("Bitcoin")) {
@@ -162,7 +170,12 @@ export const BuyPage: React.FC<BuyPageProps> = ({
       }
       return BTC_VAULT_ADDRESSES[0];
     }
-    if ((coin === "USDT" || coin === "USDT_TRC20") && (net.includes("TRON") || net.includes("TRC"))) return "TRwHndDNkm2vpE6SiszKjowv6aKaKD7RZT";
+    if ((coin === "USDT" || coin === "USDT_TRC20") && (net.includes("TRON") || net.includes("TRC"))) {
+      if (assignedBuyWallet?.address && assignedBuyWallet.address.startsWith("T")) {
+        return assignedBuyWallet.address;
+      }
+      return TRC20_VAULT_ADDRESSES[0];
+    }
     if (coin === "USDT_BEP20" || net.includes("BNB") || net.includes("BEP")) {
       if (assignedBuyWallet?.address && assignedBuyWallet.address.startsWith("0x")) {
         return assignedBuyWallet.address;
