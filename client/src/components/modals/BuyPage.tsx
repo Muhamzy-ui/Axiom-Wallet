@@ -506,35 +506,19 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                      <span style={{ color: "var(--muted)" }}>Total to Charge:</span>
+                      <span style={{ fontWeight: 800, color: "var(--violet, #7C3AED)", fontSize: 15 }}>
+                        {selectedCountry.currencySymbol}{totalPayableFiat.toLocaleString()} {selectedCountry.currency}
+                      </span>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
                       <span style={{ color: "var(--muted)" }}>Receiving Crypto:</span>
                       <span style={{ fontWeight: 800, color: "#10B981", fontSize: 14 }}>
                         +{tokensReceived < 1 ? tokensReceived.toFixed(6) : tokensReceived.toFixed(4)} {buyCoin}
                         <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 500, marginLeft: 6 }}>
                           (≈ ${equivalentUsd.toFixed(2)} USD)
                         </span>
-                      </span>
-                    </div>
-
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                      <span style={{ color: "var(--muted)" }}>Crypto Subtotal:</span>
-                      <span style={{ fontWeight: 600, color: "var(--text)" }}>
-                        {selectedCountry.currencySymbol}{baseSubtotalFiat.toLocaleString()} {selectedCountry.currency}
-                      </span>
-                    </div>
-
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                      <span style={{ color: "var(--muted)" }}>
-                        Processing Fee ({equivalentUsd < 25 ? "$2–$25: ₦1,700" : equivalentUsd < 100 ? "$25–$100: ₦3,400" : "$100+: $3.00 USD"}):
-                      </span>
-                      <span style={{ fontWeight: 700, color: "#F59E0B" }}>
-                        +{selectedCountry.currencySymbol}{feeInLocalCurrency.toLocaleString()} {selectedCountry.currency}
-                      </span>
-                    </div>
-
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, paddingTop: 6, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
-                      <span style={{ color: "var(--muted)", fontWeight: 700 }}>Total to Charge:</span>
-                      <span style={{ fontWeight: 800, color: "var(--violet, #7C3AED)", fontSize: 15 }}>
-                        {selectedCountry.currencySymbol}{totalPayableFiat.toLocaleString()} {selectedCountry.currency}
                       </span>
                     </div>
 
@@ -773,24 +757,8 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                     </div>
 
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                      <span style={{ color: "var(--muted)" }}>Crypto Subtotal:</span>
-                      <span style={{ fontWeight: 600 }}>
-                        {selectedCountry.currencySymbol}{baseSubtotalFiat.toLocaleString()} {selectedCountry.currency} (+{tokensReceived < 1 ? tokensReceived.toFixed(6) : tokensReceived.toFixed(4)} {buyCoin})
-                      </span>
-                    </div>
-
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                      <span style={{ color: "var(--muted)" }}>
-                        Order Fee ({equivalentUsd < 25 ? "$2–$25: ₦1,700" : equivalentUsd < 100 ? "$25–$100: ₦3,400" : "$100+: $3.00"}):
-                      </span>
-                      <span style={{ fontWeight: 700, color: "#F59E0B" }}>
-                        +{selectedCountry.currencySymbol}{feeInLocalCurrency.toLocaleString()} {selectedCountry.currency}
-                      </span>
-                    </div>
-
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, paddingTop: 4, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
-                      <span style={{ color: "var(--muted)", fontWeight: 700 }}>Amount to Send:</span>
-                      <span style={{ fontWeight: 900, color: "var(--violet, #7C3AED)", fontSize: 16 }}>
+                      <span style={{ color: "var(--muted)" }}>Amount to Send:</span>
+                      <span style={{ fontWeight: 800, color: "var(--violet, #7C3AED)", fontSize: 15 }}>
                         {selectedCountry.currencySymbol}{totalPayableFiat.toLocaleString()} {selectedCountry.currency}
                       </span>
                     </div>
@@ -1018,7 +986,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                 {/* You Pay Fiat Box */}
                 <div className="converter-box" style={{ marginBottom: 10 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>
-                    Crypto Value ({selectedCountry.currency})
+                    You Pay ({selectedCountry.currency})
                   </div>
                   <div className="converter-row">
                     <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
@@ -1042,7 +1010,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
 
                 {/* Preset Chips (USD-denominated, auto-converts into selected local fiat currency) */}
                 <div className="preset-chips-row" style={{ marginBottom: 12 }}>
-                  {[2, 5, 10, 25, 50, 100, 200, 500].map((usdAmt) => {
+                  {[5, 10, 25, 50, 100, 200, 250, 500].map((usdAmt) => {
                     const convertedFiat = Math.round(usdAmt * rateToUsd);
                     const isActive = Math.round(parseFloat(fiatAmount || "0")) === convertedFiat;
                     return (
@@ -1075,45 +1043,9 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                   </div>
                 </div>
 
-                {/* Transparent Order Fee & Total Card */}
-                <div
-                  style={{
-                    marginTop: 10,
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    background: "rgba(124, 58, 237, 0.08)",
-                    border: "1px solid rgba(124, 58, 237, 0.2)",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 6,
-                    fontSize: 12,
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ color: "var(--muted)" }}>Crypto Subtotal:</span>
-                    <span style={{ fontWeight: 600, color: "var(--text)" }}>
-                      {selectedCountry.currencySymbol}{baseSubtotalFiat.toLocaleString()} {selectedCountry.currency} (≈ ${equivalentUsd.toFixed(2)} USD)
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ color: "var(--muted)" }}>
-                      Processing Fee ({equivalentUsd < 25 ? "$2–$25: ₦1,700" : equivalentUsd < 100 ? "$25–$100: ₦3,400" : "$100+: $3.00 USD"}):
-                    </span>
-                    <span style={{ fontWeight: 700, color: "#F59E0B" }}>
-                      +{selectedCountry.currencySymbol}{feeInLocalCurrency.toLocaleString()} {selectedCountry.currency}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 6, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
-                    <span style={{ fontWeight: 800, color: "var(--text)" }}>Total to Pay:</span>
-                    <span style={{ fontWeight: 900, fontSize: 14, color: "var(--violet, #7C3AED)" }}>
-                      {selectedCountry.currencySymbol}{totalPayableFiat.toLocaleString()} {selectedCountry.currency}
-                    </span>
-                  </div>
-                </div>
-
                 <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8, display: "flex", justifyContent: "space-between" }}>
                   <span>Rate: 1 USD ≈ {selectedCountry.currencySymbol}{rateToUsd >= 100 ? rateToUsd.toLocaleString() : rateToUsd} {selectedCountry.currency}</span>
-                  <span style={{ color: "#C4B5FD", fontWeight: 600 }}>Tiers: $2–$25 (₦1,700) • $25–$100 (₦3,400) • $100+ ($3)</span>
+                  <span style={{ color: "#10B981", fontWeight: 700 }}>0% Processing Markup</span>
                 </div>
               </div>
 
