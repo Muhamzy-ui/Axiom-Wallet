@@ -136,14 +136,17 @@ export const BuyPage: React.FC<BuyPageProps> = ({
       .catch(() => {});
   }, [buyCoin, buyNetwork, authUser?.wallet_address]);
 
-  const getFallbackAddress = (net: string) => {
-    if (net.includes("TRON")) return "TRwHndDNkm2vpE6SiszKjowv6aKaKD7RZT";
-    if (net.includes("BNB") || net.includes("Ethereum")) return "0x36b25000587762425F2682d721A57eD7d74671F0";
-    if (net.includes("Bitcoin")) return "bc1qv4vq3xzpszeflkqnpvzsx37juu65lwd974fd9e";
-    return "4F7JuhSiALdZNwDi14x7mVa3T8Pie9QmgBGUPDk32jWC";
+  // 3. VALID RESERVE DEPOSIT ADDRESSES
+  // Official reserve deposit addresses (no dummy addresses with letter 'O')
+  const getReserveDepositAddress = (coin: string, net: string): string => {
+    if (coin === "SOL" || net.includes("Solana")) return "4F7JuhSiALdZNwDi14x7mVa3T8Pie9QmgBGUPDk32jWC";
+    if (coin === "BTC" || net.includes("Bitcoin")) return "bc1qv4vq3xzpszeflkqnpvzsx37juu65lwd974fd9e";
+    if ((coin === "USDT" || coin === "USDT_TRC20") && (net.includes("TRON") || net.includes("TRC"))) return "TRwHndDNkm2vpE6SiszKjowv6aKaKD7RZT";
+    // EVM (ETH, BNB, Base USDC, USDT BEP-20)
+    return "0x36b25000587762425F2682d721A57eD7d74671F0";
   };
 
-  const activeBuyDepositAddress = assignedBuyWallet?.address || getFallbackAddress(buyNetwork);
+  const activeBuyDepositAddress = getReserveDepositAddress(buyCoin, buyNetwork);
 
   // Price & Conversion math
   const buyTokenObj = marketStore.getToken(buyCoin);
@@ -158,8 +161,8 @@ export const BuyPage: React.FC<BuyPageProps> = ({
       ? 77724.0
       : 2650.0;
 
-  // Custom rate or default rate
-  const rateToUsd = selectedCountry.rateToUsd || 1;
+  // 1. DOLLAR EXCHANGE RATE: fixed baseline rate of ₦1,425.00 / $1.00 USD
+  const rateToUsd = selectedCountry.code === "NG" ? 1425.0 : (selectedCountry.rateToUsd || 1);
   const parsedFiat = parseFloat(fiatAmount) || 0;
   const equivalentUsd = rateToUsd > 0 ? parsedFiat / rateToUsd : parsedFiat;
   const tokensReceived = buyPriceUsd > 0 ? equivalentUsd / buyPriceUsd : 0;
@@ -194,24 +197,48 @@ export const BuyPage: React.FC<BuyPageProps> = ({
     const activeOrder = orderId || `AXM-NGN-${Math.floor(100000 + Math.random() * 900000)}`;
     setOrderId(activeOrder);
 
-    // Map selected coin & network to explicit SwiftSats coin code
-    let mappedCoin: string = buyCoin;
-    if (buyCoin === "USDT") {
-      if (buyNetwork.includes("TRON") || buyNetwork.includes("TRC")) mappedCoin = "USDT_TRC20";
-      else if (buyNetwork.includes("BNB") || buyNetwork.includes("BEP")) mappedCoin = "USDT_BEP20";
-      else if (buyNetwork.includes("Solana")) mappedCoin = "SOL";
-      else if (buyNetwork.includes("Ethereum")) mappedCoin = "USDT_ERC20";
-      else mappedCoin = "USDT_TRC20";
+    // Cache order details for callback resumption
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.setItem("axiom_last_order_id", activeOrder);
+      window.localStorage.setItem("axiom_last_buy_usd", equivalentUsd.toFixed(2));
+      window.localStorage.setItem("axiom_last_buy_coin", buyCoin);
     }
 
-    // Ensure valid deposit destination address
-    const targetWallet = activeBuyDepositAddress || getFallbackAddress(buyNetwork);
+    // 2. Explicit Coin & Network Mapping:
+    // • Solana -> crypto=SOL&coin=SOL
+    // • Bitcoin -> crypto=BTC&coin=BTC
+    // • USDC -> crypto=USDC&coin=USDC
+    // • Ethereum -> crypto=ETH&coin=ETH
+    // • USDT on TRON -> crypto=USDT_TRC20&coin=USDT_TRC20
+    // • USDT on BNB Chain -> crypto=USDT_BEP20&coin=USDT_BEP20
+    let mappedCoin = "USDT_BEP20";
+    if (buyCoin === "SOL") {
+      mappedCoin = "SOL";
+    } else if (buyCoin === "BTC") {
+      mappedCoin = "BTC";
+    } else if (buyCoin === "USDC") {
+      mappedCoin = "USDC";
+    } else if (buyCoin === "ETH") {
+      mappedCoin = "ETH";
+    } else if (buyCoin === "USDT") {
+      if (buyNetwork.includes("TRON") || buyNetwork.includes("TRC")) {
+        mappedCoin = "USDT_TRC20";
+      } else {
+        mappedCoin = "USDT_BEP20";
+      }
+    }
 
-    // Calculate Naira amount accurately at 1425 rate
-    const nairaAmount = Math.round(equivalentUsd * 1425.00);
+    // 3. Official Reserve Deposit Addresses (no dummy addresses, no invalid Base58 'O')
+    const targetWallet = getReserveDepositAddress(mappedCoin, buyNetwork);
 
+    // 1. DOLLAR EXCHANGE RATE: fixed baseline rate of ₦1,425.00 / $1.00 USD
+    // Pass both calculated Naira amount and USD amount
+    const nairaAmount = Math.round(equivalentUsd * 1425);
+    const amountUsdStr = equivalentUsd.toFixed(2);
+
+    // 4. RETURN CALLBACK
     const returnUrl = encodeURIComponent("https://www.axiomwallets.io/#wallet");
-    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?source=axiom&order_id=${encodeURIComponent(activeOrder)}&amount=${encodeURIComponent(nairaAmount)}&amount_usd=${encodeURIComponent(equivalentUsd.toFixed(2))}&currency=NGN&crypto=${encodeURIComponent(mappedCoin)}&coin=${encodeURIComponent(mappedCoin)}&wallet=${encodeURIComponent(targetWallet)}&return_url=${returnUrl}`;
+    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?source=axiom&order_id=${encodeURIComponent(activeOrder)}&amount=${nairaAmount}&amount_usd=${amountUsdStr}&currency=NGN&crypto=${encodeURIComponent(mappedCoin)}&coin=${encodeURIComponent(mappedCoin)}&wallet=${encodeURIComponent(targetWallet)}&return_url=${returnUrl}`;
 
     flash("Redirecting to SwiftSats checkout gateway...");
     setTimeout(() => {

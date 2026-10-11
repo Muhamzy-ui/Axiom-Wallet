@@ -6115,45 +6115,136 @@ function AppShell({
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, [authUser.is_admin]);
 
-  // Intercept payment gateway return callback (from Swiftsats)
+  // Intercept payment gateway return callback (from SwiftSats)
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const parsePaymentCallback = () => {
+    const parsePaymentCallback = async () => {
       const searchParams = new URLSearchParams(window.location.search);
       const hash = window.location.hash;
       const hashQuery = hash.includes("?") ? hash.substring(hash.indexOf("?") + 1) : "";
       const hashParams = new URLSearchParams(hashQuery);
 
       const payment = searchParams.get("payment") || hashParams.get("payment");
-      const orderId = searchParams.get("orderId") || hashParams.get("orderId") || searchParams.get("order_id") || hashParams.get("order_id");
-      const rawCoin = (searchParams.get("coin") || hashParams.get("coin") || searchParams.get("crypto") || hashParams.get("crypto") || "USDT").toUpperCase();
-      const coin = rawCoin.includes("USDT") ? "USDT" : rawCoin.includes("USDC") ? "USDC" : rawCoin;
-      const amountStr = searchParams.get("amount") || hashParams.get("amount");
-      const txHash = searchParams.get("tx_hash") || hashParams.get("tx_hash") || searchParams.get("txHash") || hashParams.get("txHash") || undefined;
+      if (payment !== "success") return;
 
-      if (payment === "success" && orderId) {
-        const creditedAmount = parseFloat(amountStr || "0");
-        if (creditedAmount > 0) {
-          marketStore.depositFunds(coin, creditedAmount);
+      const orderId =
+        searchParams.get("orderId") ||
+        hashParams.get("orderId") ||
+        searchParams.get("order_id") ||
+        hashParams.get("order_id") ||
+        searchParams.get("reference") ||
+        hashParams.get("reference") ||
+        localStorage.getItem("axiom_last_order_id") ||
+        `AXM-SS-${Date.now().toString(36).toUpperCase()}`;
+
+      const rawCoin = (
+        searchParams.get("coin") ||
+        hashParams.get("coin") ||
+        searchParams.get("crypto") ||
+        hashParams.get("crypto") ||
+        localStorage.getItem("axiom_last_buy_coin") ||
+        "USDT"
+      ).toUpperCase();
+
+      // Normalize coin: USDT_TRC20 / USDT_BEP20 -> USDT, USDC -> USDC
+      const coin = rawCoin.includes("USDT")
+        ? "USDT"
+        : rawCoin.includes("USDC")
+        ? "USDC"
+        : rawCoin;
+
+      const amountUsdParam = searchParams.get("amount_usd") || hashParams.get("amount_usd");
+      const cryptoAmountParam = searchParams.get("crypto_amount") || hashParams.get("crypto_amount");
+      const rawAmountStr = searchParams.get("amount") || hashParams.get("amount");
+      const txHash =
+        searchParams.get("tx_hash") ||
+        hashParams.get("tx_hash") ||
+        searchParams.get("txHash") ||
+        hashParams.get("txHash") ||
+        undefined;
+
+      // Determine USD amount: if amount is large (e.g. Naira > 500), convert at 1425 baseline
+      let effectiveUsd = 10.0;
+      if (amountUsdParam && parseFloat(amountUsdParam) > 0) {
+        effectiveUsd = parseFloat(amountUsdParam);
+      } else if (rawAmountStr) {
+        const parsed = parseFloat(rawAmountStr);
+        if (parsed > 500) {
+          // Naira amount returned
+          effectiveUsd = Math.round((parsed / 1425) * 100) / 100;
+        } else if (parsed > 0) {
+          effectiveUsd = parsed;
         }
+      } else {
+        const savedUsd = localStorage.getItem("axiom_last_buy_usd");
+        if (savedUsd) effectiveUsd = parseFloat(savedUsd) || 10.0;
+      }
 
-        const userAddr = authUser?.wallet_address || authUser?.user_id || authUser?.email || localStorage.getItem("axiom_wallet_address") || localStorage.getItem("axiom_user_id") || "axiom_user";
-        api.creditSwiftsatsOrder({
+      // Calculate token units to credit
+      let tokenUnits = effectiveUsd;
+      if (cryptoAmountParam && parseFloat(cryptoAmountParam) > 0) {
+        tokenUnits = parseFloat(cryptoAmountParam);
+      } else if (coin !== "USDT" && coin !== "USDC") {
+        const tokenObj = marketStore.getToken(coin);
+        const price =
+          tokenObj && tokenObj.numericPrice > 0
+            ? tokenObj.numericPrice
+            : coin === "SOL"
+            ? 121.69
+            : coin === "BTC"
+            ? 77724.0
+            : coin === "ETH"
+            ? 2650.0
+            : 1.0;
+        tokenUnits = effectiveUsd / price;
+      }
+
+      // 1. Credit user balance in store immediately
+      marketStore.depositFunds(coin, tokenUnits);
+
+      // 2. Set view to wallet and display confirmation
+      setView("wallet");
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("axiom_active_view", "wallet");
+      }
+      flash(`✅ Payment Successful! Credited +${tokenUnits < 1 ? tokenUnits.toFixed(4) : tokenUnits.toFixed(2)} ${coin} ($${effectiveUsd.toFixed(2)} USD).`);
+
+      // 3. Submit credit verification to backend API
+      const userAddr =
+        authUser?.wallet_address ||
+        authUser?.user_id ||
+        authUser?.email ||
+        localStorage.getItem("axiom_wallet_address") ||
+        localStorage.getItem("axiom_user_id") ||
+        "axiom_user";
+
+      try {
+        const res = await api.creditSwiftsatsOrder({
           address: userAddr,
           order_id: orderId,
           tx_hash: txHash,
-          amount_usd: amountStr || "10.0",
+          amount_usd: effectiveUsd.toFixed(2),
           currency: coin,
-        }).then(() => {
-          marketStore.syncBackendPortfolio(true);
-          notificationService.triggerImmediateSync();
-        }).catch(() => {});
+        });
 
-        // Clean query parameters from URL without reloading
-        const cleanUrl = window.location.pathname + "#wallet";
-        window.history.replaceState({}, document.title, cleanUrl);
+        if (res && res.credited_amount) {
+          const verifiedAmt = parseFloat(res.credited_amount);
+          if (verifiedAmt > 0 && verifiedAmt !== tokenUnits) {
+            marketStore.depositFunds(coin, verifiedAmt);
+          }
+        }
+      } catch (err) {
+        // Balance already credited optimistically
+      } finally {
+        // Strictly trigger portfolio sync and notifications
+        await marketStore.syncBackendPortfolio(true);
+        notificationService.triggerImmediateSync();
       }
+
+      // Clean query parameters from URL without reloading
+      const cleanUrl = window.location.pathname + "#wallet";
+      window.history.replaceState({}, document.title, cleanUrl);
     };
 
     parsePaymentCallback();

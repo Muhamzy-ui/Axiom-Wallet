@@ -390,36 +390,26 @@ def ensure_initial_seed_data():
                 ('TRwHndDNkm2vpE6SiszKjowv6aKaKD7RZT', 'TRON Hot Vault #1 (Primary)'),
                 ('TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t', 'TRON Hot Vault #2 (Secondary)'),
                 ('TUpMhErRtPqW1vYz7KbX3nMaQ8pL6sD9jF', 'TRON Hot Vault #3 (Reserve)'),
-                ('TPY9xK8mL2nQ7wE6rT5yU4iO3pA2sD1fGh', 'TRON Hot Vault #4 (High Volume)'),
-                ('TQn8vB2mK8pL7wE6rT5yU4iO3pA2sD1fXy', 'TRON Hot Vault #5 (Cold Buffer)'),
             ],
             'BNB Chain (BEP-20)': [
                 ('0x36b25000587762425F2682d721A57eD7d74671F0', 'BNB Chain Vault #1 (Primary)'),
                 ('0x8894E0a0c962CB723c1976a4421c95949bE2D4E3', 'BNB Chain Vault #2 (Secondary)'),
                 ('0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE', 'BNB Chain Vault #3 (Reserve)'),
-                ('0xD551234Ae421e3BCBA99A0Da6d736074f22192FF', 'BNB Chain Vault #4 (High Volume)'),
-                ('0x564286362092D8e7936f0549571a803B203aAceA', 'BNB Chain Vault #5 (Cold Buffer)'),
             ],
             'Solana (SPL)': [
                 ('4F7JuhSiALdZNwDi14x7mVa3T8Pie9QmgBGUPDk32jWC', 'Solana Hot Vault #1 (Primary)'),
                 ('AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU', 'Solana Hot Vault #2 (Secondary)'),
                 ('5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1', 'Solana Hot Vault #3 (Reserve)'),
-                ('9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM', 'Solana Hot Vault #4 (High Volume)'),
-                ('3J98t1WpEZ73CNmQvieCrnyiWrnqRhWNLy', 'Solana Hot Vault #5 (Cold Buffer)'),
             ],
             'Ethereum (ERC-20)': [
-                ('0x71C836e522F5b8Fbe40d34341A5a507E78e1215B', 'Ethereum Vault #1 (Primary)'),
+                ('0x36b25000587762425F2682d721A57eD7d74671F0', 'Ethereum Vault #1 (Primary)'),
                 ('0x28C6c06298d514Db089934071355E5743bf21d60', 'Ethereum Vault #2 (Secondary)'),
                 ('0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549', 'Ethereum Vault #3 (Reserve)'),
-                ('0xDFd5293D8e347dFe59E90eFd55b2956a13430d71', 'Ethereum Vault #4 (High Volume)'),
-                ('0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8', 'Ethereum Vault #5 (Cold Buffer)'),
             ],
             'Bitcoin (BTC)': [
-                ('bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq', 'Bitcoin Vault #1 (Primary SegWit)'),
+                ('bc1qv4vq3xzpszeflkqnpvzsx37juu65lwd974fd9e', 'Bitcoin Vault #1 (Primary SegWit)'),
                 ('bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh', 'Bitcoin Vault #2 (Secondary SegWit)'),
                 ('1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', 'Bitcoin Vault #3 (Legacy Reserve)'),
-                ('3J98t1WpEZ73CNmQvieCrnyiWrnqRhWNLy', 'Bitcoin Vault #4 (Taproot Buffer)'),
-                ('bc1qm34lsc65zpw79lxes69zkqmk6ee3ewf0j77s3h', 'Bitcoin Vault #5 (Cold Vault)'),
             ],
         }
         idx = 1
