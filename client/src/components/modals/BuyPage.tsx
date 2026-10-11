@@ -204,6 +204,10 @@ export const BuyPage: React.FC<BuyPageProps> = ({
   };
 
   const handleStartCheckout = () => {
+    if (paymentMethod === "card") {
+      flash("ℹ️ Debit / Credit Card & Apple Pay is temporarily disabled. Please use Instant Bank Transfer.");
+      return;
+    }
     handleProceedToGateway();
   };
 
@@ -1014,31 +1018,34 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                     </span>
                   </label>
 
-                  {/* Debit / Credit Card & Apple Pay: Coming Soon */}
+                  {/* Debit / Credit Card & Apple Pay: Disabled & Coming Soon */}
                   <div
+                    role="button"
+                    aria-disabled="true"
                     style={{
                       display: "flex",
                       alignItems: "center",
                       gap: 12,
                       padding: "12px 14px",
                       borderRadius: 12,
-                      border: "1px dashed rgba(255, 255, 255, 0.12)",
+                      border: "1px dashed rgba(255, 255, 255, 0.15)",
                       background: "rgba(255, 255, 255, 0.02)",
-                      cursor: "pointer",
-                      opacity: 0.75,
+                      cursor: "not-allowed",
+                      opacity: 0.55,
+                      userSelect: "none",
                     }}
-                    onClick={() => flash("ℹ️ Debit / Credit Card & Apple Pay is coming soon! Please use Instant Bank Transfer.")}
+                    onClick={() => flash("ℹ️ Debit / Credit Card & Apple Pay is temporarily disabled (Coming Soon). Please use Instant Bank Transfer.")}
                   >
                     <CreditCard size={20} color="#94A3B8" />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 6 }}>
-                        <span>Debit / Credit Card & Apple Pay</span>
+                        <span style={{ color: "var(--muted)" }}>Debit / Credit Card & Apple Pay</span>
                         <span style={{ fontSize: 9.5, fontWeight: 800, padding: "2px 6px", borderRadius: 6, background: "rgba(245, 158, 11, 0.15)", color: "#F59E0B", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
-                          COMING SOON
+                          DISABLED • COMING SOON
                         </span>
                       </div>
                       <div style={{ fontSize: 11, color: "var(--muted)" }}>
-                        Visa, Mastercard, AMEX & 1-Click Apple Pay via SwiftSats.
+                        Visa, Mastercard, AMEX & 1-Click Apple Pay via SwiftSats (Coming Soon).
                       </div>
                     </div>
                   </div>
@@ -1051,7 +1058,8 @@ export const BuyPage: React.FC<BuyPageProps> = ({
               <button
                 type="button"
                 className="pro-submit-btn"
-                disabled={paymentPhase === "redirecting"}
+                disabled={paymentPhase === "redirecting" || paymentMethod === "card"}
+                style={paymentMethod === "card" ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
                 onClick={handleStartCheckout}
               >
                 {paymentPhase === "redirecting" ? (
@@ -1059,6 +1067,8 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                     <RefreshCw size={18} className="animate-spin" />
                     <span>Redirecting to SwiftSats...</span>
                   </>
+                ) : paymentMethod === "card" ? (
+                  <span>Method Unavailable (Coming Soon)</span>
                 ) : (
                   <>
                     <span>Continue to Buy {selectedCountry.currencySymbol}{parsedFiat.toLocaleString()} {selectedCountry.currency}</span>
