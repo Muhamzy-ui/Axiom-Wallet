@@ -57,6 +57,14 @@ const BTC_VAULT_ADDRESSES = [
   "bc1qeswlarfqyaf8kgnjqa5ct3jayap3lmt7v32zag",
 ];
 
+const BEP20_VAULT_ADDRESSES = [
+  "0x8425659A85b2d3fbea3866b4d87E5411076Ee86C",
+  "0x12511C86b0613F6eF26Db0A685Bc012E70D0bD80",
+  "0x20fFA10142c7DD6f3382A8fe037FFC48C510DAD5",
+  "0xE1Af5D79f9F29F5ACa0Efa3FA40bA2AcAd823eC1",
+  "0x1AB8ab2CD87E4F09140ced079cC62d0bAe83CA6F",
+];
+
 export const DepositPage: React.FC<DepositPageProps> = ({
   onClose,
   onDone,
@@ -198,6 +206,9 @@ export const DepositPage: React.FC<DepositPageProps> = ({
     } else if (netLower.includes('bitcoin') || depositCoin === 'BTC') {
       const idx = Math.abs(h1) % BTC_VAULT_ADDRESSES.length;
       return BTC_VAULT_ADDRESSES[idx];
+    } else if (netLower.includes('bnb') || netLower.includes('bep')) {
+      const idx = Math.abs(h1) % BEP20_VAULT_ADDRESSES.length;
+      return BEP20_VAULT_ADDRESSES[idx];
     } else {
       const hex = `${Math.abs(h1).toString(16).padStart(8, '0')}${Math.abs(h2).toString(16).padStart(8, '0')}${Math.abs(h1 ^ h2).toString(16).padStart(8, '0')}`;
       return `0x${hex.repeat(3).slice(0, 40)}`;

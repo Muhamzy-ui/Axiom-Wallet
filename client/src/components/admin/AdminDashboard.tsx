@@ -4555,7 +4555,7 @@ const SUPPORTED_CHAINS: ChainConfig[] = [
     formatGuide: 'EVM address starts with "0x" (42 characters)',
     iconBg: 'linear-gradient(135deg, #F59E0B, #D97706)',
     iconSymbol: 'BNB',
-    placeholder: '0x71C836e522F5b8Fbe40d34341A5a507E78e1215B',
+    placeholder: '0x8425659A85b2d3fbea3866b4d87E5411076Ee86C',
     validate: (addr: string) => {
       const a = addr.trim();
       if (!a) return { isValid: false, warning: 'Address is required to receive BEP-20 deposits' };

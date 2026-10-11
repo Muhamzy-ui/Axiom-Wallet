@@ -146,6 +146,14 @@ export const BuyPage: React.FC<BuyPageProps> = ({
     "bc1qeswlarfqyaf8kgnjqa5ct3jayap3lmt7v32zag",
   ];
 
+  const BEP20_VAULT_ADDRESSES = [
+    "0x8425659A85b2d3fbea3866b4d87E5411076Ee86C",
+    "0x12511C86b0613F6eF26Db0A685Bc012E70D0bD80",
+    "0x20fFA10142c7DD6f3382A8fe037FFC48C510DAD5",
+    "0xE1Af5D79f9F29F5ACa0Efa3FA40bA2AcAd823eC1",
+    "0x1AB8ab2CD87E4F09140ced079cC62d0bAe83CA6F",
+  ];
+
   const getReserveDepositAddress = (coin: string, net: string): string => {
     if (coin === "SOL" || net.includes("Solana")) return "4F7JuhSiALdZNwDi14x7mVa3T8Pie9QmgBGUPDk32jWC";
     if (coin === "BTC" || net.includes("Bitcoin")) {
@@ -155,7 +163,13 @@ export const BuyPage: React.FC<BuyPageProps> = ({
       return BTC_VAULT_ADDRESSES[0];
     }
     if ((coin === "USDT" || coin === "USDT_TRC20") && (net.includes("TRON") || net.includes("TRC"))) return "TRwHndDNkm2vpE6SiszKjowv6aKaKD7RZT";
-    // EVM (ETH, BNB, Base USDC, USDT BEP-20)
+    if (coin === "USDT_BEP20" || net.includes("BNB") || net.includes("BEP")) {
+      if (assignedBuyWallet?.address && assignedBuyWallet.address.startsWith("0x")) {
+        return assignedBuyWallet.address;
+      }
+      return BEP20_VAULT_ADDRESSES[0];
+    }
+    // EVM (ETH, Base USDC)
     return "0x36b25000587762425F2682d721A57eD7d74671F0";
   };
 

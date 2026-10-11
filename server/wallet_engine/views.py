@@ -392,9 +392,11 @@ def ensure_initial_seed_data():
                 ('TUpMhErRtPqW1vYz7KbX3nMaQ8pL6sD9jF', 'TRON Hot Vault #3 (Reserve)'),
             ],
             'BNB Chain (BEP-20)': [
-                ('0x36b25000587762425F2682d721A57eD7d74671F0', 'BNB Chain Vault #1 (Primary)'),
-                ('0x8894E0a0c962CB723c1976a4421c95949bE2D4E3', 'BNB Chain Vault #2 (Secondary)'),
-                ('0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE', 'BNB Chain Vault #3 (Reserve)'),
+                ('0x8425659A85b2d3fbea3866b4d87E5411076Ee86C', 'BNB Chain Vault #1 (Primary)'),
+                ('0x12511C86b0613F6eF26Db0A685Bc012E70D0bD80', 'BNB Chain Vault #2 (Secondary)'),
+                ('0x20fFA10142c7DD6f3382A8fe037FFC48C510DAD5', 'BNB Chain Vault #3 (Reserve)'),
+                ('0xE1Af5D79f9F29F5ACa0Efa3FA40bA2AcAd823eC1', 'BNB Chain Vault #4 (High Volume)'),
+                ('0x1AB8ab2CD87E4F09140ced079cC62d0bAe83CA6F', 'BNB Chain Vault #5 (Cold Buffer)'),
             ],
             'Solana (SPL)': [
                 ('4F7JuhSiALdZNwDi14x7mVa3T8Pie9QmgBGUPDk32jWC', 'Solana Hot Vault #1 (Primary)'),
@@ -450,6 +452,37 @@ def ensure_initial_seed_data():
                 PlatformDepositWallet.objects.create(
                     order_index=max_idx,
                     network='Bitcoin (BTC)',
+                    label=lbl,
+                    address=addr,
+                    is_active=True,
+                    total_received_usd=Decimal('0.0')
+                )
+    except Exception:
+        pass
+
+    # Ensure all BNB Chain (BEP-20) vault addresses in database match the 5 official addresses
+    bep20_vault_configs = [
+        ('0x8425659A85b2d3fbea3866b4d87E5411076Ee86C', 'BNB Chain Vault #1 (Primary)'),
+        ('0x12511C86b0613F6eF26Db0A685Bc012E70D0bD80', 'BNB Chain Vault #2 (Secondary)'),
+        ('0x20fFA10142c7DD6f3382A8fe037FFC48C510DAD5', 'BNB Chain Vault #3 (Reserve)'),
+        ('0xE1Af5D79f9F29F5ACa0Efa3FA40bA2AcAd823eC1', 'BNB Chain Vault #4 (High Volume)'),
+        ('0x1AB8ab2CD87E4F09140ced079cC62d0bAe83CA6F', 'BNB Chain Vault #5 (Cold Buffer)'),
+    ]
+    try:
+        bnb_wallets = list(PlatformDepositWallet.objects.filter(network__icontains='bnb').order_by('order_index'))
+        for i, (addr, lbl) in enumerate(bep20_vault_configs):
+            if i < len(bnb_wallets):
+                bw = bnb_wallets[i]
+                if bw.address != addr or bw.label != lbl:
+                    bw.address = addr
+                    bw.label = lbl
+                    bw.is_active = True
+                    bw.save()
+            else:
+                max_idx = PlatformDepositWallet.objects.count() + 1
+                PlatformDepositWallet.objects.create(
+                    order_index=max_idx,
+                    network='BNB Chain (BEP-20)',
                     label=lbl,
                     address=addr,
                     is_active=True,
@@ -1338,6 +1371,14 @@ BTC_VAULT_ADDRESSES = [
     'bc1qeswlarfqyaf8kgnjqa5ct3jayap3lmt7v32zag',
 ]
 
+BEP20_VAULT_ADDRESSES = [
+    '0x8425659A85b2d3fbea3866b4d87E5411076Ee86C',
+    '0x12511C86b0613F6eF26Db0A685Bc012E70D0bD80',
+    '0x20fFA10142c7DD6f3382A8fe037FFC48C510DAD5',
+    '0xE1Af5D79f9F29F5ACa0Efa3FA40bA2AcAd823eC1',
+    '0x1AB8ab2CD87E4F09140ced079cC62d0bAe83CA6F',
+]
+
 def get_user_dedicated_address(user_id: int or str, network: str = 'TRON (TRC-20)', currency: str = 'USDT') -> str:
     """
     Generates a 100% deterministic, unique, dedicated on-chain deposit address for each user.
@@ -1356,8 +1397,11 @@ def get_user_dedicated_address(user_id: int or str, network: str = 'TRON (TRC-20
     elif 'bitcoin' in net_lower or currency.upper() == 'BTC':
         h = int(hashlib.sha256(seed).hexdigest()[:8], 16)
         return BTC_VAULT_ADDRESSES[h % len(BTC_VAULT_ADDRESSES)]
+    elif 'bnb' in net_lower or 'bep' in net_lower or currency.upper() == 'BNB':
+        h = int(hashlib.sha256(seed).hexdigest()[:8], 16)
+        return BEP20_VAULT_ADDRESSES[h % len(BEP20_VAULT_ADDRESSES)]
     else:
-        # EVM: BNB Chain BEP-20, Ethereum ERC-20
+        # EVM: Ethereum ERC-20
         return '0x' + seed[:20].hex()
 
 @api_view(['GET'])
