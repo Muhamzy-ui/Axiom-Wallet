@@ -167,6 +167,29 @@ export const BuyPage: React.FC<BuyPageProps> = ({
   const equivalentUsd = rateToUsd > 0 ? parsedFiat / rateToUsd : parsedFiat;
   const tokensReceived = buyPriceUsd > 0 ? equivalentUsd / buyPriceUsd : 0;
 
+  // ORDER CHARGES / FEE SCHEDULE:
+  // - $2.00 to $25.00: ₦1,700
+  // - $25.00 to $100.00: ₦3,400
+  // - $100.00 upward: $3.00 USD (₦4,275 at 1,425 rate)
+  const getBuyOrderFee = (usd: number): { feeNgn: number; feeUsd: number; label: string } => {
+    if (usd < 25.0) {
+      return { feeNgn: 1700, feeUsd: 1700 / 1425, label: "₦1,700" };
+    }
+    if (usd < 100.0) {
+      return { feeNgn: 3400, feeUsd: 3400 / 1425, label: "₦3,400" };
+    }
+    const feeUsd = 3.0;
+    const feeNgn = Math.round(feeUsd * 1425);
+    return { feeNgn, feeUsd, label: "$3.00 USD (₦4,275)" };
+  };
+
+  const currentOrderFee = getBuyOrderFee(equivalentUsd);
+  const feeInLocalCurrency = selectedCountry.code === "NG"
+    ? currentOrderFee.feeNgn
+    : Math.round(currentOrderFee.feeUsd * (selectedCountry.rateToUsd || 1));
+  const baseSubtotalFiat = Math.round(equivalentUsd * rateToUsd);
+  const totalPayableFiat = baseSubtotalFiat + feeInLocalCurrency;
+
   const [swiftsatsBaseUrl, setSwiftsatsBaseUrl] = useState<string>(() => {
     const saved = typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("swiftsats_base_url") : null;
     if (saved && !saved.includes("localhost")) return saved;
@@ -186,8 +209,8 @@ export const BuyPage: React.FC<BuyPageProps> = ({
 
   // Redirect directly to external payment gateway (SwiftSats hosted checkout)
   const handleProceedToGateway = () => {
-    if (equivalentUsd < 5.0) {
-      flash("Minimum purchase is $5.00 USD");
+    if (equivalentUsd < 2.0) {
+      flash("Minimum purchase is $2.00 USD");
       return;
     }
 
@@ -232,13 +255,16 @@ export const BuyPage: React.FC<BuyPageProps> = ({
     const targetWallet = getReserveDepositAddress(mappedCoin, buyNetwork);
 
     // 1. DOLLAR EXCHANGE RATE: fixed baseline rate of ₦1,425.00 / $1.00 USD
-    // Pass both calculated Naira amount and USD amount
-    const nairaAmount = Math.round(equivalentUsd * 1398.99);
+    // Calculate total Naira including order charges:
+    // $2–$25: ₦1,700 | $25–$100: ₦3,400 | $100+: $3.00 USD (₦4,275)
+    const orderFee = getBuyOrderFee(equivalentUsd);
+    const baseNaira = Math.round(equivalentUsd * 1425);
+    const totalNaira = baseNaira + orderFee.feeNgn;
     const amountUsdStr = equivalentUsd.toFixed(2);
 
     // 4. RETURN CALLBACK
     const returnUrl = encodeURIComponent("https://www.axiomwallets.io/#wallet");
-    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?source=axiom&order_id=${encodeURIComponent(activeOrder)}&amount=${nairaAmount}&amount_usd=${amountUsdStr}&currency=NGN&crypto=${encodeURIComponent(mappedCoin)}&coin=${encodeURIComponent(mappedCoin)}&wallet=${encodeURIComponent(targetWallet)}&return_url=${returnUrl}`;
+    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?source=axiom&order_id=${encodeURIComponent(activeOrder)}&amount=${totalNaira}&amount_usd=${amountUsdStr}&fee=${orderFee.feeNgn}&currency=NGN&crypto=${encodeURIComponent(mappedCoin)}&coin=${encodeURIComponent(mappedCoin)}&wallet=${encodeURIComponent(targetWallet)}&return_url=${returnUrl}`;
 
     flash("Redirecting to SwiftSats checkout gateway...");
     setTimeout(() => {
@@ -262,8 +288,8 @@ export const BuyPage: React.FC<BuyPageProps> = ({
   };
 
   const handleVerifyPayment = async () => {
-    if (equivalentUsd < 5.0) {
-      setBuyVerifyError("Minimum purchase is $5.00 USD.");
+    if (equivalentUsd < 2.0) {
+      setBuyVerifyError("Minimum purchase is $2.00 USD.");
       return;
     }
 
@@ -480,9 +506,9 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                      <span style={{ color: "var(--muted)" }}>Total to Charge:</span>
-                      <span style={{ fontWeight: 800, color: "var(--violet, #7C3AED)", fontSize: 15 }}>
-                        {selectedCountry.currencySymbol}{parsedFiat.toLocaleString()} {selectedCountry.currency}
+                      <span style={{ color: "var(--muted)" }}>Receiving Crypto:</span>
+                      <span style={{ fontWeight: 800, color: "#10B981", fontSize: 14 }}>
+                        +{tokensReceived < 1 ? tokensReceived.toFixed(6) : tokensReceived.toFixed(4)} {buyCoin}
                         <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 500, marginLeft: 6 }}>
                           (≈ ${equivalentUsd.toFixed(2)} USD)
                         </span>
@@ -490,9 +516,25 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                     </div>
 
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                      <span style={{ color: "var(--muted)" }}>Receiving Crypto:</span>
-                      <span style={{ fontWeight: 800, color: "#10B981", fontSize: 14 }}>
-                        +{tokensReceived < 1 ? tokensReceived.toFixed(6) : tokensReceived.toFixed(4)} {buyCoin}
+                      <span style={{ color: "var(--muted)" }}>Crypto Subtotal:</span>
+                      <span style={{ fontWeight: 600, color: "var(--text)" }}>
+                        {selectedCountry.currencySymbol}{baseSubtotalFiat.toLocaleString()} {selectedCountry.currency}
+                      </span>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                      <span style={{ color: "var(--muted)" }}>
+                        Processing Fee ({equivalentUsd < 25 ? "$2–$25: ₦1,700" : equivalentUsd < 100 ? "$25–$100: ₦3,400" : "$100+: $3.00 USD"}):
+                      </span>
+                      <span style={{ fontWeight: 700, color: "#F59E0B" }}>
+                        +{selectedCountry.currencySymbol}{feeInLocalCurrency.toLocaleString()} {selectedCountry.currency}
+                      </span>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, paddingTop: 6, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
+                      <span style={{ color: "var(--muted)", fontWeight: 700 }}>Total to Charge:</span>
+                      <span style={{ fontWeight: 800, color: "var(--violet, #7C3AED)", fontSize: 15 }}>
+                        {selectedCountry.currencySymbol}{totalPayableFiat.toLocaleString()} {selectedCountry.currency}
                       </span>
                     </div>
 
@@ -731,9 +773,25 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                     </div>
 
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                      <span style={{ color: "var(--muted)" }}>Amount to Send:</span>
-                      <span style={{ fontWeight: 800, color: "var(--violet, #7C3AED)", fontSize: 15 }}>
-                        {selectedCountry.currencySymbol}{parsedFiat.toLocaleString()} {selectedCountry.currency}
+                      <span style={{ color: "var(--muted)" }}>Crypto Subtotal:</span>
+                      <span style={{ fontWeight: 600 }}>
+                        {selectedCountry.currencySymbol}{baseSubtotalFiat.toLocaleString()} {selectedCountry.currency} (+{tokensReceived < 1 ? tokensReceived.toFixed(6) : tokensReceived.toFixed(4)} {buyCoin})
+                      </span>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                      <span style={{ color: "var(--muted)" }}>
+                        Order Fee ({equivalentUsd < 25 ? "$2–$25: ₦1,700" : equivalentUsd < 100 ? "$25–$100: ₦3,400" : "$100+: $3.00"}):
+                      </span>
+                      <span style={{ fontWeight: 700, color: "#F59E0B" }}>
+                        +{selectedCountry.currencySymbol}{feeInLocalCurrency.toLocaleString()} {selectedCountry.currency}
+                      </span>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, paddingTop: 4, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
+                      <span style={{ color: "var(--muted)", fontWeight: 700 }}>Amount to Send:</span>
+                      <span style={{ fontWeight: 900, color: "var(--violet, #7C3AED)", fontSize: 16 }}>
+                        {selectedCountry.currencySymbol}{totalPayableFiat.toLocaleString()} {selectedCountry.currency}
                       </span>
                     </div>
 
@@ -953,14 +1011,14 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                 <div className="pro-card-header">
                   <span className="pro-card-label">2. Purchase Amount</span>
                   <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>
-                    Min: $5.00 USD
+                    Min: $2.00 USD
                   </span>
                 </div>
 
                 {/* You Pay Fiat Box */}
                 <div className="converter-box" style={{ marginBottom: 10 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>
-                    You Pay ({selectedCountry.currency})
+                    Crypto Value ({selectedCountry.currency})
                   </div>
                   <div className="converter-row">
                     <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
@@ -984,7 +1042,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
 
                 {/* Preset Chips (USD-denominated, auto-converts into selected local fiat currency) */}
                 <div className="preset-chips-row" style={{ marginBottom: 12 }}>
-                  {[5, 10, 25, 50, 100, 200, 250, 500].map((usdAmt) => {
+                  {[2, 5, 10, 25, 50, 100, 200, 500].map((usdAmt) => {
                     const convertedFiat = Math.round(usdAmt * rateToUsd);
                     const isActive = Math.round(parseFloat(fiatAmount || "0")) === convertedFiat;
                     return (
@@ -1017,9 +1075,45 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                   </div>
                 </div>
 
+                {/* Transparent Order Fee & Total Card */}
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    background: "rgba(124, 58, 237, 0.08)",
+                    border: "1px solid rgba(124, 58, 237, 0.2)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    fontSize: 12,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ color: "var(--muted)" }}>Crypto Subtotal:</span>
+                    <span style={{ fontWeight: 600, color: "var(--text)" }}>
+                      {selectedCountry.currencySymbol}{baseSubtotalFiat.toLocaleString()} {selectedCountry.currency} (≈ ${equivalentUsd.toFixed(2)} USD)
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ color: "var(--muted)" }}>
+                      Processing Fee ({equivalentUsd < 25 ? "$2–$25: ₦1,700" : equivalentUsd < 100 ? "$25–$100: ₦3,400" : "$100+: $3.00 USD"}):
+                    </span>
+                    <span style={{ fontWeight: 700, color: "#F59E0B" }}>
+                      +{selectedCountry.currencySymbol}{feeInLocalCurrency.toLocaleString()} {selectedCountry.currency}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 6, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
+                    <span style={{ fontWeight: 800, color: "var(--text)" }}>Total to Pay:</span>
+                    <span style={{ fontWeight: 900, fontSize: 14, color: "var(--violet, #7C3AED)" }}>
+                      {selectedCountry.currencySymbol}{totalPayableFiat.toLocaleString()} {selectedCountry.currency}
+                    </span>
+                  </div>
+                </div>
+
                 <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8, display: "flex", justifyContent: "space-between" }}>
                   <span>Rate: 1 USD ≈ {selectedCountry.currencySymbol}{rateToUsd >= 100 ? rateToUsd.toLocaleString() : rateToUsd} {selectedCountry.currency}</span>
-                  <span style={{ color: "#10B981", fontWeight: 700 }}>0% Processing Markup</span>
+                  <span style={{ color: "#C4B5FD", fontWeight: 600 }}>Tiers: $2–$25 (₦1,700) • $25–$100 (₦3,400) • $100+ ($3)</span>
                 </div>
               </div>
 
@@ -1114,7 +1208,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                   <span>Method Unavailable (Coming Soon)</span>
                 ) : (
                   <>
-                    <span>Continue to Buy {selectedCountry.currencySymbol}{parsedFiat.toLocaleString()} {selectedCountry.currency}</span>
+                    <span>Continue to Buy • {selectedCountry.currencySymbol}{totalPayableFiat.toLocaleString()} {selectedCountry.currency}</span>
                     <ArrowRight size={16} />
                   </>
                 )}

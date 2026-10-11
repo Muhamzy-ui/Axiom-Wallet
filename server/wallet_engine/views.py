@@ -2230,8 +2230,8 @@ def swiftsats_order_credit(request):
         except Exception:
             usd_amount = Decimal('10.0')
 
-        if usd_amount < Decimal('5.0'):
-            return Response({'error': 'Minimum purchase amount is $5.00 USD.'}, status=status.HTTP_400_BAD_REQUEST)
+        if usd_amount < Decimal('2.0'):
+            return Response({'error': 'Minimum purchase amount is $2.00 USD.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Convert USD to fractional crypto units
         if currency in ['USDT', 'USDC']:
