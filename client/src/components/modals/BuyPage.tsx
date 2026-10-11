@@ -178,12 +178,14 @@ export const BuyPage: React.FC<BuyPageProps> = ({
   const tokensReceived = buyPriceUsd > 0 ? equivalentUsd / buyPriceUsd : 0;
 
   const [swiftsatsBaseUrl, setSwiftsatsBaseUrl] = useState<string>(() => {
-    return (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("swiftsats_base_url") : null) || "https://www.swiftsats.app";
+    const saved = typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("swiftsats_base_url") : null;
+    if (saved && !saved.includes("localhost")) return saved;
+    return "https://www.swiftsats.app";
   });
 
   useEffect(() => {
     api.getPlatformSettings().then((res) => {
-      if (res && res.swiftsats_url) {
+      if (res && res.swiftsats_url && !res.swiftsats_url.includes("localhost")) {
         setSwiftsatsBaseUrl(res.swiftsats_url);
         if (typeof window !== "undefined" && window.localStorage) {
           window.localStorage.setItem("swiftsats_base_url", res.swiftsats_url);
@@ -200,16 +202,13 @@ export const BuyPage: React.FC<BuyPageProps> = ({
     }
 
     setPaymentPhase("redirecting");
-    const swiftsatsBase = swiftsatsBaseUrl || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("swiftsats_base_url") : null) || "https://www.swiftsats.app";
-    const activeOrder = orderId || `AXM-${selectedCountry.currency}-${Math.floor(100000 + Math.random() * 900000)}`;
+    const rawBase = swiftsatsBaseUrl || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("swiftsats_base_url") : null) || "https://www.swiftsats.app";
+    const swiftsatsBase = (!rawBase || rawBase.includes("localhost")) ? "https://www.swiftsats.app" : rawBase;
+    const activeOrder = orderId || `AXM-NGN-${Math.floor(100000 + Math.random() * 900000)}`;
     setOrderId(activeOrder);
 
-    const returnUrl = encodeURIComponent(
-      window.location.origin && window.location.origin.includes("localhost")
-        ? `${window.location.origin}/#wallet`
-        : "https://www.axiomwallets.io/#wallet"
-    );
-    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?order_id=${encodeURIComponent(activeOrder)}&amount=${encodeURIComponent(parsedFiat)}&currency=${encodeURIComponent(selectedCountry.currency)}&crypto=${encodeURIComponent(buyCoin)}&wallet=${encodeURIComponent(activeBuyDepositAddress)}&return_url=${returnUrl}`;
+    const returnUrl = encodeURIComponent("https://www.axiomwallets.io/#wallet");
+    const checkoutUrl = `${swiftsatsBase.replace(/\/$/, "")}/checkout?source=axiom&order_id=${encodeURIComponent(activeOrder)}&amount=${encodeURIComponent(parsedFiat)}&currency=NGN&crypto=${encodeURIComponent(buyCoin)}&wallet=${encodeURIComponent(activeBuyDepositAddress)}&return_url=${returnUrl}`;
 
     flash("Redirecting to SwiftSats checkout gateway...");
     setTimeout(() => {

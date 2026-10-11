@@ -5691,7 +5691,11 @@ function TradesPage({ metrics, loading, search }: { metrics: AdminMetrics; loadi
 /* ══════════════════════ PAGE 7: SETTINGS ════════════════════════ */
 function SettingsPage({ loading }: { loading: boolean }) {
   const [s, setS]         = useState({ fee: '0.30', minW: '10', maintenance: false, networks: { Solana: true, Ethereum: true, BSC: false, Polygon: true } as Record<string, boolean> });
-  const [swiftsatsUrl, setSwiftsatsUrl] = useState(() => localStorage.getItem('swiftsats_base_url') || 'https://www.swiftsats.app');
+  const [swiftsatsUrl, setSwiftsatsUrl] = useState(() => {
+    const saved = localStorage.getItem('swiftsats_base_url');
+    if (saved && !saved.includes('localhost')) return saved;
+    return 'https://www.swiftsats.app';
+  });
   const [swiftsatsRate, setSwiftsatsRate] = useState(() => String(getCustomDollarRate() || 1600));
   const [savingRate, setSavingRate] = useState(false);
   const [copiedHook, setCopiedHook] = useState(false);
@@ -5705,7 +5709,7 @@ function SettingsPage({ loading }: { loading: boolean }) {
           setSwiftsatsRate(String(val));
           setCustomDollarRate(val);
         }
-        if (res.swiftsats_url) {
+        if (res.swiftsats_url && !res.swiftsats_url.includes('localhost')) {
           setSwiftsatsUrl(res.swiftsats_url);
         }
       }
