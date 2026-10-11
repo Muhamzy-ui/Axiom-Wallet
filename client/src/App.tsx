@@ -1828,7 +1828,6 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
               <div className="dex-hero-name-wrap">
                 <div className="dex-hero-pair-title">
                   <b>{m.sym} / {m.pair_currency || (m.isMajor ? "USDT" : "SOL")}</b>
-                  {m.is_rugged && <span className="dex-rugged-badge">DUMPED</span>}
                   <ChevronDown size={13} className="dex-switch-chevron" />
                 </div>
                 <div className="dex-hero-name-sub">
@@ -1943,11 +1942,6 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
                 {m.sym} / {m.pair_currency || (m.isMajor ? "USDT" : "SOL")}
                 {marketStore.isTokenVerified(m.sym) && (
                   <span className="dex-verified-tag-sm">✓ Verified</span>
-                )}
-                {m.is_rugged && (
-                  <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 4, background: "rgba(239,68,68,0.25)", color: "#EF4444", fontWeight: 800, border: "1px solid rgba(239,68,68,0.5)" }}>
-                    ⚠️ RUGPULLED / DUMPED
-                  </span>
                 )}
               </b>
               <small style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
