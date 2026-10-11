@@ -29,7 +29,7 @@ export const COUNTRIES: CountryInfo[] = [
     flag: "🇳🇬",
     currency: "NGN",
     currencySymbol: "₦",
-    rateToUsd: 1425,
+    rateToUsd: 1398.99,
     popular: true,
     paymentMethods: ["Instant Bank Transfer (NIBSS / Swiftsats)", "OPay / Moniepoint Transfer", "Debit Card"],
     banks: [
@@ -349,7 +349,7 @@ export function getCustomDollarRate(): number {
       }
     }
   }
-  return 1425;
+  return 1398.99;
 }
 
 export function setCustomDollarRate(newRate: number, broadcast = true) {

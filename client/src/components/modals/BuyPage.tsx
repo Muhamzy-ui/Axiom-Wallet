@@ -233,7 +233,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
 
     // 1. DOLLAR EXCHANGE RATE: fixed baseline rate of ₦1,425.00 / $1.00 USD
     // Pass both calculated Naira amount and USD amount
-    const nairaAmount = Math.round(equivalentUsd * 1425);
+    const nairaAmount = Math.round(equivalentUsd * 1398.99);
     const amountUsdStr = equivalentUsd.toFixed(2);
 
     // 4. RETURN CALLBACK

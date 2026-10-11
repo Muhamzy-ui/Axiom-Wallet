@@ -6172,7 +6172,7 @@ function AppShell({
         const parsed = parseFloat(rawAmountStr);
         if (parsed > 500) {
           // Naira amount returned
-          effectiveUsd = Math.round((parsed / 1425) * 100) / 100;
+          effectiveUsd = Math.round((parsed / 1398.99) * 100) / 100;
         } else if (parsed > 0) {
           effectiveUsd = parsed;
         }
