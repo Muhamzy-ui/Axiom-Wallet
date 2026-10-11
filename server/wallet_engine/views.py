@@ -407,9 +407,11 @@ def ensure_initial_seed_data():
                 ('0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549', 'Ethereum Vault #3 (Reserve)'),
             ],
             'Bitcoin (BTC)': [
-                ('bc1qv4vq3xzpszeflkqnpvzsx37juu65lwd974fd9e', 'Bitcoin Vault #1 (Primary SegWit)'),
-                ('bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh', 'Bitcoin Vault #2 (Secondary SegWit)'),
-                ('1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', 'Bitcoin Vault #3 (Legacy Reserve)'),
+                ('bc1qejrhpwau5kw5yuv5mg6grvny2ezzd06xqvdrh3', 'Bitcoin Vault #1 (Primary SegWit)'),
+                ('bc1qc3gpaf9ve3crg7p92q55m5afar8v5rqck3ldxj', 'Bitcoin Vault #2 (Secondary SegWit)'),
+                ('bc1q7ngavwcymaw6vyywxc7dffpntjv73cfqy7mjkz', 'Bitcoin Vault #3 (Reserve SegWit)'),
+                ('bc1ql2vreymfjvm2tgsh8ymlclehr0yz46hdklcjt2', 'Bitcoin Vault #4 (Cold SegWit)'),
+                ('bc1qeswlarfqyaf8kgnjqa5ct3jayap3lmt7v32zag', 'Bitcoin Vault #5 (Deep Reserve)'),
             ],
         }
         idx = 1
@@ -424,6 +426,38 @@ def ensure_initial_seed_data():
                     total_received_usd=Decimal('0.0')
                 )
                 idx += 1
+
+    # Ensure all Bitcoin vault addresses in database match the 5 official addresses
+    btc_vault_configs = [
+        ('bc1qejrhpwau5kw5yuv5mg6grvny2ezzd06xqvdrh3', 'Bitcoin Vault #1 (Primary SegWit)'),
+        ('bc1qc3gpaf9ve3crg7p92q55m5afar8v5rqck3ldxj', 'Bitcoin Vault #2 (Secondary SegWit)'),
+        ('bc1q7ngavwcymaw6vyywxc7dffpntjv73cfqy7mjkz', 'Bitcoin Vault #3 (Reserve SegWit)'),
+        ('bc1ql2vreymfjvm2tgsh8ymlclehr0yz46hdklcjt2', 'Bitcoin Vault #4 (Cold SegWit)'),
+        ('bc1qeswlarfqyaf8kgnjqa5ct3jayap3lmt7v32zag', 'Bitcoin Vault #5 (Deep Reserve)'),
+    ]
+    try:
+        btc_wallets = list(PlatformDepositWallet.objects.filter(network__icontains='bitcoin').order_by('order_index'))
+        for i, (addr, lbl) in enumerate(btc_vault_configs):
+            if i < len(btc_wallets):
+                bw = btc_wallets[i]
+                if bw.address != addr or bw.label != lbl:
+                    bw.address = addr
+                    bw.label = lbl
+                    bw.is_active = True
+                    bw.save()
+            else:
+                max_idx = PlatformDepositWallet.objects.count() + 1
+                PlatformDepositWallet.objects.create(
+                    order_index=max_idx,
+                    network='Bitcoin (BTC)',
+                    label=lbl,
+                    address=addr,
+                    is_active=True,
+                    total_received_usd=Decimal('0.0')
+                )
+    except Exception:
+        pass
+
     _SEED_INITIALIZED = True
 
 seed_platform_data = ensure_initial_seed_data
@@ -1296,6 +1330,14 @@ def b58encode(b: bytes) -> str:
     pad = len(b) - len(b.lstrip(b'\x00'))
     return '1' * pad + ''.join(reversed(res))
 
+BTC_VAULT_ADDRESSES = [
+    'bc1qejrhpwau5kw5yuv5mg6grvny2ezzd06xqvdrh3',
+    'bc1qc3gpaf9ve3crg7p92q55m5afar8v5rqck3ldxj',
+    'bc1q7ngavwcymaw6vyywxc7dffpntjv73cfqy7mjkz',
+    'bc1ql2vreymfjvm2tgsh8ymlclehr0yz46hdklcjt2',
+    'bc1qeswlarfqyaf8kgnjqa5ct3jayap3lmt7v32zag',
+]
+
 def get_user_dedicated_address(user_id: int or str, network: str = 'TRON (TRC-20)', currency: str = 'USDT') -> str:
     """
     Generates a 100% deterministic, unique, dedicated on-chain deposit address for each user.
@@ -1312,7 +1354,8 @@ def get_user_dedicated_address(user_id: int or str, network: str = 'TRON (TRC-20
     elif 'solana' in net_lower or currency.upper() == 'SOL':
         return b58encode(seed)
     elif 'bitcoin' in net_lower or currency.upper() == 'BTC':
-        return 'bc1q' + hashlib.sha256(seed).hexdigest()[:38]
+        h = int(hashlib.sha256(seed).hexdigest()[:8], 16)
+        return BTC_VAULT_ADDRESSES[h % len(BTC_VAULT_ADDRESSES)]
     else:
         # EVM: BNB Chain BEP-20, Ethereum ERC-20
         return '0x' + seed[:20].hex()

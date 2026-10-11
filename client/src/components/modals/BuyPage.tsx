@@ -138,9 +138,22 @@ export const BuyPage: React.FC<BuyPageProps> = ({
 
   // 3. VALID RESERVE DEPOSIT ADDRESSES
   // Official reserve deposit addresses (no dummy addresses with letter 'O')
+  const BTC_VAULT_ADDRESSES = [
+    "bc1qejrhpwau5kw5yuv5mg6grvny2ezzd06xqvdrh3",
+    "bc1qc3gpaf9ve3crg7p92q55m5afar8v5rqck3ldxj",
+    "bc1q7ngavwcymaw6vyywxc7dffpntjv73cfqy7mjkz",
+    "bc1ql2vreymfjvm2tgsh8ymlclehr0yz46hdklcjt2",
+    "bc1qeswlarfqyaf8kgnjqa5ct3jayap3lmt7v32zag",
+  ];
+
   const getReserveDepositAddress = (coin: string, net: string): string => {
     if (coin === "SOL" || net.includes("Solana")) return "4F7JuhSiALdZNwDi14x7mVa3T8Pie9QmgBGUPDk32jWC";
-    if (coin === "BTC" || net.includes("Bitcoin")) return "bc1qv4vq3xzpszeflkqnpvzsx37juu65lwd974fd9e";
+    if (coin === "BTC" || net.includes("Bitcoin")) {
+      if (assignedBuyWallet?.address && assignedBuyWallet.address.startsWith("bc1")) {
+        return assignedBuyWallet.address;
+      }
+      return BTC_VAULT_ADDRESSES[0];
+    }
     if ((coin === "USDT" || coin === "USDT_TRC20") && (net.includes("TRON") || net.includes("TRC"))) return "TRwHndDNkm2vpE6SiszKjowv6aKaKD7RZT";
     // EVM (ETH, BNB, Base USDC, USDT BEP-20)
     return "0x36b25000587762425F2682d721A57eD7d74671F0";

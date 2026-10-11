@@ -4618,7 +4618,7 @@ const SUPPORTED_CHAINS: ChainConfig[] = [
     formatGuide: 'Bitcoin address starts with "bc1", "1", or "3"',
     iconBg: 'linear-gradient(135deg, #F97316, #C2410C)',
     iconSymbol: 'BTC',
-    placeholder: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+    placeholder: 'bc1qejrhpwau5kw5yuv5mg6grvny2ezzd06xqvdrh3',
     validate: (addr: string) => {
       const a = addr.trim();
       if (!a) return { isValid: false, warning: 'Address is required to receive Bitcoin deposits' };
