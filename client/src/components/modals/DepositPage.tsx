@@ -29,7 +29,7 @@ const COIN_METAS: Record<DepositCoin, { name: string; iconUrl: string }> = {
 
 const COIN_NETWORKS: Record<DepositCoin, { label: string; networkKey: string; note: string }[]> = {
   USDT: [
-    { label: "TRC-20", networkKey: "TRON (TRC-20)", note: "Tron Network • Sub-cent fee" },
+    { label: "TRC-20", networkKey: "TRON (TRC-20)", note: "Tron Network • Low $2.00 Min • 0% Fee" },
     { label: "BEP-20", networkKey: "BNB Chain (BEP-20)", note: "BNB Smart Chain • Low fee" },
     { label: "Solana", networkKey: "Solana (SPL)", note: "Solana SPL • Instant settlement" },
     { label: "ERC-20", networkKey: "Ethereum (ERC-20)", note: "Ethereum Mainnet • Institutional" },
@@ -92,7 +92,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
 
   const [depositCoin, setDepositCoin] = useState<DepositCoin>("USDT");
   const [depositNetwork, setDepositNetwork] = useState<string>("TRON (TRC-20)");
-  const [depositAmt, setDepositAmt] = useState<string>("50");
+  const [depositAmt, setDepositAmt] = useState<string>("25");
   const [assignedWallet, setAssignedWallet] = useState<PlatformDepositWallet | null>(null);
   const [txHash, setTxHash] = useState<string>("");
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
@@ -106,10 +106,6 @@ export const DepositPage: React.FC<DepositPageProps> = ({
     txHash: string;
   } | null>(null);
   const [copiedAddr, setCopiedAddr] = useState<boolean>(false);
-  const [isAutoChecking, setIsAutoChecking] = useState<boolean>(false);
-  const [pollCount, setPollCount] = useState<number>(0);
-  const [lastPollTime, setLastPollTime] = useState<string>("Just now");
-  const [showManualTx, setShowManualTx] = useState<boolean>(false);
   const [timeLeft, setTimeLeft] = useState<number>(300); // 5 minutes window
 
   useEffect(() => {
@@ -243,8 +239,8 @@ export const DepositPage: React.FC<DepositPageProps> = ({
 
   const handleProceedToAddress = () => {
     const amtNum = parseFloat(depositAmt) || 0;
-    if (isNaN(amtNum) || amtNum < 5.0) {
-      flash("⚠️ Minimum deposit is $5.00 USD");
+    if (isNaN(amtNum) || amtNum < 2.0) {
+      flash("⚠️ Minimum deposit is $2.00 USD");
       return;
     }
     setTimeLeft(300);
@@ -264,8 +260,8 @@ export const DepositPage: React.FC<DepositPageProps> = ({
       return;
     }
     const amtNum = parseFloat(depositAmt) || 0;
-    if (isNaN(amtNum) || amtNum < 5.0) {
-      setVerifyError("Minimum deposit is $5.00 USD.");
+    if (isNaN(amtNum) || amtNum < 2.0) {
+      setVerifyError("Minimum deposit is $2.00 USD.");
       return;
     }
 
@@ -300,125 +296,17 @@ export const DepositPage: React.FC<DepositPageProps> = ({
             txHash: cleanHash,
           });
           setDepositStep("success");
-          flash(`🎉 Verified! +$${amtNum.toFixed(2)} USD credited immediately!`);
+          flash(`🎉 Verified! +$${amtNum.toFixed(2)} USD credited immediately! Redirecting to wallet...`);
+          // Automatically redirect user to Axiom Wallet page
+          setTimeout(() => {
+            onDone(`✅ Credited +$${amtNum.toFixed(2)} USD to your Axiom Wallet!`);
+          }, 1800);
         }
       }
     } catch (err: any) {
       setVerifyError(err.message || "Failed to verify transaction signature.");
     } finally {
       setIsVerifying(false);
-    }
-  };
-
-  // Continuous background on-chain radar when on Step 2
-  useEffect(() => {
-    if (depositStep !== "address" || !activeDepositAddress || verifySuccess || isVerifying || timeLeft <= 0) return;
-
-    let isMounted = true;
-    let pollTimer: any = null;
-
-    const runAutoDetect = async () => {
-      if (!isMounted || verifySuccess || isVerifying || timeLeft <= 0) return;
-      try {
-        setIsAutoChecking(true);
-        const userAddr =
-          authUser?.wallet_address ||
-          authUser?.email ||
-          authUser?.user_id ||
-          "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
-
-        const res = await api.autoDetectDeposit({
-          address: userAddr,
-          deposit_wallet: activeDepositAddress,
-          currency: depositCoin,
-          network: depositNetwork,
-          amount: depositAmt,
-        });
-
-        if (!isMounted) return;
-
-        setPollCount((prev) => prev + 1);
-        const d = new Date();
-        setLastPollTime(`${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`);
-
-        if (res && res.detected && res.status === "CONFIRMED") {
-          if (pollTimer) clearInterval(pollTimer);
-          const creditedTokenAmt = parseFloat(res.credited_amount || "0");
-          marketStore.depositFunds(depositCoin, creditedTokenAmt);
-          setVerifySuccess({
-            amount: res.credited_amount || "0",
-            usdAmount: res.usd_amount || depositAmt,
-            currency: res.currency || depositCoin,
-            newBalance: res.new_balance || "0",
-            txHash: res.tx_hash || "",
-          });
-          setDepositStep("success");
-          flash(`🎉 Deposit automatically detected on-chain! +$${res.usd_amount || depositAmt} USD credited!`);
-        }
-      } catch (err) {
-        // Silently keep polling
-      } finally {
-        if (isMounted) setIsAutoChecking(false);
-      }
-    };
-
-    const initialTimer = setTimeout(() => {
-      runAutoDetect();
-    }, 1500);
-
-    pollTimer = setInterval(() => {
-      runAutoDetect();
-    }, 4500);
-
-    return () => {
-      isMounted = false;
-      clearTimeout(initialTimer);
-      clearInterval(pollTimer);
-    };
-  }, [depositStep, activeDepositAddress, depositCoin, depositNetwork, depositAmt, verifySuccess, isVerifying, authUser, timeLeft]);
-
-  const handleManualCheckNow = async () => {
-    if (isAutoChecking || isVerifying || verifySuccess) return;
-    setIsAutoChecking(true);
-    setVerifyError(null);
-    try {
-      const userAddr =
-        authUser?.wallet_address ||
-        authUser?.email ||
-        authUser?.user_id ||
-        "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
-
-      const res = await api.autoDetectDeposit({
-        address: userAddr,
-        deposit_wallet: activeDepositAddress,
-        currency: depositCoin,
-        network: depositNetwork,
-        amount: depositAmt,
-      });
-
-      setPollCount((prev) => prev + 1);
-      const d = new Date();
-      setLastPollTime(`${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`);
-
-      if (res && res.detected && res.status === "CONFIRMED") {
-        const creditedTokenAmt = parseFloat(res.credited_amount || "0");
-        marketStore.depositFunds(depositCoin, creditedTokenAmt);
-        setVerifySuccess({
-          amount: res.credited_amount || "0",
-          usdAmount: res.usd_amount || depositAmt,
-          currency: res.currency || depositCoin,
-          newBalance: res.new_balance || "0",
-          txHash: res.tx_hash || "",
-        });
-        setDepositStep("success");
-        flash(`🎉 Deposit automatically detected on-chain! +$${res.usd_amount || depositAmt} USD credited!`);
-      } else {
-        flash(`📡 Blockchain scanned. Transfer has not yet arrived on ${depositNetwork.split(" ")[0]}. Continuing to monitor...`);
-      }
-    } catch (err: any) {
-      setVerifyError(err.message || "Failed to scan blockchain node.");
-    } finally {
-      setIsAutoChecking(false);
     }
   };
 
@@ -541,9 +429,9 @@ export const DepositPage: React.FC<DepositPageProps> = ({
             <button
               type="button"
               className="pro-submit-btn"
-              onClick={() => onDone(`✅ Credited +$${verifySuccess.usdAmount || "50.00"} USD (${verifySuccess.currency})!`)}
+              onClick={() => onDone(`✅ Credited +$${verifySuccess.usdAmount || depositAmt} USD (${verifySuccess.currency})!`)}
             >
-              Done • Return to Dashboard
+              Go to Axiom Wallet →
             </button>
           </div>
         ) : depositStep === "form" ? (
@@ -623,7 +511,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
                 <div className="pro-card-header">
                   <span className="pro-card-label">2. Expected Deposit Amount ($ USD)</span>
                   <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>
-                    Min: $5.00 USD
+                    Min: $2.00 USD • 0% Fee
                   </span>
                 </div>
 
@@ -632,8 +520,8 @@ export const DepositPage: React.FC<DepositPageProps> = ({
                     <span className="converter-currency-sym">$</span>
                     <input
                       type="number"
-                      min="5"
-                      step="5"
+                      min="2"
+                      step="1"
                       className="converter-input"
                       value={depositAmt}
                       onChange={(e) => {
@@ -641,7 +529,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
                         setVerifyError(null);
                         setPendingMsg(null);
                       }}
-                      placeholder="50.00"
+                      placeholder="25.00"
                     />
                     <span className="converter-fiat-tag">USD</span>
                   </div>
@@ -662,7 +550,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
                 </div>
 
                 <div className="preset-chips-row">
-                  {[5, 10, 25, 50, 100, 200, 250, 500].map((val) => (
+                  {[2, 5, 10, 25, 50, 100, 200, 500].map((val) => (
                     <button
                       key={val}
                       type="button"
@@ -998,12 +886,12 @@ export const DepositPage: React.FC<DepositPageProps> = ({
 
               <div className="card-divider" />
 
-              {/* Live Blockchain Scanner Radar */}
+              {/* On-Chain Deposit Verification Section */}
               <div
                 className="card-section"
                 style={{
-                  background: "linear-gradient(145deg, rgba(16, 185, 129, 0.08) 0%, rgba(124, 58, 237, 0.06) 100%)",
-                  border: "1px solid rgba(16, 185, 129, 0.28)",
+                  background: "linear-gradient(145deg, rgba(124, 58, 237, 0.08) 0%, rgba(16, 185, 129, 0.06) 100%)",
+                  border: "1px solid rgba(124, 58, 237, 0.28)",
                   borderRadius: 14,
                   padding: "16px",
                   position: "relative",
@@ -1012,116 +900,73 @@ export const DepositPage: React.FC<DepositPageProps> = ({
               >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        background: "#10B981",
-                        boxShadow: "0 0 10px #10B981",
-                        animation: "pulseLight 1.5s infinite",
-                      }}
-                    />
-                    <span style={{ fontSize: 12.5, fontWeight: 800, color: "var(--text, #fff)" }}>
-                      Live Blockchain Scanner Radar
+                    <ShieldCheck size={16} color="#10B981" />
+                    <span style={{ fontSize: 13, fontWeight: 800, color: "var(--text, #fff)" }}>
+                      Verify & Deposit to Axiom Wallet
                     </span>
                   </div>
-                  <span style={{ fontSize: 10.5, color: "#10B981", fontWeight: 700 }}>
-                    Auto-Detect Active
+                  <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>
+                    Instant Credit
                   </span>
                 </div>
 
-                <p style={{ fontSize: 11.5, color: "var(--muted)", margin: "0 0 10px 0" }}>
-                  Listening for incoming {depositCoin} transfer on {depositNetwork.split(" ")[0]}. Scanned {pollCount} times ({lastPollTime}).
+                <p style={{ fontSize: 11.5, color: "var(--muted)", margin: "0 0 12px 0", lineHeight: 1.45 }}>
+                  Once you have sent your {depositCoin} ({depositNetwork.split(" ")[0]}) transfer, paste your Transaction Hash (TxID) below to instantly credit your Axiom Wallet.
                 </p>
 
-                <button
-                  type="button"
-                  onClick={handleManualCheckNow}
-                  disabled={isAutoChecking || timeLeft <= 0}
-                  style={{
-                    width: "100%",
-                    background: "rgba(255, 255, 255, 0.06)",
-                    border: "1px solid rgba(255, 255, 255, 0.12)",
-                    borderRadius: 10,
-                    padding: "9px",
-                    color: "var(--text, #fff)",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 6,
-                  }}
-                >
-                  <RefreshCw size={13} className={isAutoChecking ? "animate-spin" : ""} />
-                  <span>{isAutoChecking ? "Scanning Block Node..." : "Scan Blockchain Now"}</span>
-                </button>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <input
+                    type="text"
+                    value={txHash}
+                    onChange={(e) => {
+                      setTxHash(e.target.value);
+                      setVerifyError(null);
+                      setPendingMsg(null);
+                    }}
+                    placeholder={`Paste ${depositCoin} TxID / Transaction Hash...`}
+                    style={{
+                      width: "100%",
+                      background: "rgba(10, 11, 20, 0.85)",
+                      border: "1px solid rgba(255, 255, 255, 0.14)",
+                      borderRadius: 10,
+                      padding: "11px 14px",
+                      fontSize: 12.5,
+                      fontFamily: "monospace",
+                      color: "var(--text, #fff)",
+                      outline: "none",
+                      boxSizing: "border-box",
+                    }}
+                  />
 
-                {/* Optional Manual Fallback Accordion */}
-                <div style={{ marginTop: 12 }}>
                   <button
                     type="button"
-                    onClick={() => setShowManualTx(!showManualTx)}
+                    className="pro-submit-btn"
+                    onClick={handleVerifyOnChainDeposit}
+                    disabled={isVerifying || !txHash.trim() || timeLeft <= 0}
                     style={{
-                      background: "none",
-                      border: "none",
-                      padding: 0,
-                      fontSize: 11,
-                      color: "rgba(255, 255, 255, 0.45)",
-                      cursor: "pointer",
+                      width: "100%",
+                      minHeight: 44,
+                      fontSize: 13,
+                      fontWeight: 700,
                       display: "flex",
                       alignItems: "center",
-                      gap: 4,
+                      justifyContent: "center",
+                      gap: 8,
+                      margin: 0,
                     }}
                   >
-                    <span>Already have a TxID / hash? Submit manually</span>
-                    {showManualTx ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                    {isVerifying ? (
+                      <>
+                        <RefreshCw size={15} className="animate-spin" />
+                        <span>Verifying On-Chain Transfer...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck size={15} />
+                        <span>Verify & Deposit to Axiom Wallet</span>
+                      </>
+                    )}
                   </button>
-
-                  {showManualTx && (
-                    <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <input
-                        type="text"
-                        value={txHash}
-                        onChange={(e) => {
-                          setTxHash(e.target.value);
-                          setVerifyError(null);
-                          setPendingMsg(null);
-                        }}
-                        placeholder="Paste manual TxID / signature hash..."
-                        style={{
-                          flex: "1 1 200px",
-                          background: "rgba(10, 11, 20, 0.85)",
-                          border: "1px solid rgba(255, 255, 255, 0.12)",
-                          borderRadius: 10,
-                          padding: "10px 12px",
-                          fontSize: 12,
-                          fontFamily: "monospace",
-                          color: "var(--text, #fff)",
-                          outline: "none",
-                          minHeight: 40,
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className="pro-submit-btn"
-                        onClick={handleVerifyOnChainDeposit}
-                        disabled={isVerifying || !txHash.trim()}
-                        style={{ flex: "1 1 120px", padding: "0 14px", minHeight: 40, fontSize: 12, margin: 0 }}
-                      >
-                        {isVerifying ? (
-                          <>
-                            <RefreshCw size={13} className="animate-spin" />
-                            <span>Verifying...</span>
-                          </>
-                        ) : (
-                          <span>Verify TxID</span>
-                        )}
-                      </button>
-                    </div>
-                  )}
                 </div>
 
                 {pendingMsg && (
@@ -1151,8 +996,8 @@ export const DepositPage: React.FC<DepositPageProps> = ({
                 {verifyError && (
                   <div
                     style={{
-                      marginTop: 8,
-                      padding: "8px 12px",
+                      marginTop: 10,
+                      padding: "9px 12px",
                       borderRadius: 8,
                       background: "rgba(239, 68, 68, 0.12)",
                       border: "1px solid rgba(239, 68, 68, 0.3)",

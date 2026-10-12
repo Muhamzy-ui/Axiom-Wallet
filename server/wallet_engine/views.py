@@ -1732,8 +1732,8 @@ def verify_onchain_deposit(request):
     except Exception:
         usd_amount = Decimal('10.0')
 
-    if usd_amount < Decimal('5.0'):
-        return Response({'error': 'Minimum deposit is $5.00 USD.'}, status=status.HTTP_400_BAD_REQUEST)
+    if usd_amount < Decimal('2.0'):
+        return Response({'error': 'Minimum deposit is $2.00 USD.'}, status=status.HTTP_400_BAD_REQUEST)
 
     # Convert USD deposit amount into appropriate crypto unit
     if currency in ['USDT', 'USDC']:
@@ -2733,9 +2733,9 @@ def get_deposit_address(request):
 def faucet_deposit(request):
     address = request.data.get('address')
     currency = request.data.get('currency', 'SOL').upper()
-    amount = Decimal(str(request.data.get('amount', '5.0')))
-    if currency in ['USDT', 'USDC'] and amount < Decimal('5.0'):
-        return Response({'error': 'Minimum deposit is $5.00.'}, status=status.HTTP_400_BAD_REQUEST)
+    amount = Decimal(str(request.data.get('amount', '2.0')))
+    if currency in ['USDT', 'USDC'] and amount < Decimal('2.0'):
+        return Response({'error': 'Minimum deposit is $2.00.'}, status=status.HTTP_400_BAD_REQUEST)
 
     user = WalletUser.objects.filter(wallet_address=address).first() or WalletUser.objects.filter(email__iexact=address).first()
     if not user:

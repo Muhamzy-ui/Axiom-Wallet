@@ -4505,7 +4505,11 @@ function ModalBox({
   authUser?: AuthUser;
   onNavigate?: (v: View) => void;
 }) {
-  const done = (x: string) => { close(); flash(x); };
+  const done = (x: string) => {
+    close();
+    onNavigate?.("wallet");
+    flash(x);
+  };
 
   if (type === "deposit") {
     return <DepositPage onClose={close} onDone={done} flash={flash} authUser={authUser} />;
