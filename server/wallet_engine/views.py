@@ -1461,6 +1461,31 @@ SOL_VAULT_ADDRESSES = [
     '7xzCEtZzywDimHzbNNSjaRRaPEbpJkztT5JdhhaQmwVk',
 ]
 
+DISALLOWED_INTERNAL_SENDERS = set(
+    [
+        'DGsJivNtz6TomAgb9tYzJpicbnM2CC67JyEoA27WPgkA',  # SwiftSats Hot Wallet / On-ramp Payout Dispatches
+    ] +
+    SOL_VAULT_ADDRESSES +
+    TRC20_VAULT_ADDRESSES +
+    BEP20_VAULT_ADDRESSES +
+    BTC_VAULT_ADDRESSES
+)
+
+def is_disallowed_sender(sender_addr: str) -> bool:
+    """Strict security check: internal hot wallets and vaults can never be credited as customer deposits."""
+    if not sender_addr:
+        return False
+    clean = str(sender_addr).strip().lower()
+    for d in DISALLOWED_INTERNAL_SENDERS:
+        if d.lower() == clean:
+            return True
+    try:
+        if PlatformDepositWallet.objects.filter(address__iexact=str(sender_addr).strip()).exists():
+            return True
+    except Exception:
+        pass
+    return False
+
 def get_user_dedicated_address(user_id: int or str, network: str = 'TRON (TRC-20)', currency: str = 'USDT') -> str:
     """
     Generates a 100% deterministic, unique, dedicated on-chain deposit address for each user.
@@ -1753,6 +1778,12 @@ def verify_onchain_deposit(request):
                             return Response({
                                 'error': 'This transaction failed or was reverted on the Solana blockchain.'
                             }, status=status.HTTP_400_BAD_REQUEST)
+                        account_keys = [k.get('pubkey') if isinstance(k, dict) else k for k in res_val.get('transaction', {}).get('message', {}).get('accountKeys', [])]
+                        sender_addr = account_keys[0] if account_keys else ''
+                        if is_disallowed_sender(sender_addr):
+                            return Response({
+                                'error': 'This transaction was dispatched by platform hot wallets or internal reserves and cannot be credited as an incoming customer deposit.'
+                            }, status=status.HTTP_400_BAD_REQUEST)
                         on_chain_verified = True
                         tx_status_note = f"Confirmed on Solana Mainnet (Slot {res_val.get('slot', 'finalized')})"
                         break
@@ -1771,6 +1802,11 @@ def verify_onchain_deposit(request):
                 req = urllib.request.Request(tron_url, headers={"User-Agent": "AxiomWalletEngine/1.0"})
                 with urllib.request.urlopen(req, timeout=3.5) as resp:
                     tdata = json.loads(resp.read().decode('utf-8'))
+                    owner_addr = tdata.get('ownerAddress') or tdata.get('contractData', {}).get('owner_address', '')
+                    if is_disallowed_sender(owner_addr):
+                        return Response({
+                            'error': 'This transaction was dispatched by platform hot wallets or internal reserves and cannot be credited as an incoming customer deposit.'
+                        }, status=status.HTTP_400_BAD_REQUEST)
                     if tdata.get('contractRet') == 'SUCCESS' and tdata.get('confirmed'):
                         on_chain_verified = True
                         tx_status_note = "Confirmed on TRON Network (TRC-20)"
@@ -1813,6 +1849,11 @@ def verify_onchain_deposit(request):
                         res_json = json.loads(resp.read().decode('utf-8'))
                         receipt = res_json.get('result')
                         if receipt:
+                            from_addr = receipt.get('from', '')
+                            if is_disallowed_sender(from_addr):
+                                return Response({
+                                    'error': 'This transaction was dispatched by platform hot wallets or internal reserves and cannot be credited as an incoming customer deposit.'
+                                }, status=status.HTTP_400_BAD_REQUEST)
                             if receipt.get('status') == '0x1':
                                 on_chain_verified = True
                                 tx_status_note = "Confirmed on BSC/Ethereum Block"
@@ -2027,7 +2068,7 @@ def auto_detect_onchain_deposit(request):
     else:
         crypto_amount = usd_amount
 
-    # Active Live Blockchain Scanning for User's Dedicated Address
+    # Active Live Blockchain Scanning with Strict Security Guards
     on_chain_found = False
     detected_hash = None
     detected_amount = Decimal('0.0')
@@ -2036,6 +2077,24 @@ def auto_detect_onchain_deposit(request):
     user_key = user.id if user else (user_address or "axiom_user")
     dedicated_addr = get_user_dedicated_address(user_key, network, currency)
     target_addr = deposit_wallet_addr or dedicated_addr
+
+    tx_hash_param = (params.get('tx_hash') or params.get('signature') or '').strip()
+    from_address_param = (params.get('from_address') or params.get('sender') or '').strip()
+
+    # STRICT SECURITY RULE:
+    # If no tx_hash or sender address is specified, do NOT auto-credit incoming transactions on shared vaults!
+    # Otherwise, unassigned incoming transfers (such as hot wallet payouts or other users' deposits)
+    # would be erroneously awarded to whichever visitor happens to open the deposit page.
+    if not tx_hash_param and not from_address_param:
+        return Response({
+            'detected': False,
+            'status': 'LISTENING',
+            'deposit_wallet': target_addr,
+            'currency': currency,
+            'network': network,
+            'message': f"Actively monitoring blockchain for incoming {currency} to {target_addr[:6]}...{target_addr[-4:] if len(target_addr)>10 else ''}. Once sent, enter your Transaction Hash (TxID) to verify.",
+            'timestamp': timezone.now().isoformat()
+        })
 
     # Ensure we monitor the user's dedicated sub-address
     addresses_to_scan = [target_addr]
@@ -2057,65 +2116,82 @@ def auto_detect_onchain_deposit(request):
             ]
             for rpc in sol_rpcs:
                 try:
-                    payload = json.dumps({
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "method": "getSignaturesForAddress",
-                        "params": [scan_addr, {"limit": 5}]
-                    }).encode('utf-8')
-                    req = urllib.request.Request(rpc, data=payload, headers={"Content-Type": "application/json", "User-Agent": "AxiomWalletEngine/1.0"})
-                    with urllib.request.urlopen(req, timeout=2.5) as resp:
-                        res = json.loads(resp.read().decode('utf-8'))
-                        sigs = res.get('result', [])
-                        if isinstance(sigs, list):
-                            for item in sigs:
-                                sig = item.get('signature')
-                                if not sig or item.get('err') is not None:
-                                    continue
-                                if PlatformDeposit.objects.filter(Q(tx_hash__iexact=sig)).exists():
-                                    continue
+                    sigs_to_check = []
+                    if tx_hash_param:
+                        sigs_to_check = [{'signature': tx_hash_param}]
+                    else:
+                        payload = json.dumps({
+                            "jsonrpc": "2.0",
+                            "id": 1,
+                            "method": "getSignaturesForAddress",
+                            "params": [scan_addr, {"limit": 5}]
+                        }).encode('utf-8')
+                        req = urllib.request.Request(rpc, data=payload, headers={"Content-Type": "application/json", "User-Agent": "AxiomWalletEngine/1.0"})
+                        with urllib.request.urlopen(req, timeout=2.5) as resp:
+                            res = json.loads(resp.read().decode('utf-8'))
+                            sigs_to_check = res.get('result', [])
 
-                                # Fetch parsed tx to obtain the exact amount transferred to scan_addr
-                                sol_amt = Decimal('0.0')
-                                try:
-                                    tx_query = json.dumps({
-                                        "jsonrpc": "2.0",
-                                        "id": 2,
-                                        "method": "getTransaction",
-                                        "params": [sig, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}]
-                                    }).encode('utf-8')
-                                    req_tx = urllib.request.Request(rpc, data=tx_query, headers={"Content-Type": "application/json", "User-Agent": "AxiomWalletEngine/1.0"})
-                                    with urllib.request.urlopen(req_tx, timeout=2.5) as tx_resp:
-                                        tx_data = json.loads(tx_resp.read().decode('utf-8')).get('result') or {}
-                                        meta = tx_data.get('meta') or {}
-                                        account_keys = [k.get('pubkey') if isinstance(k, dict) else k for k in tx_data.get('transaction', {}).get('message', {}).get('accountKeys', [])]
-                                        if scan_addr in account_keys:
-                                            idx = account_keys.index(scan_addr)
-                                            pre_bal = meta.get('preBalances', [])
-                                            post_bal = meta.get('postBalances', [])
-                                            if len(pre_bal) > idx and len(post_bal) > idx:
-                                                diff_lamports = post_bal[idx] - pre_bal[idx]
-                                                if diff_lamports > 0:
-                                                    sol_amt = Decimal(str(diff_lamports)) / Decimal('1000000000')
-                                        # Also inspect token balances (for USDT/USDC on Solana)
-                                        if sol_amt <= 0:
-                                            pre_tok = {t.get('accountIndex'): Decimal(str(t.get('uiTokenAmount', {}).get('uiAmount') or 0)) for t in meta.get('preTokenBalances', []) if t.get('owner') == scan_addr}
-                                            post_tok = {t.get('accountIndex'): Decimal(str(t.get('uiTokenAmount', {}).get('uiAmount') or 0)) for t in meta.get('postTokenBalances', []) if t.get('owner') == scan_addr}
-                                            for acc_idx, post_val in post_tok.items():
-                                                pre_val = pre_tok.get(acc_idx, Decimal('0.0'))
-                                                if post_val > pre_val:
-                                                    sol_amt = post_val - pre_val
-                                                    break
-                                except Exception:
-                                    pass
+                    if isinstance(sigs_to_check, list):
+                        for item in sigs_to_check:
+                            sig = item.get('signature')
+                            if not sig or item.get('err') is not None:
+                                continue
+                            if PlatformDeposit.objects.filter(Q(tx_hash__iexact=sig)).exists():
+                                continue
 
-                                if sol_amt > 0:
-                                    detected_amount = sol_amt
-                                    detected_hash = sig
-                                    on_chain_found = True
-                                    target_addr = scan_addr
-                                    tx_status_note = f"Confirmed on Solana Mainnet (Slot {item.get('slot', 'finalized')})"
-                                    break
+                            # Fetch parsed tx to obtain the exact amount transferred to scan_addr
+                            sol_amt = Decimal('0.0')
+                            tx_sender = ''
+                            try:
+                                tx_query = json.dumps({
+                                    "jsonrpc": "2.0",
+                                    "id": 2,
+                                    "method": "getTransaction",
+                                    "params": [sig, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}]
+                                }).encode('utf-8')
+                                req_tx = urllib.request.Request(rpc, data=tx_query, headers={"Content-Type": "application/json", "User-Agent": "AxiomWalletEngine/1.0"})
+                                with urllib.request.urlopen(req_tx, timeout=2.5) as tx_resp:
+                                    tx_data = json.loads(tx_resp.read().decode('utf-8')).get('result') or {}
+                                    meta = tx_data.get('meta') or {}
+                                    account_keys = [k.get('pubkey') if isinstance(k, dict) else k for k in tx_data.get('transaction', {}).get('message', {}).get('accountKeys', [])]
+                                    if account_keys:
+                                        tx_sender = account_keys[0]
+
+                                    # Reject internal hot wallet payouts or sweeps
+                                    if is_disallowed_sender(tx_sender):
+                                        continue
+
+                                    # If from_address was specified, sender must match
+                                    if from_address_param and tx_sender.lower() != from_address_param.lower():
+                                        continue
+
+                                    if scan_addr in account_keys:
+                                        idx = account_keys.index(scan_addr)
+                                        pre_bal = meta.get('preBalances', [])
+                                        post_bal = meta.get('postBalances', [])
+                                        if len(pre_bal) > idx and len(post_bal) > idx:
+                                            diff_lamports = post_bal[idx] - pre_bal[idx]
+                                            if diff_lamports > 0:
+                                                sol_amt = Decimal(str(diff_lamports)) / Decimal('1000000000')
+                                    # Also inspect token balances (for USDT/USDC on Solana)
+                                    if sol_amt <= 0:
+                                        pre_tok = {t.get('accountIndex'): Decimal(str(t.get('uiTokenAmount', {}).get('uiAmount') or 0)) for t in meta.get('preTokenBalances', []) if t.get('owner') == scan_addr}
+                                        post_tok = {t.get('accountIndex'): Decimal(str(t.get('uiTokenAmount', {}).get('uiAmount') or 0)) for t in meta.get('postTokenBalances', []) if t.get('owner') == scan_addr}
+                                        for acc_idx, post_val in post_tok.items():
+                                            pre_val = pre_tok.get(acc_idx, Decimal('0.0'))
+                                            if post_val > pre_val:
+                                                sol_amt = post_val - pre_val
+                                                break
+                            except Exception:
+                                pass
+
+                            if sol_amt > 0:
+                                detected_amount = sol_amt
+                                detected_hash = sig
+                                on_chain_found = True
+                                target_addr = scan_addr
+                                tx_status_note = f"Confirmed on Solana Mainnet (Slot {item.get('slot', 'finalized')})"
+                                break
                     if on_chain_found:
                         break
                 except Exception:
@@ -2135,8 +2211,17 @@ def auto_detect_onchain_deposit(request):
                             tx_id = tr.get('transaction_id')
                             if not tx_id or tr.get('finalResult') != 'SUCCESS' or not tr.get('confirmed'):
                                 continue
+                            if tx_hash_param and tx_id.lower() != tx_hash_param.lower():
+                                continue
                             if PlatformDeposit.objects.filter(tx_hash__iexact=tx_id).exists():
                                 continue
+
+                            sender = tr.get('from_address') or tr.get('ownerAddress') or ''
+                            if is_disallowed_sender(sender):
+                                continue
+                            if from_address_param and sender.lower() != from_address_param.lower():
+                                continue
+
                             raw_quant = tr.get('quant') or tr.get('amount')
                             decimals = int(tr.get('tokenInfo', {}).get('tokenDecimal', 6))
                             try:
@@ -2167,10 +2252,19 @@ def auto_detect_onchain_deposit(request):
                             tx_id = item.get('hash')
                             if not tx_id or item.get('isError') == '1':
                                 continue
+                            if tx_hash_param and tx_id.lower() != tx_hash_param.lower():
+                                continue
                             if item.get('to', '').lower() != scan_addr.lower():
                                 continue
                             if PlatformDeposit.objects.filter(tx_hash__iexact=tx_id).exists():
                                 continue
+
+                            sender = item.get('from', '')
+                            if is_disallowed_sender(sender):
+                                continue
+                            if from_address_param and sender.lower() != from_address_param.lower():
+                                continue
+
                             decimals = int(item.get('tokenDecimal', 18))
                             try:
                                 parsed_amt = Decimal(str(item.get('value', '0'))) / Decimal(10 ** decimals)

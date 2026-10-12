@@ -169,17 +169,20 @@ export function computeSynchronizedPrice(
   const p2 = (epochSec + ((seed >> 2) % 1000)) * (2 * Math.PI / 21.17);
   const p3 = (epochSec + ((seed >> 4) % 1000)) * (2 * Math.PI / 7.89);
 
-  // Micro-amplitude: subtle harmonic breathing around real live Binance price (less than 1 cent)
-  const amp = isMajor ? 0.000005 : 0.0002;
-  const wavePct = amp * (0.6 * Math.sin(p1) + 0.3 * Math.sin(p2) + 0.1 * Math.sin(p3));
+  // Natural live market breathing (realistic ±0.08% to ±0.20% oscillations matching Bybit / TradingView real-time ticks):
+  const amp = isMajor ? 0.0012 : 0.0028;
+  const tickNoise = ((Math.sin(epochSec * 1.73 + seed) * 0.5 + Math.cos(epochSec * 3.11 + seed * 2) * 0.5) * amp * 0.35);
+  const wavePct = amp * (0.55 * Math.sin(p1) + 0.30 * Math.sin(p2) + 0.15 * Math.sin(p3)) + tickNoise;
   const isBuy = (0.6 * Math.cos(p1) / 67.31 + 0.3 * Math.cos(p2) / 21.17) >= 0;
 
   const rawP = baseAnchor * (1 + wavePct);
   let numericPrice: number;
-  if (rawP >= 1) {
+  if (rawP >= 50) {
     numericPrice = Number(rawP.toFixed(2));
-  } else if (rawP >= 0.001) {
+  } else if (rawP >= 1) {
     numericPrice = Number(rawP.toFixed(4));
+  } else if (rawP >= 0.0001) {
+    numericPrice = Number(rawP.toFixed(6));
   } else {
     numericPrice = Number(rawP.toFixed(8));
   }
@@ -2861,8 +2864,16 @@ class MarketStore {
       }
       return this.candleSeries[sym][tf];
     }
-    if (!this.candleSeries[sym][tf]) {
+    const existing = this.candleSeries[sym][tf];
+    if (!existing || existing.length === 0) {
       this.candleSeries[sym][tf] = this.buildInitialCandles(sym, tf);
+    } else if (existing.length >= 6) {
+      // Auto-heal legacy flatlined series: if last 5 candles were dead flat (open === close === high === low), regenerate smoothly!
+      const last5 = existing.slice(-5);
+      const isDeadFlat = last5.every(c => c.close === last5[0].close && c.high === c.low);
+      if (isDeadFlat) {
+        this.candleSeries[sym][tf] = this.buildInitialCandles(sym, tf);
+      }
     }
     return this.candleSeries[sym][tf];
   }
@@ -3045,24 +3056,27 @@ class MarketStore {
     const amp2 = p * 0.0011 * volMult;
     const amp3 = p * 0.0034 * volMult;
 
-    // Accumulated stochastic random walk backward from current price
-    const noise = new Array(N).fill(0);
-    let accumulatedNoise = 0;
+    // Forward stochastic price walk with multi-harmonic market waves:
     const microVol = p * 0.00055 * volMult;
+    const rawCloses = new Array(N);
+    let curWalk = p - trendTotal;
+    const startP = curWalk;
+    rawCloses[0] = curWalk;
 
-    for (let k = 1; k < N; k++) {
-      accumulatedNoise = accumulatedNoise * 0.95 + (rand() - 0.5) * microVol;
-      noise[k] = accumulatedNoise;
+    for (let i = 1; i < N; i++) {
+      const progress = i / (N - 1);
+      const harmonic = amp1 * Math.sin(i * w1) + amp2 * Math.sin(i * w2) + amp3 * Math.sin(i * w3);
+      const stepNoise = (rand() - 0.5) * microVol;
+      curWalk = curWalk + stepNoise;
+      rawCloses[i] = startP + (trendTotal * progress) + harmonic + (curWalk - startP);
     }
 
+    // Brownian Bridge: smoothly distribute end difference linearly across all bars so rawCloses[N - 1] connects seamlessly to p
+    const endDiff = p - rawCloses[N - 1];
     const closes = new Array(N);
-    for (let k = 0; k < N; k++) {
-      const i = N - 1 - k;
-      // Taper over the nearest 14 bars so historical line smoothly and tangentially connects to live price p
-      const taper = Math.min(1.0, k / 14);
-      const harmonic = (amp1 * Math.sin(k * w1) + amp2 * Math.sin(k * w2) + amp3 * Math.sin(k * w3)) * taper;
-      const trend = -trendTotal * (k / (N - 1));
-      closes[i] = Math.max(p * 0.001, p + harmonic + trend + (noise[k] * taper));
+    for (let i = 0; i < N; i++) {
+      const bridge = endDiff * (i / (N - 1));
+      closes[i] = Math.max(p * 0.001, rawCloses[i] + bridge);
     }
     closes[N - 1] = p;
 

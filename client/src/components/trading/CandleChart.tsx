@@ -105,7 +105,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       }
       if (isSol) return `${val.toFixed(5)} SOL`;
       if (val < 0.0001) return `$${val.toFixed(8)}`;
-      if (val < 1) return `$${val.toFixed(4)}`;
+      if (val < 10) return `$${val.toFixed(4)}`;
       return `$${val.toFixed(2)}`;
     },
     [dispMode, currMode]
@@ -227,7 +227,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       }
       if (isSol) return `${val.toFixed(5)} SOL`;
       if (val < 0.0001) return `$${val.toFixed(8)}`;
-      if (val < 1) return `$${val.toFixed(4)}`;
+      if (val < 10) return `$${val.toFixed(4)}`;
       return `$${val.toFixed(2)}`;
     };
 
