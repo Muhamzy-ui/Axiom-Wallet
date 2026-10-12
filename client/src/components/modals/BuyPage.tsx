@@ -220,23 +220,38 @@ export const BuyPage: React.FC<BuyPageProps> = ({
   const equivalentUsd = rateToUsd > 0 ? parsedFiat / rateToUsd : parsedFiat;
   const tokensReceived = buyPriceUsd > 0 ? equivalentUsd / buyPriceUsd : 0;
 
-  // AXIOM TIERED ORDER CHARGES:
-  // - $2.00 to $25.00: ₦1,700
-  // - $25.00 to $100.00: ₦3,400
-  // - $100.00 upward: $3.00 USD (₦4,275 at 1,425 rate)
-  const getBuyOrderFee = (usd: number): { feeNgn: number; feeUsd: number; label: string } => {
+  // AXIOM NETWORK DELIVERY CHARGES:
+  // - TRC-20 (TRON USDT): Exactly $2.00 USD (₦2,850 NGN at baseline 1,425 rate) as specified
+  // - ERC-20 (Ethereum): $4.00 USD
+  // - Others (Solana, BEP-20, BTC): $1.00 USD (< $25), $2.00 USD (< $100), $3.00 USD (>= $100)
+  const getBuyOrderFee = (usd: number, net: string): { feeNgn: number; feeUsd: number; label: string } => {
+    const isTrc = net.includes("TRON") || net.includes("TRC");
+    if (isTrc) {
+      const feeUsd = 2.0;
+      const feeNgn = Math.round(feeUsd * rateToUsd);
+      return { feeNgn, feeUsd, label: `$2.00 USD (${selectedCountry.currencySymbol}${feeNgn.toLocaleString()})` };
+    }
+    if (net.includes("Ethereum") || net.includes("ERC")) {
+      const feeUsd = 4.0;
+      const feeNgn = Math.round(feeUsd * rateToUsd);
+      return { feeNgn, feeUsd, label: `$4.00 USD (${selectedCountry.currencySymbol}${feeNgn.toLocaleString()})` };
+    }
     if (usd < 25.0) {
-      return { feeNgn: 1700, feeUsd: 1700 / 1425.0, label: "₦1,700" };
+      const feeUsd = 1.0;
+      const feeNgn = Math.round(feeUsd * rateToUsd);
+      return { feeNgn, feeUsd, label: `$1.00 USD (${selectedCountry.currencySymbol}${feeNgn.toLocaleString()})` };
     }
     if (usd < 100.0) {
-      return { feeNgn: 3400, feeUsd: 3400 / 1425.0, label: "₦3,400" };
+      const feeUsd = 2.0;
+      const feeNgn = Math.round(feeUsd * rateToUsd);
+      return { feeNgn, feeUsd, label: `$2.00 USD (${selectedCountry.currencySymbol}${feeNgn.toLocaleString()})` };
     }
     const feeUsd = 3.0;
-    const feeNgn = Math.round(feeUsd * 1425.0);
-    return { feeNgn, feeUsd, label: "$3.00 USD (₦4,275)" };
+    const feeNgn = Math.round(feeUsd * rateToUsd);
+    return { feeNgn, feeUsd, label: `$3.00 USD (${selectedCountry.currencySymbol}${feeNgn.toLocaleString()})` };
   };
 
-  const currentOrderFee = getBuyOrderFee(equivalentUsd);
+  const currentOrderFee = getBuyOrderFee(equivalentUsd, buyNetwork);
   const feeInLocalCurrency = selectedCountry.code === "NG"
     ? currentOrderFee.feeNgn
     : Math.round(currentOrderFee.feeUsd * (selectedCountry.rateToUsd || 1));
@@ -1097,6 +1112,49 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                 <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8 }}>
                   <span>Rate: 1 USD ≈ {selectedCountry.currencySymbol}{rateToUsd >= 100 ? rateToUsd.toLocaleString() : rateToUsd} {selectedCountry.currency}</span>
                 </div>
+
+                {/* Delivery Fee & Total Payable Breakdown */}
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: "10px 14px",
+                    background: "rgba(255, 255, 255, 0.03)",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                    borderRadius: 12,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    fontSize: 12,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", color: "var(--muted)" }}>
+                    <span>Crypto Amount:</span>
+                    <span style={{ color: "var(--text)", fontWeight: 600 }}>
+                      ${equivalentUsd.toFixed(2)} USD ({selectedCountry.currencySymbol}{baseSubtotalFiat.toLocaleString()} {selectedCountry.currency})
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", color: "var(--muted)" }}>
+                    <span>{buyNetwork.split(" ")[0]} Network Delivery Fee:</span>
+                    <span style={{ color: "#F59E0B", fontWeight: 700 }}>
+                      +${currentOrderFee.feeUsd.toFixed(2)} USD ({selectedCountry.currencySymbol}{feeInLocalCurrency.toLocaleString()} {selectedCountry.currency})
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontWeight: 800,
+                      fontSize: 13,
+                      paddingTop: 6,
+                      borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+                    }}
+                  >
+                    <span style={{ color: "var(--text)" }}>Total Payable:</span>
+                    <span style={{ color: "var(--violet, #7C3AED)", fontSize: 14 }}>
+                      {selectedCountry.currencySymbol}{totalPayableFiat.toLocaleString()} {selectedCountry.currency}
+                    </span>
+                  </div>
+                </div>
               </div>
 
               <div className="card-divider" />
@@ -1190,7 +1248,10 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                   <span>Method Unavailable (Coming Soon)</span>
                 ) : (
                   <>
-                    <span>Continue to Buy • {selectedCountry.currencySymbol}{totalPayableFiat.toLocaleString()} {selectedCountry.currency}</span>
+                    <span>
+                      Continue to Buy • {selectedCountry.currencySymbol}{totalPayableFiat.toLocaleString()} {selectedCountry.currency}
+                      {buyNetwork.includes("TRC") || buyNetwork.includes("TRON") ? " (incl. $2 TRC-20 fee)" : ""}
+                    </span>
                     <ArrowRight size={16} />
                   </>
                 )}
