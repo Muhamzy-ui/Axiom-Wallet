@@ -6140,6 +6140,19 @@ function AppShell({
         localStorage.getItem("axiom_last_order_id") ||
         `AXM-SS-${Date.now().toString(36).toUpperCase()}`;
 
+      // Deduplicate: Clean URL immediately and prevent duplicate execution for the same order
+      const processedKey = `axiom_processed_payment_${orderId}`;
+      if (typeof window !== "undefined" && window.sessionStorage) {
+        if (window.sessionStorage.getItem(processedKey)) {
+          return;
+        }
+        window.sessionStorage.setItem(processedKey, "true");
+      }
+
+      // Immediately clean URL parameters so hashchange or auth re-render will not re-trigger
+      const cleanUrl = window.location.pathname + "#wallet";
+      window.history.replaceState({}, document.title, cleanUrl);
+
       const partnerOrderId =
         searchParams.get("partner_order_id") ||
         hashParams.get("partner_order_id") ||
@@ -6163,7 +6176,11 @@ function AppShell({
         : rawCoin;
 
       const amountUsdParam = searchParams.get("amount_usd") || hashParams.get("amount_usd");
-      const cryptoAmountParam = searchParams.get("crypto_amount") || hashParams.get("crypto_amount");
+      const cryptoAmountParam =
+        searchParams.get("crypto_amount") ||
+        hashParams.get("crypto_amount") ||
+        searchParams.get("crypto") ||
+        hashParams.get("crypto");
       const rawAmountStr = searchParams.get("amount") || hashParams.get("amount");
       const txHash =
         searchParams.get("tx_hash") ||
@@ -6172,43 +6189,54 @@ function AppShell({
         hashParams.get("txHash") ||
         undefined;
 
-      // Determine USD amount: if amount is large (e.g. Naira > 500), convert at 1425 baseline
-      let effectiveUsd = 10.0;
-      if (amountUsdParam && parseFloat(amountUsdParam) > 0) {
-        effectiveUsd = parseFloat(amountUsdParam);
+      const tokenObj = marketStore.getToken(coin);
+      const coinPrice =
+        tokenObj && tokenObj.numericPrice > 0
+          ? tokenObj.numericPrice
+          : coin === "SOL"
+          ? 118.28
+          : coin === "BTC"
+          ? 84500.0
+          : coin === "ETH"
+          ? 2664.0
+          : 1.0;
+
+      const savedUsdStr = localStorage.getItem("axiom_last_buy_usd");
+      const savedUsd = savedUsdStr ? parseFloat(savedUsdStr) : 0;
+
+      let effectiveUsd = savedUsd > 0 ? savedUsd : 5.0;
+      let tokenUnits = 0;
+
+      if (cryptoAmountParam && parseFloat(cryptoAmountParam) > 0) {
+        // Explicit crypto amount provided
+        tokenUnits = parseFloat(cryptoAmountParam);
+        effectiveUsd = (coin === "USDT" || coin === "USDC") ? tokenUnits : (savedUsd > 0 ? savedUsd : tokenUnits * coinPrice);
       } else if (rawAmountStr) {
         const parsed = parseFloat(rawAmountStr);
         if (parsed > 500) {
-          // Naira amount returned
+          // Naira amount returned (e.g. 7000 NGN)
           effectiveUsd = Math.round((parsed / 1425.0) * 100) / 100;
-        } else if (parsed > 0) {
+          tokenUnits = (coin === "USDT" || coin === "USDC") ? effectiveUsd : effectiveUsd / coinPrice;
+        } else if (coin !== "USDT" && coin !== "USDC" && parsed < 10.0) {
+          // Crypto units returned directly (e.g. 0.0412 SOL, 0.00006 BTC)
+          tokenUnits = parsed;
+          effectiveUsd = savedUsd > 0 ? savedUsd : tokenUnits * coinPrice;
+        } else {
+          // USD amount returned
           effectiveUsd = parsed;
+          tokenUnits = (coin === "USDT" || coin === "USDC") ? effectiveUsd : effectiveUsd / coinPrice;
         }
+      } else if (amountUsdParam && parseFloat(amountUsdParam) > 0) {
+        effectiveUsd = parseFloat(amountUsdParam);
+        tokenUnits = (coin === "USDT" || coin === "USDC") ? effectiveUsd : effectiveUsd / coinPrice;
+      } else if (savedUsd > 0) {
+        effectiveUsd = savedUsd;
+        tokenUnits = (coin === "USDT" || coin === "USDC") ? effectiveUsd : effectiveUsd / coinPrice;
       } else {
-        const savedUsd = localStorage.getItem("axiom_last_buy_usd");
-        if (savedUsd) effectiveUsd = parseFloat(savedUsd) || 10.0;
+        tokenUnits = (coin === "USDT" || coin === "USDC") ? 5.0 : 5.0 / coinPrice;
       }
 
-      // Calculate token units to credit
-      let tokenUnits = effectiveUsd;
-      if (cryptoAmountParam && parseFloat(cryptoAmountParam) > 0) {
-        tokenUnits = parseFloat(cryptoAmountParam);
-      } else if (coin !== "USDT" && coin !== "USDC") {
-        const tokenObj = marketStore.getToken(coin);
-        const price =
-          tokenObj && tokenObj.numericPrice > 0
-            ? tokenObj.numericPrice
-            : coin === "SOL"
-            ? 121.69
-            : coin === "BTC"
-            ? 77724.0
-            : coin === "ETH"
-            ? 2650.0
-            : 1.0;
-        tokenUnits = effectiveUsd / price;
-      }
-
-      // 1. Credit user balance in store immediately
+      // 1. Credit user balance in store once (optimistic UI)
       marketStore.depositFunds(coin, tokenUnits);
 
       // 2. Set view to wallet and display confirmation
@@ -6228,7 +6256,7 @@ function AppShell({
         "axiom_user";
 
       try {
-        const res = await api.creditSwiftsatsOrder({
+        await api.creditSwiftsatsOrder({
           address: userAddr,
           order_id: orderId,
           partner_order_id: partnerOrderId,
@@ -6236,24 +6264,13 @@ function AppShell({
           amount_usd: effectiveUsd.toFixed(2),
           currency: coin,
         });
-
-        if (res && res.credited_amount) {
-          const verifiedAmt = parseFloat(res.credited_amount);
-          if (verifiedAmt > 0 && verifiedAmt !== tokenUnits) {
-            marketStore.depositFunds(coin, verifiedAmt);
-          }
-        }
       } catch (err) {
         // Balance already credited optimistically
       } finally {
-        // Strictly trigger portfolio sync and notifications
+        // Strictly trigger portfolio sync to reconcile true database balance
         await marketStore.syncBackendPortfolio(true);
         notificationService.triggerImmediateSync();
       }
-
-      // Clean query parameters from URL without reloading
-      const cleanUrl = window.location.pathname + "#wallet";
-      window.history.replaceState({}, document.title, cleanUrl);
     };
 
     parsePaymentCallback();

@@ -1649,22 +1649,9 @@ def verify_onchain_deposit(request):
     if not tx_hash:
         return Response({'error': 'Transaction hash / signature is required for deposit verification.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    user = WalletUser.objects.filter(wallet_address=user_address).first()
-    if not user:
-        user = WalletUser.objects.filter(email__iexact=user_address).first()
-    if not user and user_address.isdigit():
-        user = WalletUser.objects.filter(id=int(user_address)).first()
+    user = find_wallet_user(user_address)
     if not user:
         user = get_current_user(request)
-    if not user and user_address:
-        user, _ = WalletUser.objects.get_or_create(
-            wallet_address=user_address,
-            defaults={
-                'full_name': f"Account {user_address[:6]}",
-                'email': f"{user_address[:10].lower()}@axiom.wallet",
-                'is_email_verified': True
-            }
-        )
     if not user:
         return Response({'error': 'User account not found.'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -2281,13 +2268,18 @@ def swiftsats_order_credit(request):
 
     partner_order_id = request.data.get('partner_order_id', '').strip()
     effective_hash = tx_hash or f"SS-{order_id}"
+    clean_order_id = order_id.replace('SS-', '').replace('SWIFTSATS-', '').replace('AXM-NGN-', '').strip() if order_id else ''
+    clean_partner_id = partner_order_id.replace('SS-', '').replace('SWIFTSATS-', '').replace('AXM-NGN-', '').strip() if partner_order_id else ''
 
     # 1. Has this order already been confirmed by webhook or prior verified check?
-    existing_confirmed = PlatformDeposit.objects.filter(tx_hash=effective_hash, status='CONFIRMED').first()
-    if not existing_confirmed and order_id:
-        existing_confirmed = PlatformDeposit.objects.filter(tx_hash__icontains=order_id, status='CONFIRMED').first()
-    if not existing_confirmed and partner_order_id:
-        existing_confirmed = PlatformDeposit.objects.filter(tx_hash__icontains=partner_order_id, status='CONFIRMED').first()
+    existing_confirmed = PlatformDeposit.objects.filter(
+        Q(tx_hash=effective_hash) |
+        (Q(tx_hash__icontains=order_id) if order_id else Q(pk__isnull=True)) |
+        (Q(tx_hash__icontains=clean_order_id) if clean_order_id else Q(pk__isnull=True)) |
+        (Q(tx_hash__icontains=partner_order_id) if partner_order_id else Q(pk__isnull=True)) |
+        (Q(tx_hash__icontains=clean_partner_id) if clean_partner_id else Q(pk__isnull=True)),
+        status='CONFIRMED'
+    ).first()
 
     if existing_confirmed:
         bal_obj = UserBalance.objects.filter(user=user, currency=currency).first()
@@ -2537,7 +2529,14 @@ def swiftsats_webhook(request):
         if not is_confirmed:
             return Response({'error': f'Order #{order_id} could not be confirmed with gateway.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    if PlatformDeposit.objects.filter(tx_hash=tx_hash).exists():
+    clean_oid = order_id.replace('SWIFTSATS-', '').replace('SS-', '').replace('AXM-NGN-', '').strip() if order_id else ''
+    already_credited = PlatformDeposit.objects.filter(
+        Q(tx_hash=tx_hash) |
+        (Q(tx_hash__icontains=order_id) if order_id else Q(pk__isnull=True)) |
+        (Q(tx_hash__icontains=clean_oid) if clean_oid else Q(pk__isnull=True)),
+        status='CONFIRMED'
+    ).exists()
+    if already_credited:
         return Response({'success': True, 'message': 'Already credited.'})
 
     if crypto_amount_str:

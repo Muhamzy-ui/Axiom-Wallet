@@ -2658,21 +2658,26 @@ class MarketStore {
     this.balances[sym].totalInvested = (this.balances[sym].totalInvested || 0) + usdVal;
     this.balances[sym].avgBuyPrice = p;
 
-    // Record in userOrders so deposits appear in trade activity
-    this.userOrders.unshift({
-      id: `dep-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      sym,
-      name: token?.name || sym,
-      side: "Buy",
-      amountUsd: Number(usdVal.toFixed(2)),
-      tokenAmt: amount,
-      price: p,
-      timestamp: Date.now(),
-      dateStr: "just now",
-      orderType: "Deposit",
-      triggerNote: `Confirmed Deposit: +${amount >= 1000 ? amount.toLocaleString(undefined, { maximumFractionDigits: 1 }) : amount.toFixed(4)} ${sym}`,
-    });
-    if (this.userOrders.length > 50) this.userOrders = this.userOrders.slice(0, 50);
+    // Record in userOrders so deposits appear in trade activity (guard against duplicate within 45s)
+    const isRecentDuplicate = this.userOrders.some(
+      o => o.orderType === "Deposit" && o.sym === sym && Math.abs(o.tokenAmt - amount) < 0.0001 && (Date.now() - (o.timestamp || 0) < 45000)
+    );
+    if (!isRecentDuplicate) {
+      this.userOrders.unshift({
+        id: `dep-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        sym,
+        name: token?.name || sym,
+        side: "Buy",
+        amountUsd: Number(usdVal.toFixed(2)),
+        tokenAmt: amount,
+        price: p,
+        timestamp: Date.now(),
+        dateStr: "just now",
+        orderType: "Deposit",
+        triggerNote: `Confirmed Deposit: +${amount >= 1000 ? amount.toLocaleString(undefined, { maximumFractionDigits: 1 }) : amount.toFixed(4)} ${sym}`,
+      });
+      if (this.userOrders.length > 50) this.userOrders = this.userOrders.slice(0, 50);
+    }
 
     this.lastOrderAlert = `✅ Deposit Credited! +${amount >= 1000 ? amount.toLocaleString() : amount.toFixed(4)} ${sym} ($${usdVal.toFixed(2)}) is now available.`;
 
@@ -2689,6 +2694,23 @@ class MarketStore {
   }
 
   getUserOrders(sym?: string): UserOrder[] {
+    // Automatically deduplicate user orders to guarantee clean activity view
+    const seen = new Set<string>();
+    const deduped: UserOrder[] = [];
+    for (const o of this.userOrders) {
+      const key = o.orderType === "Deposit"
+        ? `${o.orderType}_${o.sym}_${o.tokenAmt.toFixed(4)}_${Math.floor((o.timestamp || 0) / 120000)}`
+        : o.id;
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduped.push(o);
+      }
+    }
+    if (deduped.length !== this.userOrders.length) {
+      this.userOrders = deduped;
+      this.savePersistedStateNow();
+    }
+
     if (sym) {
       return this.userOrders.filter(o => o.sym.toUpperCase() === sym.toUpperCase());
     }
