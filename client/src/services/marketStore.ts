@@ -56,6 +56,7 @@ export interface MarketToken {
   is_verified?: boolean;
   is_liquidity_locked?: boolean;
   is_sell_blocked?: boolean;
+  baseChangeNum?: number;
 }
 
 export function generateSparkline(p: number, isUp: boolean): number[] {
@@ -165,23 +166,24 @@ export function computeSynchronizedPrice(
   }
 
   const isMajor = BINANCE_MAJOR_SYMBOLS.has(sym);
-  const p1 = (epochSec + (seed % 1000)) * (2 * Math.PI / 67.31);
-  const p2 = (epochSec + ((seed >> 2) % 1000)) * (2 * Math.PI / 21.17);
-  const p3 = (epochSec + ((seed >> 4) % 1000)) * (2 * Math.PI / 7.89);
+  // Organic tidal harmonic cycles (2 to 10 minutes) so charts move smoothly and gradually without erratic jumping:
+  const p1 = (epochSec + (seed % 1000)) * (2 * Math.PI / 640.0);
+  const p2 = (epochSec + ((seed >> 2) % 1000)) * (2 * Math.PI / 290.0);
+  const p3 = (epochSec + ((seed >> 4) % 1000)) * (2 * Math.PI / 135.0);
 
-  // Natural live market breathing (realistic ±0.08% to ±0.20% oscillations matching Bybit / TradingView real-time ticks):
-  const amp = isMajor ? 0.0012 : 0.0028;
-  const tickNoise = ((Math.sin(epochSec * 1.73 + seed) * 0.5 + Math.cos(epochSec * 3.11 + seed * 2) * 0.5) * amp * 0.35);
-  const wavePct = amp * (0.55 * Math.sin(p1) + 0.30 * Math.sin(p2) + 0.15 * Math.sin(p3)) + tickNoise;
-  const isBuy = (0.6 * Math.cos(p1) / 67.31 + 0.3 * Math.cos(p2) / 21.17) >= 0;
+  // Gentle, realistic amplitude: 0.03% for major cryptos, 0.06% for newly launched coins:
+  const amp = isMajor ? 0.0003 : 0.0006;
+  // Continuous smooth harmonic movement (zero high-frequency 1-second sawtooth/zigzag jitter):
+  const wavePct = amp * (0.60 * Math.sin(p1) + 0.28 * Math.sin(p2) + 0.12 * Math.sin(p3));
+  const isBuy = (0.60 * Math.cos(p1) / 640.0 + 0.28 * Math.cos(p2) / 290.0) >= 0;
 
   const rawP = baseAnchor * (1 + wavePct);
   let numericPrice: number;
-  if (rawP >= 50) {
+  if (rawP >= 100) {
     numericPrice = Number(rawP.toFixed(2));
   } else if (rawP >= 1) {
     numericPrice = Number(rawP.toFixed(4));
-  } else if (rawP >= 0.0001) {
+  } else if (rawP >= 0.001) {
     numericPrice = Number(rawP.toFixed(6));
   } else {
     numericPrice = Number(rawP.toFixed(8));
@@ -1154,6 +1156,7 @@ class MarketStore {
             supply: numSupply,
             change: changeStr,
             changeNum: numChange,
+            baseChangeNum: numChange,
             pos: !isRugged && numChange >= 0,
             is_rugged: isRugged,
             sparkline: current.sparkline && current.sparkline.length > 1 ? current.sparkline : generateSparkline(effectivePrice, !isRugged && numChange >= 0),
@@ -1208,6 +1211,7 @@ class MarketStore {
             solPrice: `${(numPrice / 121.69).toFixed(6)} SOL`,
             change: changeStr,
             changeNum: numChange,
+            baseChangeNum: numChange,
             cap: formatShort(numCap),
             fdv: formatShort(numCap),
             liq: formatShort(numLiq),
@@ -2105,9 +2109,10 @@ class MarketStore {
             };
             hasUpdates = true;
           } else {
-            if (local.bal !== amt || (local.usdValue === 0 && amt > 0)) {
-              local.bal = amt;
-              local.usdValue = Number((amt * liveP).toFixed(2));
+            local.bal = amt;
+            const targetUsd = Number((amt * liveP).toFixed(2));
+            if (local.usdValue !== targetUsd) {
+              local.usdValue = targetUsd;
               hasUpdates = true;
             }
             if (backendInvested > 0) local.totalInvested = backendInvested;
@@ -2890,9 +2895,9 @@ class MarketStore {
       const realCandles = await fetchGeckoCandles(token.network, token.poolAddress, tf, sym);
       if (realCandles && realCandles.length > 0) {
         const lastC = realCandles[realCandles.length - 1];
-        lastC.close = token.numericPrice;
-        lastC.high = Math.max(lastC.high, token.numericPrice);
-        lastC.low = Math.min(lastC.low, token.numericPrice);
+        token.numericPrice = lastC.close;
+        token.price = formatCoinPrice(lastC.close);
+        this.priceAnchors[sym] = lastC.close;
 
         if (!this.candleSeries[sym]) this.candleSeries[sym] = {};
         if (
@@ -4850,9 +4855,11 @@ class MarketStore {
           this.balances[token.sym].usdValue = Number((this.balances[token.sym].bal * newP).toFixed(2));
         }
 
-        // Update 24h change smoothly
+        // Update 24h change smoothly without runaway accumulation
         if (!BINANCE_MAJOR_SYMBOLS.has(token.sym)) {
-          token.changeNum = Number((token.changeNum + synced.deltaPct * 100).toFixed(2));
+          const baseAnchor = this.priceAnchors[token.sym] || token.numericPrice;
+          const driftPct = baseAnchor > 0 ? ((newP - baseAnchor) / baseAnchor) * 100 : 0;
+          token.changeNum = Number(((token.baseChangeNum ?? token.changeNum ?? 0) + driftPct).toFixed(2));
           token.change = formatPercentage(token.changeNum);
           token.pos = token.changeNum >= 0;
         }

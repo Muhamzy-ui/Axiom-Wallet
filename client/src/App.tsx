@@ -3396,7 +3396,10 @@ function WalletView({
       const rawBalNum = b?.bal || 0;
       const impliedPrice = (b && b.bal > 0 && b.usdValue > 0) ? (b.usdValue / b.bal) : (b?.avgBuyPrice || 0);
       const effectivePrice = token.numericPrice > 0 ? token.numericPrice : (impliedPrice || (isStable ? 1.0 : 0));
-      const calcUsd = isStable ? rawBalNum : (b?.usdValue !== undefined && b?.usdValue > 0 ? b.usdValue : (rawBalNum * effectivePrice));
+      const calcUsd = isStable ? rawBalNum : (rawBalNum * effectivePrice);
+      if (b) {
+        b.usdValue = Number(calcUsd.toFixed(2));
+      }
 
       // Strictly consider a position active only if user holds meaningful balance (>= 1 cent & > 0.0001 tokens)
       const hasMeaningfulHold = rawBalNum > 0.0001 && calcUsd >= 0.0099;

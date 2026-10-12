@@ -377,7 +377,10 @@ if (initialNg) {
 
 export async function syncDollarRateFromBackend(): Promise<number> {
   try {
-    const res = await fetch('/api/platform/settings/');
+    const apiBase = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL
+      ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api`
+      : '/api');
+    const res = await fetch(`${apiBase}/platform/settings/`);
     if (res.ok) {
       const data = await res.json();
       if (data && data.usd_rate) {

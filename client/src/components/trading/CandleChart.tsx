@@ -259,12 +259,20 @@ export const CandleChart: React.FC<CandleChartProps> = ({
     // Display healthy readable candles with right breathing room and unrestricted historical scrolling
     chart.timeScale().applyOptions({
       barSpacing: timeframe === 'D' ? 11 : timeframe === '4h' ? 10 : timeframe === '1s' ? 6 : 9,
-      rightOffset: 3,
+      rightOffset: 6,
       minBarSpacing: 1.5,
       fixLeftEdge: false,
       fixRightEdge: false,
     });
     chart.timeScale().scrollToRealTime();
+    setTimeout(() => {
+      if (chartRef.current) {
+        try {
+          chartRef.current.timeScale().scrollToRealTime();
+          updateDotPos();
+        } catch {}
+      }
+    }, 60);
 
     // Default readout to latest candle / token state
     const lastRaw = sorted[sorted.length - 1];
@@ -337,7 +345,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
         secondsVisible: timeframe === '1s',
         barSpacing: timeframe === '1s' ? 6 : 9,
         minBarSpacing: 2.0,
-        rightOffset: 3,
+        rightOffset: 6,
       },
       rightPriceScale: {
         borderColor: isLight ? '#E2E8F0' : 'rgba(255, 255, 255, 0.08)',
@@ -595,6 +603,13 @@ export const CandleChart: React.FC<CandleChartProps> = ({
 
       latestPointRef.current = { time: t, value: cl, isUp };
       updateDotPos();
+
+      if (chartRef.current) {
+        const range = chartRef.current.timeScale().getVisibleLogicalRange();
+        if (!range || range.to >= candleCountRef.current - 5) {
+          chartRef.current.timeScale().scrollToRealTime();
+        }
+      }
       const lineColor = isUp ? (isLight ? '#059669' : '#10B981') : (isLight ? '#DC2626' : '#EF4444');
       const topColor = isUp ? (isLight ? 'rgba(5, 150, 105, 0.25)' : 'rgba(16, 185, 129, 0.28)') : (isLight ? 'rgba(220, 38, 38, 0.22)' : 'rgba(239, 68, 68, 0.28)');
       const bottomColor = isUp ? 'rgba(16, 185, 129, 0.00)' : 'rgba(239, 68, 68, 0.00)';
