@@ -235,7 +235,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       const res = original();
       if (res !== null && res.priceRange !== null) {
         res.priceRange.minValue = Math.max(0, res.priceRange.minValue);
-        res.margins = { above: 0.15, below: 0.02 };
+        res.margins = { above: 0.14, below: 0.08 };
       }
       return res;
     };

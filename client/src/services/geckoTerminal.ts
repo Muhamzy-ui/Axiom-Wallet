@@ -929,13 +929,15 @@ export async function fetchGeckoCandles(
 
   if (bSym && binancePairMap[bSym]) {
     try {
-      const bInterval = timeframe === '1s' || timeframe === '1m' ? '1m' :
+      const bInterval = timeframe === '1s' ? '1s' :
+        timeframe === '1m' ? '1m' :
         timeframe === '5m' ? '5m' :
         timeframe === '15m' ? '15m' :
         timeframe === '1h' ? '1h' :
         timeframe === '4h' ? '4h' : '1d';
+      const bLimit = timeframe === '1s' ? 300 : 500;
 
-      const bRes = await fetch(`https://api.binance.com/api/v3/klines?symbol=${binancePairMap[bSym]}&interval=${bInterval}&limit=500`);
+      const bRes = await fetch(`https://api.binance.com/api/v3/klines?symbol=${binancePairMap[bSym]}&interval=${bInterval}&limit=${bLimit}`);
       if (bRes.ok) {
         const bData = await bRes.json();
         if (Array.isArray(bData) && bData.length > 0) {
@@ -956,11 +958,15 @@ export async function fetchGeckoCandles(
     }
   }
 
+  // GeckoTerminal only provides minimum 1-minute granularity; for 1s LIVE mode, let synthetic generator produce pure 1s intervals
+  if (timeframe === "1s") {
+    return null;
+  }
+
   let granularity = "minute";
   let aggregate = 1;
 
   switch (timeframe) {
-    case "1s":
     case "1m":
       granularity = "minute";
       aggregate = 1;

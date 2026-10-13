@@ -166,16 +166,37 @@ export function computeSynchronizedPrice(
   }
 
   const isMajor = BINANCE_MAJOR_SYMBOLS.has(sym);
-  // Organic tidal harmonic cycles (2 to 10 minutes) so charts move smoothly and gradually without erratic jumping:
-  const p1 = (epochSec + (seed % 1000)) * (2 * Math.PI / 640.0);
-  const p2 = (epochSec + ((seed >> 2) % 1000)) * (2 * Math.PI / 290.0);
-  const p3 = (epochSec + ((seed >> 4) % 1000)) * (2 * Math.PI / 135.0);
 
-  // Gentle, realistic amplitude: 0.03% for major cryptos, 0.06% for newly launched coins:
-  const amp = isMajor ? 0.0003 : 0.0006;
-  // Continuous smooth harmonic movement (zero high-frequency 1-second sawtooth/zigzag jitter):
-  const wavePct = amp * (0.60 * Math.sin(p1) + 0.28 * Math.sin(p2) + 0.12 * Math.sin(p3));
-  const isBuy = (0.60 * Math.cos(p1) / 640.0 + 0.28 * Math.cos(p2) / 290.0) >= 0;
+  // Multi-harmonic composite market waves (organic flowing peaks, valleys, pullbacks & breathing):
+  // pTrend: macro tide wave (~105s) - broader market direction & slope
+  // pSwing: meso swing cycle (~42s) - creates visible directional swings & reversals every ~20s
+  // pDrift: momentum wave (~17s) - provides realistic dynamic curve acceleration
+  // pBreath: smooth continuous breathing (~7.5s) - smooth non-jittering micro motion
+  const pTrend = (epochSec + (seed % 1000)) * (2 * Math.PI / 105.0);
+  const pSwing = (epochSec + ((seed >> 2) % 1000)) * (2 * Math.PI / 42.0);
+  const pDrift = (epochSec + ((seed >> 4) % 1000)) * (2 * Math.PI / 17.0);
+  const pBreath = (epochSec + ((seed >> 6) % 1000)) * (2 * Math.PI / 7.5);
+
+  // Natural visible amplitude:
+  // Majors (BTC, ETH, SOL, etc.): ±0.36% (±$290 on BTC, matching live Bybit / Binance 5m volatility)
+  // Newly launched coins: ±0.88% (visible lively AMM price discovery curves)
+  const amp = isMajor ? 0.0036 : 0.0088;
+
+  const wavePct = amp * (
+    0.42 * Math.sin(pTrend) +
+    0.30 * Math.sin(pSwing) +
+    0.18 * Math.sin(pDrift) +
+    0.10 * Math.sin(pBreath)
+  );
+
+  // Smooth momentum velocity to synchronize buy/sell order flow with price action
+  const velocity = (
+    0.42 * (2 * Math.PI / 105.0) * Math.cos(pTrend) +
+    0.30 * (2 * Math.PI / 42.0) * Math.cos(pSwing) +
+    0.18 * (2 * Math.PI / 17.0) * Math.cos(pDrift) +
+    0.10 * (2 * Math.PI / 7.5) * Math.cos(pBreath)
+  );
+  const isBuy = velocity >= 0;
 
   const rawP = baseAnchor * (1 + wavePct);
   let numericPrice: number;
@@ -2872,11 +2893,15 @@ class MarketStore {
     const existing = this.candleSeries[sym][tf];
     if (!existing || existing.length === 0) {
       this.candleSeries[sym][tf] = this.buildInitialCandles(sym, tf);
-    } else if (existing.length >= 6) {
-      // Auto-heal legacy flatlined series: if last 5 candles were dead flat (open === close === high === low), regenerate smoothly!
-      const last5 = existing.slice(-5);
-      const isDeadFlat = last5.every(c => c.close === last5[0].close && c.high === c.low);
-      if (isDeadFlat) {
+    } else if (existing.length >= 2) {
+      // Auto-heal legacy flatlined or mismatched series (e.g. 1m candles mixed into 1s view, or straight flatlines)
+      const isMismatched1s = tf === "1s" && existing.length >= 2 && (existing[1].time - existing[0].time > 5000);
+      const last8 = existing.slice(-8);
+      const isDeadFlat = last8.length >= 6 && last8.every(c => Math.abs(c.close - last8[0].close) < 0.00000001 && c.high === c.low);
+      const isNarrowSpan = !token.is_rugged && token.numericPrice > 1 && existing.length >= 10 && (
+        (Math.max(...existing.slice(-10).map(c => c.high)) - Math.min(...existing.slice(-10).map(c => c.low))) < (token.numericPrice * 0.00008)
+      );
+      if (isMismatched1s || isDeadFlat || isNarrowSpan) {
         this.candleSeries[sym][tf] = this.buildInitialCandles(sym, tf);
       }
     }
@@ -2900,17 +2925,10 @@ class MarketStore {
         this.priceAnchors[sym] = lastC.close;
 
         if (!this.candleSeries[sym]) this.candleSeries[sym] = {};
-        if (
-          !this.candleSeries[sym][tf] ||
-          this.candleSeries[sym][tf].length === 0 ||
-          this.isSynthetic[sym]?.[tf] ||
-          realCandles.length > this.candleSeries[sym][tf].length
-        ) {
-          this.candleSeries[sym][tf] = realCandles;
-          if (!this.isSynthetic[sym]) this.isSynthetic[sym] = {};
-          this.isSynthetic[sym][tf] = false;
-          this.notify();
-        }
+        this.candleSeries[sym][tf] = realCandles;
+        if (!this.isSynthetic[sym]) this.isSynthetic[sym] = {};
+        this.isSynthetic[sym][tf] = false;
+        this.notify();
       }
     } catch (err) {
       console.warn(`loadRealCandles error for ${sym}:`, err);
@@ -3038,14 +3056,14 @@ class MarketStore {
 
     // Natural timeframe volatility tuning
     let volMult = 1.0;
-    if (tf === "1s") volMult = 0.30;
-    else if (tf === "1m") volMult = 0.60;
+    if (tf === "1s") volMult = 0.55;
+    else if (tf === "1m") volMult = 0.65;
     else if (tf === "5m") volMult = 1.0;
     else if (tf === "15m") volMult = 1.40;
     else if (tf === "1h") volMult = 2.0;
     else volMult = 2.80;
 
-    if (isMajor) volMult *= 0.38;
+    if (isMajor) volMult *= 0.45;
 
     // Window coverage relative to 24h: 1m (3 hrs) only drifts a fraction of 24h change
     const windowCoverage = Math.min(0.65, (N * (stepMs / 1000)) / 86400);
