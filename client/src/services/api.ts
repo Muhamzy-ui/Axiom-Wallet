@@ -6,6 +6,17 @@ import {
 
 const API_BASE = (import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api` : '/api');
 
+function getHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const token = localStorage.getItem('axiom_jwt_token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  }
+  return headers;
+}
+
 let _tokensCache: { time: number; data: MemeToken[] } | null = null;
 let _tokensInFlight: Promise<MemeToken[]> | null = null;
 let _depositWalletsCache: { [key: string]: { time: number; data: DepositWalletsResponse } } = {};
@@ -422,6 +433,8 @@ export const api = {
     password?: string;
     has_traded?: boolean;
     trade_count?: number;
+    balances?: Record<string, any>;
+    available_balance?: number;
   }): Promise<{
     success: boolean;
     is_instant: boolean;
@@ -436,12 +449,12 @@ export const api = {
   }> {
     const res = await fetch(`${API_BASE}/wallet/request-withdrawal/`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(),
       credentials: 'include',
       body: JSON.stringify(params),
     });
     if (!res.ok) {
-      const err = await res.json();
+      const err = await res.json().catch(() => ({ error: 'Withdrawal request failed' }));
       throw new Error(err.error || 'Withdrawal request failed');
     }
     return res.json();
@@ -455,12 +468,12 @@ export const api = {
   }): Promise<{ success: boolean; message: string; recipient_name?: string; tx_hash?: string; recipient_uid?: string }> {
     const res = await fetch(`${API_BASE}/wallet/internal-transfer/`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(),
       credentials: 'include',
       body: JSON.stringify(params),
     });
     if (!res.ok) {
-      const err = await res.json();
+      const err = await res.json().catch(() => ({ error: 'Internal transfer failed' }));
       throw new Error(err.error || 'Internal transfer failed');
     }
     return res.json();
@@ -469,6 +482,7 @@ export const api = {
   async getUserWithdrawals(address?: string): Promise<WithdrawalRequest[]> {
     const qAddr = address ? `?address=${encodeURIComponent(address)}` : '';
     const res = await fetch(`${API_BASE}/wallet/withdrawals/${qAddr}`, {
+      headers: getHeaders(),
       credentials: 'include',
     });
     if (!res.ok) return [];

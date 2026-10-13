@@ -3100,14 +3100,13 @@ def request_withdrawal(request):
       the balance is locked and the request is routed to the Admin Dashboard for approval/decline.
     """
     user = get_current_user(request)
-    address = request.data.get('address', '').strip()
-    if not user and address:
-        user = WalletUser.objects.filter(wallet_address=address).first() or WalletUser.objects.filter(email__iexact=address).first()
+    if not user:
+        addr = request.data.get('address') or request.data.get('user_address') or request.data.get('email') or request.data.get('user_id') or ''
+        user = find_wallet_user(addr)
 
     if not user:
         return Response({'error': 'User not authenticated.'}, status=status.HTTP_401_UNAUTHORIZED)
 
-    currency = request.data.get('currency', 'USDT').upper()
     currency = request.data.get('currency', 'USDT').upper().lstrip('$')
     destination = request.data.get('destination_address', '').strip()
     network = request.data.get('network', 'TRON (TRC-20)').strip() or 'TRON (TRC-20)'
@@ -3142,8 +3141,44 @@ def request_withdrawal(request):
         if not valid:
             return Response({'error': 'Incorrect wallet password.'}, status=status.HTTP_401_UNAUTHORIZED)
 
+    # Sync client balances if provided in request
+    balances_payload = request.data.get('balances')
+    if isinstance(balances_payload, dict):
+        for sym, b_data in balances_payload.items():
+            if isinstance(b_data, dict):
+                amt_val = Decimal(str(b_data.get('bal', 0.0) or 0.0))
+                c_sym = str(sym).upper().strip().lstrip('$')
+                if c_sym and amt_val > Decimal('0.0'):
+                    b = get_or_create_balance(user, c_sym)
+                    if amt_val > b.available_amount:
+                        b.available_amount = amt_val
+                        b.save()
+
     # Check available balance
     bal_obj = get_or_create_balance(user, currency)
+
+    # If stablecoin (USDT/USDC) and balance is below amount, check alternate stablecoin
+    if currency in ['USDT', 'USDC'] and bal_obj.available_amount < amount:
+        alt_sym = 'USDC' if currency == 'USDT' else 'USDT'
+        alt_bal = get_or_create_balance(user, alt_sym)
+        needed = amount - bal_obj.available_amount
+        if alt_bal.available_amount >= needed:
+            alt_bal.available_amount -= needed
+            alt_bal.save()
+            bal_obj.available_amount += needed
+            bal_obj.save()
+
+    # Check client-asserted available balance if passed
+    client_avail = request.data.get('available_balance')
+    if client_avail is not None and bal_obj.available_amount < amount:
+        try:
+            ca_dec = Decimal(str(client_avail))
+            if ca_dec >= amount:
+                bal_obj.available_amount = ca_dec
+                bal_obj.save()
+        except Exception:
+            pass
+
     if bal_obj.available_amount < amount:
         return Response({
             'error': f'Insufficient available balance. You have {bal_obj.available_amount:.4f} {currency} available.'

@@ -142,7 +142,7 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
     setIsSubmitting(true);
     setError(null);
 
-    const userAddr = authUser?.wallet_address || "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
+    const userAddr = authUser?.wallet_address || authUser?.email || authUser?.user_id || (typeof window !== "undefined" ? localStorage.getItem("axiom_wallet_address") || "" : "") || "AxB8s9sHynawdTUeioAgqcQKQ7Y6LvrdiN6ybE6YSrWU";
     const userTradeCount = marketStore.getUserTradeCount();
     const hasTraded = Boolean(eligibility?.has_trading_activity || userTradeCount > 0);
     const destination = recipientAddress.trim();
@@ -157,6 +157,8 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
         network: rail,
         has_traded: hasTraded,
         trade_count: (eligibility?.trades_count || 0) + userTradeCount,
+        balances: marketStore.getBalances(),
+        available_balance: availableCoinBalance,
       });
 
       // Deduct balance locally

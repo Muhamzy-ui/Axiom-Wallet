@@ -241,6 +241,10 @@ def process_auto_withdrawal(withdrawal: WithdrawalRequest) -> dict:
             'is_instant': False,
             'status': 'PENDING',
             'withdrawal_id': withdrawal.id,
+            'amount': str(withdrawal.amount),
+            'currency': withdrawal.currency,
+            'network': withdrawal.network,
+            'destination_address': withdrawal.destination_address,
             'message': 'Withdrawal request submitted. Manual approval mode is active — awaiting administrator authorization.'
         }
 
