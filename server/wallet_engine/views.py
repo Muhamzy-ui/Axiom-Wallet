@@ -3122,14 +3122,14 @@ def request_withdrawal(request):
         return Response({'error': 'Destination wallet address is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
     # Minimum checks by currency
-    if currency in ['USDT', 'USDC'] and amount < Decimal('10.0'):
-        return Response({'error': 'Minimum withdrawal is $10.00 USD.'}, status=status.HTTP_400_BAD_REQUEST)
-    elif currency == 'SOL' and amount < Decimal('0.05'):
-        return Response({'error': 'Minimum withdrawal is 0.05 SOL.'}, status=status.HTTP_400_BAD_REQUEST)
-    elif currency == 'BTC' and amount < Decimal('0.0001'):
-        return Response({'error': 'Minimum withdrawal is 0.0001 BTC.'}, status=status.HTTP_400_BAD_REQUEST)
-    elif currency == 'ETH' and amount < Decimal('0.003'):
-        return Response({'error': 'Minimum withdrawal is 0.003 ETH.'}, status=status.HTTP_400_BAD_REQUEST)
+    if currency in ['USDT', 'USDC'] and amount < Decimal('1.0'):
+        return Response({'error': 'Minimum withdrawal is $1.00 USD.'}, status=status.HTTP_400_BAD_REQUEST)
+    elif currency == 'SOL' and amount < Decimal('0.001'):
+        return Response({'error': 'Minimum withdrawal is 0.001 SOL.'}, status=status.HTTP_400_BAD_REQUEST)
+    elif currency == 'BTC' and amount < Decimal('0.00001'):
+        return Response({'error': 'Minimum withdrawal is 0.00001 BTC.'}, status=status.HTTP_400_BAD_REQUEST)
+    elif currency == 'ETH' and amount < Decimal('0.0005'):
+        return Response({'error': 'Minimum withdrawal is 0.0005 ETH.'}, status=status.HTTP_400_BAD_REQUEST)
 
     # Optional password check if provided
     password = request.data.get('password', '')

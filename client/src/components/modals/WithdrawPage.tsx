@@ -87,15 +87,15 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
     switch (coin) {
       case "USDT":
       case "USDC":
-        return 10.0;
+        return 1.0;
       case "SOL":
-        return 0.05;
+        return 0.001;
       case "BTC":
-        return 0.0001;
+        return 0.00001;
       case "ETH":
-        return 0.003;
+        return 0.0005;
       default:
-        return 10.0;
+        return 1.0;
     }
   };
 

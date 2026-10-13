@@ -2557,7 +2557,7 @@ class MarketStore {
       return { success: true, message: `Successfully withdrew ${amount} ${cleanSym}!` };
     }
 
-    if (amount < 10.0) return { success: false, message: "Minimum withdrawal is $10.00" };
+    if (amount < 1.0) return { success: false, message: "Minimum withdrawal is $1.00" };
 
     const targetSym = cleanSym === "USDT" ? "USDT" : "USDC";
     const curBal = this.balances[targetSym]?.bal || 0;
