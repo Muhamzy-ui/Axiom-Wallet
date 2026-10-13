@@ -221,12 +221,10 @@ export const BuyPage: React.FC<BuyPageProps> = ({
   const tokensReceived = buyPriceUsd > 0 ? equivalentUsd / buyPriceUsd : 0;
 
   // AXIOM NETWORK DELIVERY CHARGES:
-  // Dynamically switches per coin and network with amount tiers ($50+ vs under $50):
   // - TRC-20 (TRON USDT): $2.00 USD (< $50), $3.00 USD (>= $50)
-  // - Solana (SOL, USDT-SPL, USDC-SPL): $1.00 USD (< $50), $1.50 USD (>= $50)
-  // - Bitcoin (BTC): $3.00 USD (< $50), $4.00 USD (>= $50)
-  // - Ethereum / ERC-20 (ETH, USDT-ERC, USDC-ERC): $4.00 USD (< $50), $5.00 USD (>= $50)
-  // - BNB Chain / BEP-20 (USDT-BEP): $1.00 USD (< $50), $2.00 USD (>= $50)
+  // - Solana (SOL, USDT-SPL, USDC-SPL): $2.00 USD (< $75), $3.00 USD (>= $75)
+  // - Ethereum / ERC-20 (ETH, USDT-ERC, USDC-ERC): $2.00 USD (< $75), $3.00 USD (>= $75)
+  // - Bitcoin & Others: $2.00 USD (< $75), $3.00 USD (>= $75)
   const getBuyOrderFee = (usd: number, net: string, coin: BuyCoin): { feeNgn: number; feeUsd: number; netName: string; label: string } => {
     const isErc = net.includes("Ethereum") || net.includes("ERC") || coin === "ETH";
     const isTrc = net.includes("TRON") || net.includes("TRC");
@@ -242,19 +240,19 @@ export const BuyPage: React.FC<BuyPageProps> = ({
       feeUsd = usd >= 50.0 ? 3.0 : 2.0;
     } else if (isSol) {
       netName = "Solana";
-      feeUsd = usd >= 50.0 ? 1.5 : 1.0;
-    } else if (isBtc) {
-      netName = "Bitcoin";
-      feeUsd = usd >= 50.0 ? 4.0 : 3.0;
+      feeUsd = usd >= 75.0 ? 3.0 : 2.0;
     } else if (isErc) {
       netName = "ERC-20";
-      feeUsd = usd >= 50.0 ? 5.0 : 4.0;
+      feeUsd = usd >= 75.0 ? 3.0 : 2.0;
+    } else if (isBtc) {
+      netName = "Bitcoin";
+      feeUsd = usd >= 75.0 ? 3.0 : 2.0;
     } else if (isBep) {
       netName = "BEP-20";
-      feeUsd = usd >= 50.0 ? 2.0 : 1.0;
+      feeUsd = usd >= 75.0 ? 3.0 : 2.0;
     } else {
       netName = "Network";
-      feeUsd = usd >= 50.0 ? 3.0 : 2.0;
+      feeUsd = usd >= 75.0 ? 3.0 : 2.0;
     }
 
     const feeNgn = Math.round(feeUsd * rateToUsd);
@@ -1032,11 +1030,8 @@ export const BuyPage: React.FC<BuyPageProps> = ({
 
                 {/* Network Pills */}
                 <div style={{ marginTop: 14 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>Delivery Network:</span>
-                    <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>
-                      Delivery Fee: ${currentOrderFee.feeUsd % 1 === 0 ? currentOrderFee.feeUsd.toFixed(0) : currentOrderFee.feeUsd.toFixed(2)} USD ({selectedCountry.currencySymbol}{feeInLocalCurrency.toLocaleString()})
-                    </span>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 6 }}>
+                    Delivery Network:
                   </div>
                   <div className="network-pills-row">
                     {(COIN_NETWORKS[buyCoin] || []).map((net) => {
@@ -1225,9 +1220,6 @@ export const BuyPage: React.FC<BuyPageProps> = ({
                   <>
                     <span>
                       Continue to Buy • {selectedCountry.currencySymbol}{totalPayableFiat.toLocaleString()} {selectedCountry.currency}
-                      {currentOrderFee.feeUsd > 0
-                        ? ` (incl. $${currentOrderFee.feeUsd % 1 === 0 ? currentOrderFee.feeUsd.toFixed(0) : currentOrderFee.feeUsd.toFixed(2)} ${currentOrderFee.netName} fee)`
-                        : ""}
                     </span>
                     <ArrowRight size={16} />
                   </>
