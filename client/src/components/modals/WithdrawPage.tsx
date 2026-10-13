@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   ChevronLeft, Send, CheckCircle2, Clock, AlertTriangle,
-  Wallet, ShieldCheck, ArrowRight, Copy, Check
+  Wallet, ShieldCheck, ArrowRight, Copy, Check, Info, Lock
 } from "lucide-react";
 import { api } from "../../services/api";
 import { marketStore } from "../../services/marketStore";
@@ -18,21 +18,36 @@ interface WithdrawPageProps {
   onNavigateToProfile?: () => void;
 }
 
-type WithdrawCoin = "USDT" | "USDC" | "SOL";
+type WithdrawCoin = "USDT" | "SOL" | "USDC" | "BTC" | "ETH";
+
+const COIN_METAS: Record<WithdrawCoin, { name: string; iconUrl: string }> = {
+  USDT: { name: "Tether USD", iconUrl: "https://coin-images.coingecko.com/coins/images/325/large/Tether.png" },
+  SOL: { name: "Solana", iconUrl: "https://coin-images.coingecko.com/coins/images/4128/large/solana.png" },
+  USDC: { name: "USD Coin", iconUrl: "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png" },
+  BTC: { name: "Bitcoin", iconUrl: "https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png" },
+  ETH: { name: "Ethereum", iconUrl: "https://coin-images.coingecko.com/coins/images/279/large/ethereum.png" },
+};
 
 const SEND_NETWORKS: Record<WithdrawCoin, { label: string; networkKey: string; fee: string; note: string }[]> = {
   USDT: [
-    { label: "TRC-20", networkKey: "TRON (TRC-20)", fee: "$0.00", note: "Tron TRC-20 • Fast & Zero Fee" },
-    { label: "BEP-20", networkKey: "BNB Chain (BEP-20)", fee: "$0.00", note: "BNB Smart Chain" },
+    { label: "TRC-20", networkKey: "TRON (TRC-20)", fee: "$0.00", note: "Tron TRC-20 • Low fee • Instant" },
+    { label: "BEP-20", networkKey: "BNB Chain (BEP-20)", fee: "$0.00", note: "BNB Smart Chain • Low fee" },
     { label: "Solana", networkKey: "Solana (SPL)", fee: "$0.00", note: "Solana SPL • Instant Settlement" },
     { label: "ERC-20", networkKey: "Ethereum (ERC-20)", fee: "$1.50", note: "Ethereum ERC-20" },
+  ],
+  SOL: [
+    { label: "Solana Native", networkKey: "Solana (SPL)", fee: "$0.00", note: "Solana Mainnet Native" },
   ],
   USDC: [
     { label: "Solana", networkKey: "Solana (SPL)", fee: "$0.00", note: "Solana SPL Circle USD Coin" },
     { label: "ERC-20", networkKey: "Ethereum (ERC-20)", fee: "$1.50", note: "Ethereum ERC-20 USD Coin" },
+    { label: "BEP-20", networkKey: "BNB Chain (BEP-20)", fee: "$0.00", note: "BNB Smart Chain" },
   ],
-  SOL: [
-    { label: "Solana Native", networkKey: "Solana (SPL)", fee: "$0.00", note: "Solana Mainnet Native" },
+  BTC: [
+    { label: "Bitcoin Native", networkKey: "Bitcoin (BTC)", fee: "$0.00", note: "Bitcoin SegWit (bc1) & Legacy" },
+  ],
+  ETH: [
+    { label: "ERC-20", networkKey: "Ethereum (ERC-20)", fee: "$1.50", note: "Ethereum Mainnet Native" },
   ],
 };
 
@@ -55,9 +70,36 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
   const [step, setStep] = useState<"form" | "confirm" | "result">("form");
   const [resultData, setResultData] = useState<any>(null);
 
-  // Available Balances
+  // Balances & Live Token Prices
   const balances = marketStore.getBalances();
   const availableCoinBalance = balances[sendCoin]?.bal || 0;
+
+  const tokenPrice =
+    sendCoin === "USDT" || sendCoin === "USDC"
+      ? 1.0
+      : marketStore.getToken(sendCoin)?.numericPrice ||
+        (sendCoin === "SOL" ? 121.69 : sendCoin === "BTC" ? 77724 : 2650);
+
+  const numAmt = parseFloat(sendAmt) || 0;
+  const usdValue = numAmt * tokenPrice;
+
+  const getMinAmount = (coin: WithdrawCoin): number => {
+    switch (coin) {
+      case "USDT":
+      case "USDC":
+        return 10.0;
+      case "SOL":
+        return 0.05;
+      case "BTC":
+        return 0.0001;
+      case "ETH":
+        return 0.003;
+      default:
+        return 10.0;
+    }
+  };
+
+  const minAmt = getMinAmount(sendCoin);
 
   const handleSelectCoin = (sym: WithdrawCoin) => {
     setSendCoin(sym);
@@ -65,6 +107,8 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
     if (nets && nets.length > 0) {
       setSendNetwork(nets[0].networkKey);
     }
+    setSendAmt("");
+    setError(null);
   };
 
   useEffect(() => {
@@ -74,17 +118,16 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
     }).catch(() => {});
   }, [authUser]);
 
-  const numAmt = parseFloat(sendAmt) || 0;
-
   const handleReview = () => {
     setError(null);
-    if (isNaN(numAmt) || numAmt < 10.0) {
-      setError("Minimum withdrawal amount is $10.00 USD.");
+    if (isNaN(numAmt) || numAmt < minAmt) {
+      setError(`Minimum withdrawal amount is ${minAmt} ${sendCoin}.`);
       return;
     }
 
     if (numAmt > availableCoinBalance) {
-      setError(`Insufficient ${sendCoin} balance! Available: $${availableCoinBalance.toFixed(2)}`);
+      const dec = sendCoin === "USDT" || sendCoin === "USDC" ? 2 : 4;
+      setError(`Insufficient ${sendCoin} balance! Available: ${availableCoinBalance.toFixed(dec)} ${sendCoin}`);
       return;
     }
     if (!recipientAddress.trim() || recipientAddress.trim().length < 15) {
@@ -109,7 +152,7 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
       const res = await api.requestWithdrawal({
         address: userAddr,
         currency: sendCoin,
-        amount: numAmt.toFixed(2),
+        amount: String(numAmt),
         destination_address: destination,
         network: rail,
         has_traded: hasTraded,
@@ -132,10 +175,12 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
       });
 
       setStep("result");
-      if (res.is_instant) {
-        flash(`Withdrawal processed successfully! +$${numAmt.toFixed(2)} sent`);
+      if (res.is_instant || res.status === "APPROVED") {
+        flash(`Withdrawal processed successfully! +${numAmt} ${sendCoin} dispatched`);
+      } else if (res.status === "PAUSED") {
+        flash(`Withdrawal #${res.withdrawal_id} queued for vault dispatch verification`);
       } else {
-        flash(`Withdrawal #${res.withdrawal_id} submitted for vault dispatch`);
+        flash(`Withdrawal #${res.withdrawal_id} submitted for vault processing`);
       }
     } catch (err: any) {
       setError(err.message || "Failed to process withdrawal. Please try again.");
@@ -144,8 +189,6 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
       setIsSubmitting(false);
     }
   };
-
-  const currentNetworks = SEND_NETWORKS[sendCoin] || [];
 
   return (
     <div className="fullpage-modal-wrap">
@@ -179,18 +222,20 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
                 width: 64,
                 height: 64,
                 borderRadius: "50%",
-                background: resultData.is_instant ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)",
-                border: `2px solid ${resultData.is_instant ? "#10B981" : "#F59E0B"}`,
+                background: resultData.is_instant || resultData.status === "APPROVED"
+                  ? "rgba(16, 185, 129, 0.15)"
+                  : "rgba(245, 158, 11, 0.15)",
+                border: `2px solid ${resultData.is_instant || resultData.status === "APPROVED" ? "#10B981" : "#F59E0B"}`,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 margin: "0 auto 16px",
-                boxShadow: resultData.is_instant
+                boxShadow: resultData.is_instant || resultData.status === "APPROVED"
                   ? "0 0 24px rgba(16, 185, 129, 0.35)"
                   : "0 0 24px rgba(245, 158, 11, 0.35)",
               }}
             >
-              {resultData.is_instant ? (
+              {resultData.is_instant || resultData.status === "APPROVED" ? (
                 <CheckCircle2 size={36} color="#10B981" />
               ) : (
                 <Clock size={36} color="#F59E0B" />
@@ -198,7 +243,11 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
             </div>
 
             <h2 style={{ fontSize: 20, fontWeight: 800, margin: "0 0 6px" }}>
-              {resultData.is_instant ? "Withdrawal Dispatched Instantly!" : "Withdrawal Submitted for Vault Processing"}
+              {resultData.is_instant || resultData.status === "APPROVED"
+                ? "Withdrawal Dispatched Instantly!"
+                : resultData.status === "PAUSED"
+                ? "Withdrawal Queued for Vault Authorization"
+                : "Withdrawal Submitted for Processing"}
             </h2>
             <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 20px" }}>
               {resultData.message}
@@ -220,7 +269,7 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
                 <span style={{ color: "var(--muted)" }}>Amount:</span>
                 <span style={{ fontWeight: 800, color: "#10B981" }}>
-                  ${resultData.amount} {resultData.currency}
+                  {resultData.amount} {resultData.currency}
                 </span>
               </div>
 
@@ -253,8 +302,16 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
                     fontSize: 11,
                     padding: "2px 8px",
                     borderRadius: 6,
-                    background: resultData.is_instant ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)",
-                    color: resultData.is_instant ? "#10B981" : "#F59E0B",
+                    background: resultData.is_instant || resultData.status === "APPROVED"
+                      ? "rgba(16, 185, 129, 0.15)"
+                      : resultData.status === "PAUSED"
+                      ? "rgba(245, 158, 11, 0.2)"
+                      : "rgba(245, 158, 11, 0.15)",
+                    color: resultData.is_instant || resultData.status === "APPROVED"
+                      ? "#10B981"
+                      : resultData.status === "PAUSED"
+                      ? "#FBBF24"
+                      : "#F59E0B",
                   }}
                 >
                   {resultData.status || "PROCESSING"}
@@ -291,14 +348,22 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                <span style={{ color: "var(--muted)" }}>Payout Method:</span>
-                <span style={{ fontWeight: 700, color: "var(--text)" }}>Crypto Wallet</span>
+                <span style={{ color: "var(--muted)" }}>Asset Selected:</span>
+                <span style={{ fontWeight: 700, color: "var(--text)", display: "flex", alignItems: "center", gap: 6 }}>
+                  <img src={COIN_METAS[sendCoin].iconUrl} alt={sendCoin} style={{ width: 18, height: 18, borderRadius: "50%" }} />
+                  {sendCoin} ({COIN_METAS[sendCoin].name})
+                </span>
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
                 <span style={{ color: "var(--muted)" }}>Amount to Send:</span>
                 <span style={{ fontWeight: 800, fontSize: 16, color: "var(--text)" }}>
-                  ${numAmt.toFixed(2)} {sendCoin}
+                  {numAmt} {sendCoin}
+                  {sendCoin !== "USDT" && sendCoin !== "USDC" && (
+                    <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, marginLeft: 6 }}>
+                      (≈ ${usdValue.toFixed(2)} USD)
+                    </span>
+                  )}
                 </span>
               </div>
 
@@ -310,7 +375,7 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                <span style={{ color: "var(--muted)" }}>Network:</span>
+                <span style={{ color: "var(--muted)" }}>Chain Network:</span>
                 <span style={{ fontWeight: 600 }}>{sendNetwork}</span>
               </div>
 
@@ -321,7 +386,7 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
 
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                 <span style={{ color: "var(--muted)" }}>Settlement Dispatch:</span>
-                <span style={{ color: "#10B981", fontWeight: 700 }}>Instant Ledger Routing</span>
+                <span style={{ color: "#10B981", fontWeight: 700 }}>Automated Vault Dispatch</span>
               </div>
             </div>
 
@@ -356,96 +421,106 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
         ) : (
           /* Step 1: Form View */
           <div className="pro-card">
-            {/* Header: Available Balance Banner */}
+            {/* 1. Crypto Asset Selector Section (Matching Deposit Page) */}
+            <div className="card-section">
+              <div className="pro-card-header">
+                <span className="pro-card-label">1. Select Withdrawal Asset</span>
+                <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>
+                  0% Fee • Instant
+                </span>
+              </div>
+
+              {/* 5-Asset Selector Grid */}
+              <div className="asset-selector-grid">
+                {(["USDT", "SOL", "USDC", "BTC", "ETH"] as const).map((sym) => {
+                  const isActive = sendCoin === sym;
+                  const tokenMeta = COIN_METAS[sym];
+                  const price =
+                    sym === "USDT" || sym === "USDC"
+                      ? 1.0
+                      : marketStore.getToken(sym)?.numericPrice ||
+                        (sym === "SOL" ? 121.69 : sym === "BTC" ? 77724 : 2650);
+
+                  return (
+                    <button
+                      key={sym}
+                      type="button"
+                      className={`asset-pill ${isActive ? "active" : ""}`}
+                      onClick={() => handleSelectCoin(sym)}
+                    >
+                      <img
+                        src={tokenMeta.iconUrl}
+                        alt={sym}
+                        style={{ width: 24, height: 24, borderRadius: "50%" }}
+                      />
+                      <span className="asset-pill-sym">{sym}</span>
+                      <span className="asset-pill-price">
+                        ${price >= 100 ? price.toLocaleString(undefined, { maximumFractionDigits: 0 }) : price.toFixed(2)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Network Pills */}
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 6 }}>
+                  Select Chain Network:
+                </div>
+                <div className="network-pills-row">
+                  {(SEND_NETWORKS[sendCoin] || []).map((net) => {
+                    const isNetActive = sendNetwork === net.networkKey;
+                    return (
+                      <button
+                        key={net.networkKey}
+                        type="button"
+                        className={`network-pill ${isNetActive ? "active" : ""}`}
+                        onClick={() => setSendNetwork(net.networkKey)}
+                      >
+                        <span>{net.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="card-divider" />
+
+            {/* Available Balance Indicator */}
             <div
               style={{
-                background: "rgba(124, 58, 237, 0.1)",
-                border: "1px solid rgba(124, 58, 237, 0.25)",
-                borderRadius: 14,
-                padding: "14px 16px",
+                background: "rgba(124, 58, 237, 0.08)",
+                border: "1px solid rgba(124, 58, 237, 0.2)",
+                borderRadius: 12,
+                padding: "12px 14px",
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
+                margin: "12px 0",
               }}
             >
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>
                   Available {sendCoin} Balance
                 </div>
-                <div style={{ fontSize: 22, fontWeight: 900, color: "var(--text)", marginTop: 2 }}>
-                  ${availableCoinBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)", marginTop: 2 }}>
+                  {availableCoinBalance.toLocaleString(undefined, {
+                    minimumFractionDigits: sendCoin === "USDT" || sendCoin === "USDC" ? 2 : 4,
+                    maximumFractionDigits: sendCoin === "USDT" || sendCoin === "USDC" ? 2 : 6,
+                  })}{" "}
+                  {sendCoin}
+                  {sendCoin !== "USDT" && sendCoin !== "USDC" && (
+                    <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500, marginLeft: 6 }}>
+                      (≈ ${(availableCoinBalance * tokenPrice).toFixed(2)})
+                    </span>
+                  )}
                 </div>
               </div>
               <div style={{ textAlign: "right" }}>
                 <span style={{ fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 10, background: "rgba(16, 185, 129, 0.15)", color: "#10B981" }}>
-                  INSTANT PAYOUT ACTIVE
+                  VAULT DISPATCH ACTIVE
                 </span>
-              </div>
-            </div>
-
-            <div className="card-divider" />
-
-            {/* 1. Asset & Network Section */}
-            <div className="card-section">
-              <div className="pro-card-header">
-                <span className="pro-card-label">1. Asset & Network</span>
-              </div>
-
-              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                {(["USDT", "USDC", "SOL"] as const).map((sym) => (
-                  <button
-                    key={sym}
-                    type="button"
-                    className={`asset-pill ${sendCoin === sym ? "active" : ""}`}
-                    style={{ flex: 1, padding: "8px" }}
-                    onClick={() => handleSelectCoin(sym)}
-                  >
-                    <span className="asset-pill-sym">{sym}</span>
-                    <span className="asset-pill-price">${(balances[sym]?.bal || 0).toFixed(2)}</span>
-                  </button>
-                ))}
-              </div>
-
-              {/* Network Select Dropdown */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>
-                  Select Transfer Network:
-                </label>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 6 }}>
-                  {currentNetworks.map((net) => {
-                    const isSel = sendNetwork === net.networkKey;
-                    return (
-                      <button
-                        key={net.networkKey}
-                        type="button"
-                        onClick={() => setSendNetwork(net.networkKey)}
-                        style={{
-                          background: isSel ? "rgba(124, 58, 237, 0.25)" : "rgba(255, 255, 255, 0.04)",
-                          border: isSel ? "1.5px solid #8B5CF6" : "1px solid rgba(255, 255, 255, 0.08)",
-                          borderRadius: 10,
-                          padding: "8px 10px",
-                          textAlign: "left",
-                          cursor: "pointer",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 2,
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: isSel ? "#fff" : "var(--text)" }}>
-                            {net.label}
-                          </span>
-                          <span style={{ fontSize: 10, color: "#10B981", fontWeight: 700 }}>
-                            {net.fee}
-                          </span>
-                        </div>
-                        <span style={{ fontSize: 10, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {net.note}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
               </div>
             </div>
 
@@ -509,24 +584,27 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
               <div className="pro-card-header">
                 <span className="pro-card-label">3. Amount to Withdraw</span>
                 <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>
-                  Min: $10.00 USD
+                  Min: {minAmt} {sendCoin}
                 </span>
               </div>
 
               <div className="converter-box">
                 <div className="converter-row">
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
-                    <span style={{ fontSize: 20, fontWeight: 800, color: "var(--text)" }}>$</span>
+                    {sendCoin === "USDT" || sendCoin === "USDC" ? (
+                      <span style={{ fontSize: 20, fontWeight: 800, color: "var(--text)" }}>$</span>
+                    ) : null}
                     <input
                       type="number"
-                      min="10"
+                      step="any"
+                      min={minAmt}
                       className="converter-input"
                       value={sendAmt}
                       onChange={(e) => {
                         setSendAmt(e.target.value);
                         setError(null);
                       }}
-                      placeholder="10.00"
+                      placeholder={`${minAmt}`}
                     />
                   </div>
                   <div className="converter-badge">
@@ -535,8 +613,14 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
                 </div>
               </div>
 
+              {sendCoin !== "USDT" && sendCoin !== "USDC" && numAmt > 0 && (
+                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+                  ≈ ${usdValue.toFixed(2)} USD based on live market rate
+                </div>
+              )}
+
               {/* Percentage Chips */}
-              <div className="preset-chips-row">
+              <div className="preset-chips-row" style={{ marginTop: 8 }}>
                 {["25%", "50%", "75%", "MAX"].map((pct) => (
                   <button
                     key={pct}
@@ -545,7 +629,8 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
                     onClick={() => {
                       const maxBal = availableCoinBalance;
                       const fraction = pct === "25%" ? 0.25 : pct === "50%" ? 0.5 : pct === "75%" ? 0.75 : 1.0;
-                      setSendAmt((maxBal * fraction).toFixed(2));
+                      const val = maxBal * fraction;
+                      setSendAmt(sendCoin === "USDT" || sendCoin === "USDC" ? val.toFixed(2) : val.toFixed(4));
                       setError(null);
                     }}
                   >

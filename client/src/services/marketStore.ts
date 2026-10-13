@@ -2539,12 +2539,27 @@ class MarketStore {
     return metricsResult;
   }
 
-  // Stablecoin-denominated withdrawal flow (Minimum: $10.00)
+  // Multi-asset withdrawal flow (USDT, SOL, USDC, BTC, ETH)
   withdrawFunds(amount: number, sym = "USDC"): { success: boolean; message: string } {
     if (amount <= 0 || isNaN(amount)) return { success: false, message: "Enter a valid withdrawal amount" };
+
+    const cleanSym = sym.toUpperCase();
+    if (cleanSym === "SOL" || cleanSym === "BTC" || cleanSym === "ETH") {
+      const curBal = this.balances[cleanSym]?.bal || 0;
+      if (amount > curBal) {
+        return { success: false, message: `Insufficient ${cleanSym} balance! Available: ${curBal.toFixed(4)}` };
+      }
+      const p = this.getToken(cleanSym)?.numericPrice || 1;
+      this.balances[cleanSym].bal -= amount;
+      this.balances[cleanSym].usdValue = Number((this.balances[cleanSym].bal * p).toFixed(2));
+      this.savePersistedState();
+      this.notify();
+      return { success: true, message: `Successfully withdrew ${amount} ${cleanSym}!` };
+    }
+
     if (amount < 10.0) return { success: false, message: "Minimum withdrawal is $10.00" };
 
-    const targetSym = sym.toUpperCase() === "USDT" ? "USDT" : "USDC";
+    const targetSym = cleanSym === "USDT" ? "USDT" : "USDC";
     const curBal = this.balances[targetSym]?.bal || 0;
 
     if (amount > curBal) {

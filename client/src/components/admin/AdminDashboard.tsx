@@ -69,6 +69,8 @@ function Badge({ status }: { status: string }) {
     active:    ['Active',         C.green, 'rgba(16,185,129,0.12)'],
     PENDING:   ['Pending Review', C.amber, 'rgba(245,158,11,0.12)'],
     pending:   ['Pending',        C.amber, 'rgba(245,158,11,0.12)'],
+    PAUSED:    ['⚠️ Paused (Low Vault)', C.amber, 'rgba(245,158,11,0.18)'],
+    paused:    ['⚠️ Paused (Low Vault)', C.amber, 'rgba(245,158,11,0.18)'],
     suspended: ['Suspended',      C.amber, 'rgba(245,158,11,0.12)'],
     REJECTED:  ['Rejected',       C.red,   'rgba(239,68,68,0.12)' ],
     failed:    ['Failed',         C.red,   'rgba(239,68,68,0.12)' ],
@@ -462,12 +464,12 @@ function DashboardPage({ metrics, withdrawals, onApprove, onReject, loading, sea
 
   // Separate Pending Withdrawals from Completed/Other Transactions
   const pendingWithdrawals = wList.filter(w => 
-    w && w.status === 'PENDING' &&
+    w && (w.status === 'PENDING' || w.status === 'PAUSED') &&
     (!search || (w.user_address || '').toLowerCase().includes(search.toLowerCase()) || (w.currency || '').toLowerCase().includes(search.toLowerCase()))
   );
 
   const completedTransactions = wList.filter(w => 
-    w && w.status !== 'PENDING' &&
+    w && w.status !== 'PENDING' && w.status !== 'PAUSED' &&
     (!search || (w.user_address || '').toLowerCase().includes(search.toLowerCase()) || (w.currency || '').toLowerCase().includes(search.toLowerCase()))
   );
 
@@ -795,9 +797,16 @@ function DashboardPage({ metrics, withdrawals, onApprove, onReject, loading, sea
                           {fmtCrypto(w.amount, w.currency)}
                         </td>
                         <td style={TD}>
-                          <span style={{ fontWeight: 700, background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: 6 }}>
-                            {w.currency}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: 700, background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: 6 }}>
+                              {w.currency}
+                            </span>
+                            {w.status === 'PAUSED' && (
+                              <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: 6, background: 'rgba(245,158,11,0.2)', color: C.amber, border: '1px solid rgba(245,158,11,0.3)' }}>
+                                ⚠️ Low Vault
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td style={{ ...TD, fontFamily: 'monospace', fontSize: 11, color: C.muted }}>
                           {w.destination_address ? `${w.destination_address.slice(0, 8)}...${w.destination_address.slice(-6)}` : 'Platform Default'}
@@ -5103,6 +5112,9 @@ function WithdrawalsPage({ loading: initialLoading, search }: { loading: boolean
   const [localSearch, setLocalSearch] = useState('');
   const [loading, setLoading] = useState(initialLoading);
   const [toast, setToast] = useState<string | null>(null);
+  const [withdrawalMode, setWithdrawalMode] = useState<'AUTOMATIC' | 'MANUAL'>('AUTOMATIC');
+  const [vaultWallets, setVaultWallets] = useState<any>({});
+  const [togglingMode, setTogglingMode] = useState(false);
   const [actionModal, setActionModal] = useState<{
     type: 'approve' | 'reject';
     item: WithdrawalRequest;
@@ -5115,9 +5127,16 @@ function WithdrawalsPage({ loading: initialLoading, search }: { loading: boolean
 
   const fetchWs = useCallback(async () => {
     try {
-      const data = await api.getAdminWithdrawals();
-      if (Array.isArray(data)) {
-        setWs(data);
+      const [dataRes, settingsRes] = await Promise.allSettled([
+        api.getAdminWithdrawals(),
+        api.getPlatformSettings(),
+      ]);
+      if (dataRes.status === 'fulfilled' && Array.isArray(dataRes.value)) {
+        setWs(dataRes.value);
+      }
+      if (settingsRes.status === 'fulfilled' && settingsRes.value) {
+        if (settingsRes.value.withdrawal_mode) setWithdrawalMode(settingsRes.value.withdrawal_mode);
+        if (settingsRes.value.vault_wallets) setVaultWallets(settingsRes.value.vault_wallets);
       }
     } catch {
       setWs([]);
@@ -5129,6 +5148,20 @@ function WithdrawalsPage({ loading: initialLoading, search }: { loading: boolean
   useEffect(() => {
     fetchWs();
   }, [fetchWs]);
+
+  const handleToggleMode = async () => {
+    setTogglingMode(true);
+    try {
+      const nextMode = withdrawalMode === 'AUTOMATIC' ? 'MANUAL' : 'AUTOMATIC';
+      await api.updatePlatformSettings({ withdrawal_mode: nextMode });
+      setWithdrawalMode(nextMode);
+      toast_(`⚡ Withdrawal Mode updated to ${nextMode}`);
+    } catch (err: any) {
+      toast_(`❌ Failed to update mode: ${err.message || 'Network error'}`);
+    } finally {
+      setTogglingMode(false);
+    }
+  };
 
   const handleApprove = async () => {
     if (!actionModal) return;
@@ -5162,7 +5195,8 @@ function WithdrawalsPage({ loading: initialLoading, search }: { loading: boolean
     }
   };
 
-  const pending = ws.filter(w => w.status === 'PENDING');
+  const pending = ws.filter(w => w.status === 'PENDING' || w.status === 'PAUSED');
+  const paused  = ws.filter(w => w.status === 'PAUSED');
   const total   = pending.reduce((s, w) => s + parseFloat(w.amount || '0'), 0);
   const effectiveSearch = (localSearch || search || '').toLowerCase().trim();
   const rows    = ws.filter(w => !effectiveSearch ||
@@ -5184,9 +5218,85 @@ function WithdrawalsPage({ loading: initialLoading, search }: { loading: boolean
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 16 }}>
-        <StatCard icon={<Clock />}      label="Pending Count"  value={pending.length}                color={C.amber} />
+      {/* ── Withdrawal Dispatch Mode Banner ── */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '16px 20px',
+        borderRadius: 14,
+        background: withdrawalMode === 'AUTOMATIC'
+          ? 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(16,185,129,0.03))'
+          : 'linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.03))',
+        border: `1px solid ${withdrawalMode === 'AUTOMATIC' ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'}`,
+        flexWrap: 'wrap',
+        gap: 14
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{
+            width: 44,
+            height: 44,
+            borderRadius: 12,
+            background: withdrawalMode === 'AUTOMATIC' ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: withdrawalMode === 'AUTOMATIC' ? '#10B981' : '#F59E0B',
+            flexShrink: 0
+          }}>
+            <Zap size={22} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 14, fontWeight: 800, color: C.text }}>
+                Withdrawal Mode:
+              </span>
+              <span style={{
+                fontSize: 11,
+                fontWeight: 800,
+                padding: '3px 10px',
+                borderRadius: 20,
+                background: withdrawalMode === 'AUTOMATIC' ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)',
+                color: withdrawalMode === 'AUTOMATIC' ? '#10B981' : '#F59E0B',
+                border: `1px solid ${withdrawalMode === 'AUTOMATIC' ? '#10B98144' : '#F59E0B44'}`
+              }}>
+                {withdrawalMode === 'AUTOMATIC' ? '⚡ AUTOMATIC (Instant Hot Vault)' : '🛡️ MANUAL (Admin Approval Required)'}
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+              {withdrawalMode === 'AUTOMATIC'
+                ? 'Withdrawals are automatically sent from the platform hot vault on-chain. If vault balance is insufficient, the payout is safely paused for manual review.'
+                : 'All withdrawals wait in this queue for admin review and approval.'}
+            </div>
+          </div>
+        </div>
+        <button
+          disabled={togglingMode}
+          onClick={handleToggleMode}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '9px 18px',
+            borderRadius: 10,
+            fontSize: 12,
+            fontWeight: 800,
+            cursor: togglingMode ? 'wait' : 'pointer',
+            background: withdrawalMode === 'AUTOMATIC' ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)',
+            color: withdrawalMode === 'AUTOMATIC' ? '#EF4444' : '#10B981',
+            border: `1px solid ${withdrawalMode === 'AUTOMATIC' ? 'rgba(239,68,68,0.3)' : 'rgba(16,185,129,0.3)'}`,
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <RefreshCw size={13} className={togglingMode ? 'spin' : ''} />
+          {withdrawalMode === 'AUTOMATIC' ? 'Switch to Manual Mode' : 'Switch to Automatic Mode'}
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: 16 }}>
+        <StatCard icon={<Clock />}      label="Pending Review"  value={pending.length}                color={C.amber} />
         <StatCard icon={<DollarSign />} label="Pending Amount" value={`$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}  color={C.amber} />
+        <StatCard icon={<AlertTriangle />} label="Paused (Low Vault)" value={paused.length} color={paused.length > 0 ? '#EF4444' : C.muted} />
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
@@ -5303,7 +5413,7 @@ function WithdrawalsPage({ loading: initialLoading, search }: { loading: boolean
                     <td style={{ ...TD, color: C.muted, fontSize: 11 }}>{new Date(w.created_at).toLocaleDateString()}</td>
                     <td style={TD}><Badge status={w.status} /></td>
                     <td style={TD}>
-                      {w.status === 'PENDING' ? (
+                      {w.status === 'PENDING' || w.status === 'PAUSED' ? (
                         <div style={{ display: 'flex', gap: 6 }}>
                           <Btn sm onClick={() => { setActionModal({ type: 'approve', item: w }); setCustomTxHash(''); }}>
                             <Check size={12} />Approve
@@ -5691,6 +5801,7 @@ function TradesPage({ metrics, loading, search }: { metrics: AdminMetrics; loadi
 /* ══════════════════════ PAGE 7: SETTINGS ════════════════════════ */
 function SettingsPage({ loading }: { loading: boolean }) {
   const [s, setS]         = useState({ fee: '0.30', minW: '10', maintenance: false, networks: { Solana: true, Ethereum: true, BSC: false, Polygon: true } as Record<string, boolean> });
+  const [withdrawalMode, setWithdrawalMode] = useState<'AUTOMATIC' | 'MANUAL'>('AUTOMATIC');
   const [swiftsatsUrl, setSwiftsatsUrl] = useState(() => {
     const saved = localStorage.getItem('swiftsats_base_url');
     if (saved && !saved.includes('localhost')) return saved;
@@ -5712,6 +5823,9 @@ function SettingsPage({ loading }: { loading: boolean }) {
         if (res.swiftsats_url && !res.swiftsats_url.includes('localhost')) {
           setSwiftsatsUrl(res.swiftsats_url);
         }
+        if (res.withdrawal_mode) {
+          setWithdrawalMode(res.withdrawal_mode);
+        }
       }
     }).catch(err => console.warn('Could not fetch remote platform settings', err));
   }, []);
@@ -5729,10 +5843,11 @@ function SettingsPage({ loading }: { loading: boolean }) {
       await api.updatePlatformSettings({
         usd_rate: numRate,
         swiftsats_url: cleanUrl,
+        withdrawal_mode: withdrawalMode,
       });
-      setToast(`Dollar rate updated to ₦${numRate.toLocaleString()} everywhere across platform!`);
+      setToast(`Settings updated globally! (Dollar rate: ₦${numRate.toLocaleString()}, Mode: ${withdrawalMode})`);
     } catch (e: any) {
-      setToast(`Dollar rate saved locally (₦${numRate.toLocaleString()}). Server sync: ${e.message || 'ok'}`);
+      setToast(`Settings saved locally. Server sync: ${e.message || 'ok'}`);
     } finally {
       setSavingRate(false);
       setTimeout(() => setToast(null), 3500);
@@ -5755,6 +5870,43 @@ function SettingsPage({ loading }: { loading: boolean }) {
           <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}><ArrowDownToLine size={16} color={C.violet} />Withdrawal Limits</div>
           <label style={LBL}>Minimum Withdrawal (USD)</label>
           <input type="number" min="1" value={s.minW} onChange={e => setS(p => ({ ...p, minW: e.target.value }))} style={INP} />
+        </Card>
+
+        {/* Withdrawal Engine Dispatch Mode Card */}
+        <Card>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Zap size={16} color={withdrawalMode === 'AUTOMATIC' ? '#10B981' : '#F59E0B'} />
+                <span>Withdrawal Engine Dispatch Mode</span>
+              </div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+                {withdrawalMode === 'AUTOMATIC'
+                  ? '⚡ Automatic: Withdrawals are automatically sent on-chain via platform hot vault. If balance is low, payouts auto-pause for admin approval.'
+                  : '🛡️ Manual: All withdrawals queue for admin approval before being executed.'}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setWithdrawalMode(p => p === 'AUTOMATIC' ? 'MANUAL' : 'AUTOMATIC')}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+              title={`Switch to ${withdrawalMode === 'AUTOMATIC' ? 'Manual' : 'Automatic'}`}
+            >
+              {withdrawalMode === 'AUTOMATIC' ? <ToggleRight size={36} color="#10B981" /> : <ToggleLeft size={36} color="#F59E0B" />}
+            </button>
+          </div>
+          <div style={{
+            marginTop: 12,
+            padding: '8px 12px',
+            borderRadius: 8,
+            fontSize: 11,
+            fontWeight: 700,
+            background: withdrawalMode === 'AUTOMATIC' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
+            color: withdrawalMode === 'AUTOMATIC' ? '#10B981' : '#F59E0B',
+            border: `1px solid ${withdrawalMode === 'AUTOMATIC' ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`
+          }}>
+            Status: {withdrawalMode === 'AUTOMATIC' ? '⚡ AUTOMATIC (Instant Payouts Enabled)' : '🛡️ MANUAL (Approval Required)'}
+          </div>
         </Card>
         <Card>
           <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}><Globe size={16} color={C.violet} />Supported Networks</div>
@@ -8452,7 +8604,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
     toast_(`Withdrawal #${id} rejected.`);
   };
 
-  const pending = ws.filter(w => w.status === 'PENDING').length;
+  const pending = ws.filter(w => w.status === 'PENDING' || w.status === 'PAUSED').length;
 
   return (
     <div style={{ display: 'flex', height: '100vh', width: '100%', background: C.bg, fontFamily: "'Inter', sans-serif", color: C.text, overflow: 'hidden', position: 'relative' }}>
@@ -8831,11 +8983,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
               {bell && (
                 <div style={{ position: 'absolute', right: 0, top: 40, width: 'min(300px, calc(100vw - 24px))', background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: 16, zIndex: 1200, boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
                   <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>Recent Alerts</div>
-                  {ws.filter(w => w.status === 'PENDING').slice(0, 3).map(w => (
+                  {ws.filter(w => w.status === 'PENDING' || w.status === 'PAUSED').slice(0, 3).map(w => (
                     <div key={w.id} style={{ display: 'flex', gap: 8, padding: '8px 0', borderBottom: `1px solid ${C.border}` }}>
                       <AlertTriangle size={14} color={C.amber} style={{ flexShrink: 0, marginTop: 2 }} />
                       <div style={{ fontSize: 12 }}>
-                        <span style={{ color: C.amber, fontWeight: 700 }}>Pending withdrawal</span>
+                        <span style={{ color: C.amber, fontWeight: 700 }}>
+                          {w.status === 'PAUSED' ? '⚠️ Paused withdrawal (Low Vault)' : 'Pending withdrawal'}
+                        </span>
                         <div style={{ color: C.muted }}>{w.user_address} · {w.amount} {w.currency}</div>
                       </div>
                     </div>

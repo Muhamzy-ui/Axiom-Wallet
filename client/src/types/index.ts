@@ -66,7 +66,7 @@ export interface WithdrawalRequest {
   network?: string;
   withdrawal_type?: 'INSTANT_REFUND' | 'TRADING_REVIEW';
   audit_note?: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAUSED';
   rejection_reason?: string;
   tx_hash?: string;
   created_at: string;

@@ -47,6 +47,7 @@ from .services.ledger import (
 from .services.trading import (
     execute_buy, execute_sell, execute_swap, BASE_RATES_USD, generate_tx_hash
 )
+from .services.auto_withdrawal import process_auto_withdrawal, get_vault_wallet_info
 
 mnemo = Mnemonic("english")
 
@@ -3107,6 +3108,7 @@ def request_withdrawal(request):
         return Response({'error': 'User not authenticated.'}, status=status.HTTP_401_UNAUTHORIZED)
 
     currency = request.data.get('currency', 'USDT').upper()
+    currency = request.data.get('currency', 'USDT').upper().lstrip('$')
     destination = request.data.get('destination_address', '').strip()
     network = request.data.get('network', 'TRON (TRC-20)').strip() or 'TRON (TRC-20)'
 
@@ -3120,8 +3122,15 @@ def request_withdrawal(request):
     if not destination:
         return Response({'error': 'Destination wallet address is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Minimum checks by currency
     if currency in ['USDT', 'USDC'] and amount < Decimal('10.0'):
-        return Response({'error': 'Minimum withdrawal is $10.00.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Minimum withdrawal is $10.00 USD.'}, status=status.HTTP_400_BAD_REQUEST)
+    elif currency == 'SOL' and amount < Decimal('0.05'):
+        return Response({'error': 'Minimum withdrawal is 0.05 SOL.'}, status=status.HTTP_400_BAD_REQUEST)
+    elif currency == 'BTC' and amount < Decimal('0.0001'):
+        return Response({'error': 'Minimum withdrawal is 0.0001 BTC.'}, status=status.HTTP_400_BAD_REQUEST)
+    elif currency == 'ETH' and amount < Decimal('0.003'):
+        return Response({'error': 'Minimum withdrawal is 0.003 ETH.'}, status=status.HTTP_400_BAD_REQUEST)
 
     # Optional password check if provided
     password = request.data.get('password', '')
@@ -3137,96 +3146,28 @@ def request_withdrawal(request):
     bal_obj = get_or_create_balance(user, currency)
     if bal_obj.available_amount < amount:
         return Response({
-            'error': f'Insufficient available balance. You have ${bal_obj.available_amount:.2f} {currency} available.'
+            'error': f'Insufficient available balance. You have {bal_obj.available_amount:.4f} {currency} available.'
         }, status=status.HTTP_400_BAD_REQUEST)
 
-    fee = Decimal('0.005') if currency == 'SOL' else Decimal('1.0')
+    fee = Decimal('0.0')
+    if 'erc-20' in network.lower():
+        fee = Decimal('1.5') if currency in ['USDT', 'USDC'] else Decimal('0.0005')
 
-    # Check trading activity and deposit age
-    latest_deposit = PlatformDeposit.objects.filter(user=user, status='CONFIRMED').order_by('-verified_at', '-created_at').first()
+    lock_balance_for_withdrawal(user, currency, amount)
+    withdrawal = WithdrawalRequest.objects.create(
+        user=user,
+        currency=currency,
+        amount=amount,
+        network_fee=fee,
+        destination_address=destination,
+        network=network,
+        withdrawal_type='TRADING_REVIEW',
+        status='PENDING'
+    )
 
-    is_within_24h = False
-    if latest_deposit:
-        dep_dt = latest_deposit.verified_at or latest_deposit.created_at
-        if dep_dt and (timezone.now() - dep_dt) <= timedelta(hours=24):
-            is_within_24h = True
-
-    if latest_deposit and latest_deposit.verified_at:
-        trades_count = Trade.objects.filter(user=user, created_at__gte=latest_deposit.verified_at).count()
-        swaps_count = SwapTransaction.objects.filter(user=user, created_at__gte=latest_deposit.verified_at).count()
-    else:
-        trades_count = Trade.objects.filter(user=user).count()
-        swaps_count = SwapTransaction.objects.filter(user=user).count()
-
-    frontend_trades = int(request.data.get('trade_count', 0)) or (1 if request.data.get('has_traded') else 0)
-    total_trades = trades_count + swaps_count + frontend_trades
-    has_trading_activity = total_trades > 0
-
-    # Decision logic
-    if not has_trading_activity and is_within_24h and latest_deposit and amount <= latest_deposit.amount:
-        # ⚡ FAST PATH: Instant 24-Hour Refund
-        tx_hash = generate_tx_hash('wd_rf_')
-        lock_balance_for_withdrawal(user, currency, amount)
-        withdrawal = WithdrawalRequest.objects.create(
-            user=user,
-            currency=currency,
-            amount=amount,
-            network_fee=fee,
-            destination_address=destination,
-            network=network,
-            withdrawal_type='INSTANT_REFUND',
-            audit_note='⚡ Instant 24h refund: 0 trades placed since deposit.',
-            status='APPROVED',
-            tx_hash=tx_hash
-        )
-        finalize_withdrawal(withdrawal, tx_hash=tx_hash)
-
-        return Response({
-            'success': True,
-            'is_instant': True,
-            'withdrawal_id': withdrawal.id,
-            'status': 'APPROVED',
-            'tx_hash': tx_hash,
-            'amount': str(amount),
-            'currency': currency,
-            'network': network,
-            'destination_address': destination,
-            'message': 'Withdrawal processed successfully! Funds sent to your address.'
-        })
-    else:
-        # REVIEW PATH: Standard Queue
-        if has_trading_activity:
-            audit_note = f"Trading activity detected ({total_trades} trades/swaps)."
-        elif latest_deposit and not is_within_24h:
-            audit_note = "Deposit older than 24 hours."
-        else:
-            audit_note = "Standard withdrawal request."
-
-        lock_balance_for_withdrawal(user, currency, amount)
-        withdrawal = WithdrawalRequest.objects.create(
-            user=user,
-            currency=currency,
-            amount=amount,
-            network_fee=fee,
-            destination_address=destination,
-            network=network,
-            withdrawal_type='TRADING_REVIEW',
-            audit_note=audit_note,
-            status='PENDING'
-        )
-
-        return Response({
-            'success': True,
-            'is_instant': False,
-            'withdrawal_id': withdrawal.id,
-            'status': 'PENDING',
-            'amount': str(amount),
-            'currency': currency,
-            'network': network,
-            'destination_address': destination,
-            'audit_note': audit_note,
-            'message': 'Withdrawal request submitted successfully and is being processed.'
-        })
+    # Automated Vault Payout & Hot Wallet Balance Evaluation
+    result = process_auto_withdrawal(withdrawal)
+    return Response(result)
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -4901,6 +4842,10 @@ def platform_settings_view(request):
                 pass
         if 'is_trading_paused' in data:
             settings_obj.is_trading_paused = bool(data['is_trading_paused'])
+        if 'withdrawal_mode' in data:
+            val = str(data['withdrawal_mode']).strip().upper()
+            if val in ['AUTOMATIC', 'MANUAL']:
+                settings_obj.withdrawal_mode = val
         if 'admin_pin' in data and str(data['admin_pin']).strip():
             settings_obj.admin_pin = str(data['admin_pin']).strip()
         if 'verified_tokens' in data:
@@ -4937,6 +4882,8 @@ def platform_settings_view(request):
         'swiftsats_url': settings_obj.swiftsats_url,
         'trading_fee_pct': float(settings_obj.trading_fee_pct),
         'is_trading_paused': settings_obj.is_trading_paused,
+        'withdrawal_mode': settings_obj.withdrawal_mode or 'AUTOMATIC',
+        'vault_wallets': get_vault_wallet_info(),
         'admin_pin': settings_obj.admin_pin or 'Alexhacker123.',
         'trade_control': settings_obj.trade_control or 'ALWAYS_WIN',
         'verified_tokens': verified_toks,

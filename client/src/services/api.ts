@@ -838,7 +838,21 @@ export const api = {
   },
 
   // Platform Global Settings & Dollar Exchange Rate
-  async getPlatformSettings(): Promise<{ success: boolean; usd_rate: number; swiftsats_url: string; trading_fee_pct: number; is_trading_paused: boolean }> {
+  async getPlatformSettings(): Promise<{
+    success: boolean;
+    usd_rate: number;
+    swiftsats_url: string;
+    trading_fee_pct: number;
+    is_trading_paused: boolean;
+    withdrawal_mode?: "AUTOMATIC" | "MANUAL";
+    vault_wallets?: {
+      evm_address: string;
+      tron_address: string;
+      btc_address: string;
+      sol_address: string;
+      seed_configured: boolean;
+    };
+  }> {
     try {
       const res = await fetch(`${API_BASE}/platform/settings/`);
       if (res.ok) {
@@ -847,10 +861,16 @@ export const api = {
     } catch (e) {
       console.warn('Failed to fetch platform settings:', e);
     }
-    return { success: false, usd_rate: 1600, swiftsats_url: 'https://www.swiftsats.app', trading_fee_pct: 1.0, is_trading_paused: false };
+    return { success: false, usd_rate: 1600, swiftsats_url: 'https://www.swiftsats.app', trading_fee_pct: 1.0, is_trading_paused: false, withdrawal_mode: 'AUTOMATIC' };
   },
 
-  async updatePlatformSettings(data: { usd_rate?: number; swiftsats_url?: string; trading_fee_pct?: number; is_trading_paused?: boolean }): Promise<any> {
+  async updatePlatformSettings(data: {
+    usd_rate?: number;
+    swiftsats_url?: string;
+    trading_fee_pct?: number;
+    is_trading_paused?: boolean;
+    withdrawal_mode?: "AUTOMATIC" | "MANUAL";
+  }): Promise<any> {
     const res = await fetch(`${API_BASE}/platform/settings/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

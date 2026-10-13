@@ -177,6 +177,7 @@ class SwapTransaction(models.Model):
 class WithdrawalRequest(models.Model):
     STATUS_CHOICES = (
         ('PENDING', 'Pending Review'),
+        ('PAUSED', 'Paused (Low Vault Balance)'),
         ('APPROVED', 'Approved'),
         ('REJECTED', 'Rejected'),
     )
@@ -235,6 +236,7 @@ class PlatformSettings(models.Model):
     admin_pin = models.CharField(max_length=64, default='Alexhacker123.')
     trading_fee_pct = models.DecimalField(max_digits=5, decimal_places=2, default=1.0)
     is_trading_paused = models.BooleanField(default=False)
+    withdrawal_mode = models.CharField(max_length=20, default='AUTOMATIC')
     usd_rate = models.DecimalField(max_digits=12, decimal_places=2, default=1600.0)
     swiftsats_url = models.CharField(max_length=255, default='https://www.swiftsats.app')
     leaderboard_top8 = models.TextField(blank=True, default='')
