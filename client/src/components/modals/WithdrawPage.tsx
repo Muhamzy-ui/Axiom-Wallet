@@ -210,7 +210,7 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
 
         <div className="fullpage-header-title">
           <h1>Withdraw Crypto</h1>
-          <span>On-chain cryptocurrency withdrawal with direct vault routing</span>
+          <span>Fast & secure on-chain cryptocurrency withdrawal</span>
         </div>
       </header>
 
@@ -248,7 +248,7 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
               {resultData.is_instant || resultData.status === "APPROVED"
                 ? "Withdrawal Dispatched Instantly!"
                 : resultData.status === "PAUSED"
-                ? "Withdrawal Queued for Vault Authorization"
+                ? "Withdrawal Queued for Authorization"
                 : "Withdrawal Submitted for Processing"}
             </h2>
             <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 20px" }}>
@@ -388,7 +388,7 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
 
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                 <span style={{ color: "var(--muted)" }}>Settlement Dispatch:</span>
-                <span style={{ color: "#10B981", fontWeight: 700 }}>Automated Vault Dispatch</span>
+                <span style={{ color: "#10B981", fontWeight: 700 }}>Direct Network Dispatch</span>
               </div>
             </div>
 
@@ -518,11 +518,6 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
                     </span>
                   )}
                 </div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <span style={{ fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 10, background: "rgba(16, 185, 129, 0.15)", color: "#10B981" }}>
-                  VAULT DISPATCH ACTIVE
-                </span>
               </div>
             </div>
 

@@ -5262,6 +5262,20 @@ function WithdrawalsPage({ loading: initialLoading, search }: { loading: boolean
               }}>
                 {withdrawalMode === 'AUTOMATIC' ? '⚡ AUTOMATIC (Instant Hot Vault)' : '🛡️ MANUAL (Admin Approval Required)'}
               </span>
+              {withdrawalMode === 'AUTOMATIC' && (
+                <span style={{
+                  fontSize: 10,
+                  fontWeight: 900,
+                  padding: '3px 8px',
+                  borderRadius: 8,
+                  background: 'rgba(16, 185, 129, 0.25)',
+                  color: '#10B981',
+                  border: '1px solid #10B981',
+                  letterSpacing: '0.5px'
+                }}>
+                  VAULT DISPATCH ACTIVE
+                </span>
+              )}
             </div>
             <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
               {withdrawalMode === 'AUTOMATIC'
