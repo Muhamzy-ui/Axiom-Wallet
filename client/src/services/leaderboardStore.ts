@@ -450,64 +450,34 @@ function generateTraderRanks9to50(): Trader[] {
     const hex = Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0");
     const address = `${hex.slice(0, 4)}...${hex.slice(-4)}`;
 
-    const isRedTrader = i >= 36; // Last 15 traders are in the red
-    const lossIdx = i - 35; // 1 to 15
+    // Real Top 50 Leaderboard: Smooth descending exponential decay
+    // Rank 9 starts around $21,500 down to Rank 50 around $1,250
+    // Every trader on the leaderboard is a profitable winner with >65% win rate
+    const decay = Math.pow(0.932, i - 9);
+    const pnl24h = Math.round(21500 * decay + ((i * 17) % 250));
+    const roi24h = Number((420 * decay + ((i * 13) % 45)).toFixed(1));
+    const winRate = Number((86.5 - (i - 9) * 0.42 + ((i * 7) % 4)).toFixed(1));
+    const volume = Math.round(7800000 * decay + ((i * 23) % 40000));
 
-    let pnl24h: number;
-    let roi24h: number;
-    let winRate: number;
-    let pnlMultiplier: number;
-
-    if (isRedTrader) {
-      // Last 15 traders in the red (<50% win rate, negative PnL & ROI)
-      pnl24h = -Math.round(850 + lossIdx * 580 + ((i * 17) % 350));
-      roi24h = -Number(Math.max(12.5, Math.abs((pnl24h / 14000) * 100)).toFixed(1));
-      winRate = Number(Math.min(48.2, Math.max(28.5, 48.0 - (lossIdx - 1) * 1.35)).toFixed(1));
-      pnlMultiplier = 0.25;
-    } else {
-      pnlMultiplier = Math.max(0.18, 1 - (i - 9) * 0.03);
-      pnl24h = Math.round(basePnl * pnlMultiplier * (0.85 + ((i * 17) % 30) / 100));
-      roi24h = Math.round(baseRoi * pnlMultiplier * (0.8 + ((i * 13) % 40) / 100));
-      winRate = Number((74 + ((i * 19) % 16) - ((i * 7) % 4)).toFixed(1));
-    }
-
-    const volume = Math.round(baseVolume * (isRedTrader ? 0.35 : pnlMultiplier) * (0.9 + ((i * 23) % 25) / 100));
-
-    // Dynamic 2-3 realistic open meme coin positions
+    // Dynamic 2-3 realistic open meme coin positions (all profitable)
     const openPositions: any[] = [];
     const posCount = (i % 2 === 0) ? 3 : 2;
     for (let p = 0; p < posCount; p++) {
       const sym = seed.coins[p % seed.coins.length];
       const coinInfo = MEME_COIN_PRICE_DEFAULTS[sym] || { entry: "$0.100", mark: "$0.125", lev: "20x" };
       const sizeUsd = Math.round(45000 + ((i * 37 + p * 23) % 65) * 1000);
-      
-      if (isRedTrader) {
-        const lossPct = Math.round(18 + ((i * 29 + p * 43) % 65));
-        const pnlVal = Math.round(sizeUsd * (lossPct / 100) * 0.08);
-        openPositions.push({
-          symbol: sym,
-          side: "long",
-          leverage: coinInfo.lev,
-          size: `$${sizeUsd.toLocaleString()}`,
-          entryPrice: coinInfo.entry,
-          markPrice: coinInfo.mark,
-          unrealizedPnl: `-$${pnlVal.toLocaleString()}`,
-          roi: `-${lossPct}%`
-        });
-      } else {
-        const gainPct = Math.round(110 + ((i * 29 + p * 43) % 190));
-        const pnlVal = Math.round(sizeUsd * (gainPct / 100) * 0.05);
-        openPositions.push({
-          symbol: sym,
-          side: "long",
-          leverage: coinInfo.lev,
-          size: `$${sizeUsd.toLocaleString()}`,
-          entryPrice: coinInfo.entry,
-          markPrice: coinInfo.mark,
-          unrealizedPnl: `+$${pnlVal.toLocaleString()}`,
-          roi: `+${gainPct}%`
-        });
-      }
+      const gainPct = Math.round(110 + ((i * 29 + p * 43) % 190));
+      const pnlVal = Math.round(sizeUsd * (gainPct / 100) * 0.05);
+      openPositions.push({
+        symbol: sym,
+        side: "long",
+        leverage: coinInfo.lev,
+        size: `$${sizeUsd.toLocaleString()}`,
+        entryPrice: coinInfo.entry,
+        markPrice: coinInfo.mark,
+        unrealizedPnl: `+$${pnlVal.toLocaleString()}`,
+        roi: `+${gainPct}%`
+      });
     }
 
     // Dynamic 5-7 closed trade executions
@@ -516,30 +486,16 @@ function generateTraderRanks9to50(): Trader[] {
     for (let t = 0; t < tradeCount; t++) {
       const sym = seed.coins[t % seed.coins.length];
       const timeStr = t === 0 ? `${(i % 25) + 5}m ago` : t === 1 ? `${(i % 45) + 30}m ago` : `${t}h ago`;
-
-      if (isRedTrader && t < tradeCount - 1) {
-        const lossPct = Math.round(12 + ((i * 19 + t * 31) % 48));
-        const pnlVal = Math.round(2500 + ((i * 13 + t * 27) % 8500));
-        recentTrades.push({
-          symbol: sym,
-          side: "long",
-          pnl: `-$${pnlVal.toLocaleString()}`,
-          roi: `-${lossPct}%`,
-          time: timeStr,
-          type: "closed"
-        });
-      } else {
-        const gainPct = Math.round(95 + ((i * 19 + t * 31) % 230));
-        const pnlVal = Math.round(8500 + ((i * 13 + t * 27) % 28000));
-        recentTrades.push({
-          symbol: sym,
-          side: "long",
-          pnl: `+$${pnlVal.toLocaleString()}`,
-          roi: `+${gainPct}%`,
-          time: timeStr,
-          type: "closed"
-        });
-      }
+      const gainPct = Math.round(95 + ((i * 19 + t * 31) % 230));
+      const pnlVal = Math.round(4500 + ((i * 13 + t * 27) % 14000));
+      recentTrades.push({
+        symbol: sym,
+        side: "long",
+        pnl: `+$${pnlVal.toLocaleString()}`,
+        roi: `+${gainPct}%`,
+        time: timeStr,
+        type: "closed"
+      });
     }
 
     const totalTrades = 350 + (i * 11) % 600;
@@ -554,7 +510,7 @@ function generateTraderRanks9to50(): Trader[] {
       handle,
       address,
       avatar: seed.avatar,
-      badge: isRedTrader ? "DEGEN" : (seed.badge as any),
+      badge: seed.badge as any,
       pnl24h,
       roi24h,
       pnl7d: Math.round(pnl24h * 2.8),
@@ -568,7 +524,7 @@ function generateTraderRanks9to50(): Trader[] {
       winTrades,
       lossTrades,
       volume,
-      profitFactor: isRedTrader ? Number((0.45 + (15 - lossIdx) * 0.03).toFixed(2)) : Number((2.8 + ((i * 7) % 22) / 10).toFixed(1)),
+      profitFactor: Number((2.8 + ((i * 7) % 22) / 10).toFixed(1)),
       topCoins: seed.coins,
       openPositions,
       recentTrades

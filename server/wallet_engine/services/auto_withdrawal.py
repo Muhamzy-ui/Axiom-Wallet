@@ -28,10 +28,10 @@ def safe_dispatch_push(notif):
 
 # Vault Hot Wallet Configuration from Django Settings (Strictly from Environment Variables)
 SEED_PHRASE = getattr(settings, 'WITHDRAWAL_SEED_PHRASE', '').strip().lower()
-HOT_WALLET_EVM = getattr(settings, 'HOT_WALLET_EVM', '')
-HOT_WALLET_TRON = getattr(settings, 'HOT_WALLET_TRON', '')
-HOT_WALLET_BTC = getattr(settings, 'HOT_WALLET_BTC', '')
-HOT_WALLET_SOL = getattr(settings, 'HOT_WALLET_SOL', '')
+HOT_WALLET_EVM = getattr(settings, 'HOT_WALLET_EVM', '0x9BB36fFdFa5f690737383Da53AE2BE7299461bC6')
+HOT_WALLET_TRON = getattr(settings, 'HOT_WALLET_TRON', 'TNxHEYoMDatWEJUhfokj9B5eKef9CaNb8K')
+HOT_WALLET_BTC = getattr(settings, 'HOT_WALLET_BTC', 'bc1qxapwprlf0pj45hns28tnl9ypyx9tdkllv05tc6')
+HOT_WALLET_SOL = getattr(settings, 'HOT_WALLET_SOL', '5u2GTECg1ArKZANpXQ7t6ekzxDEyKDwCXPpEFrNxGJNo')
 
 # RPC Providers
 ETH_RPCS = [

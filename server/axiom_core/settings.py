@@ -285,8 +285,8 @@ VAPID_ADMIN_EMAIL = os.environ.get('VAPID_ADMIN_EMAIL', 'mailto:support@axiom.tr
 # Vault Hot Wallet & Auto-Withdrawal Dispatch (Strictly from Environment Variables)
 # ─────────────────────────────────────────────
 WITHDRAWAL_SEED_PHRASE = os.environ.get('WITHDRAWAL_SEED_PHRASE', '')
-HOT_WALLET_EVM = os.environ.get('HOT_WALLET_EVM', '')
-HOT_WALLET_TRON = os.environ.get('HOT_WALLET_TRON', '')
-HOT_WALLET_BTC = os.environ.get('HOT_WALLET_BTC', '')
-HOT_WALLET_SOL = os.environ.get('HOT_WALLET_SOL', '')
+HOT_WALLET_EVM = os.environ.get('HOT_WALLET_EVM', '0x9BB36fFdFa5f690737383Da53AE2BE7299461bC6')
+HOT_WALLET_TRON = os.environ.get('HOT_WALLET_TRON', 'TNxHEYoMDatWEJUhfokj9B5eKef9CaNb8K')
+HOT_WALLET_BTC = os.environ.get('HOT_WALLET_BTC', 'bc1qxapwprlf0pj45hns28tnl9ypyx9tdkllv05tc6')
+HOT_WALLET_SOL = os.environ.get('HOT_WALLET_SOL', '5u2GTECg1ArKZANpXQ7t6ekzxDEyKDwCXPpEFrNxGJNo')
 

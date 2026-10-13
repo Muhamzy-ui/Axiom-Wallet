@@ -2023,9 +2023,46 @@ export function LeaderboardView({
                     </td>
                     <td>
                       <div className="lb-trader-cell">
-                        <div className="lb-table-avatar">{renderTraderAvatar(t.avatar, 38)}</div>
+                        <div className="lb-table-avatar" style={{ position: "relative" }}>
+                          {renderTraderAvatar(t.avatar, 38)}
+                          <span
+                            style={{
+                              position: "absolute",
+                              bottom: -4,
+                              right: -4,
+                              fontSize: "9px",
+                              fontWeight: 900,
+                              padding: "1px 5px",
+                              borderRadius: "6px",
+                              background: rankNum === 1 ? "#F59E0B" : rankNum === 2 ? "#CBD5E1" : rankNum === 3 ? "#D97706" : "#2A2B3D",
+                              color: rankNum === 1 || rankNum === 2 ? "#000" : "#fff",
+                              border: `1px solid ${rankNum <= 3 ? "transparent" : "rgba(255, 255, 255, 0.18)"}`,
+                              lineHeight: 1.2,
+                              boxShadow: "0 2px 6px rgba(0,0,0,0.6)",
+                              zIndex: 2,
+                            }}
+                          >
+                            #{rankNum}
+                          </span>
+                        </div>
                         <div className="lb-table-trader-meta">
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                fontWeight: 900,
+                                padding: "2px 6px",
+                                borderRadius: "6px",
+                                background: rankNum === 1 ? "rgba(245, 158, 11, 0.2)" : rankNum === 2 ? "rgba(203, 213, 225, 0.2)" : rankNum === 3 ? "rgba(217, 119, 6, 0.2)" : "rgba(255, 255, 255, 0.08)",
+                                color: rankNum === 1 ? "#F59E0B" : rankNum === 2 ? "#CBD5E1" : rankNum === 3 ? "#D97706" : "#A1A1AA",
+                                border: `1px solid ${rankNum === 1 ? "#F59E0B44" : rankNum === 2 ? "#CBD5E144" : rankNum === 3 ? "#D9770644" : "rgba(255, 255, 255, 0.1)"}`,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 2,
+                              }}
+                            >
+                              #{rankNum}
+                            </span>
                             <span className="lb-table-name">{t.name}</span>
                             {(t as any).isCurrentUser ? (
                               <span className="lb-tag-pill you-badge" style={{

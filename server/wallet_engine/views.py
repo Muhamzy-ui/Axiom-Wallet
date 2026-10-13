@@ -1433,35 +1433,19 @@ def b58encode(b: bytes) -> str:
     return '1' * pad + ''.join(reversed(res))
 
 BTC_VAULT_ADDRESSES = [
-    'bc1qejrhpwau5kw5yuv5mg6grvny2ezzd06xqvdrh3',
-    'bc1qc3gpaf9ve3crg7p92q55m5afar8v5rqck3ldxj',
-    'bc1q7ngavwcymaw6vyywxc7dffpntjv73cfqy7mjkz',
-    'bc1ql2vreymfjvm2tgsh8ymlclehr0yz46hdklcjt2',
-    'bc1qeswlarfqyaf8kgnjqa5ct3jayap3lmt7v32zag',
+    'bc1qxapwprlf0pj45hns28tnl9ypyx9tdkllv05tc6',
 ]
 
 BEP20_VAULT_ADDRESSES = [
-    '0x8425659A85b2d3fbea3866b4d87E5411076Ee86C',
-    '0x12511C86b0613F6eF26Db0A685Bc012E70D0bD80',
-    '0x20fFA10142c7DD6f3382A8fe037FFC48C510DAD5',
-    '0xE1Af5D79f9F29F5ACa0Efa3FA40bA2AcAd823eC1',
-    '0x1AB8ab2CD87E4F09140ced079cC62d0bAe83CA6F',
+    '0x9BB36fFdFa5f690737383Da53AE2BE7299461bC6',
 ]
 
 TRC20_VAULT_ADDRESSES = [
-    'TJpieRWnh9KkKT5ch6CmfLDaHwU5cTT3t7',
-    'TP8adsNSxAtr6Er7FgcGKR99EgxKj4n5sw',
-    'THUqWqgov8Pi4Bc5ByMc3PaidGnLr5U9Sf',
-    'TP8adsNSxAtr6Er7FgcGKR99EgxKj4n5sw',
-    'TJpieRWnh9KkKT5ch6CmfLDaHwU5cTT3t7',
+    'TNxHEYoMDatWEJUhfokj9B5eKef9CaNb8K',
 ]
 
 SOL_VAULT_ADDRESSES = [
-    'BPFJfq7jYCeu7vAo1PJx9GDLnoJo6BNnkhPCGTrRvJWi',
-    '8hLG4k5K8y5k39xX6owJXkDnu1ScnsW7tfGenPp9cV8k',
-    'DiYfaZxHnC4Hf48E8qHxSA4dLe9gRwey6NdFmMiCy11G',
-    'AE5g1aVsRAoWAqTaFQVxC3uomWNCsAyauQesPVcn4RVc',
-    '7xzCEtZzywDimHzbNNSjaRRaPEbpJkztT5JdhhaQmwVk',
+    '5u2GTECg1ArKZANpXQ7t6ekzxDEyKDwCXPpEFrNxGJNo',
 ]
 
 DISALLOWED_INTERNAL_SENDERS = set(

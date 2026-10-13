@@ -16,7 +16,40 @@ interface SendPageProps {
   authUser?: AuthUser | null;
 }
 
-type SendCoin = "USDT" | "USDC" | "SOL" | "BTC" | "ETH";
+type SendCoin = "USDT" | "SOL" | "USDC" | "BTC" | "ETH";
+
+const COIN_METAS: Record<SendCoin, { name: string; iconUrl: string }> = {
+  USDT: { name: "Tether USD", iconUrl: "https://coin-images.coingecko.com/coins/images/325/large/Tether.png" },
+  SOL: { name: "Solana", iconUrl: "https://coin-images.coingecko.com/coins/images/4128/large/solana.png" },
+  USDC: { name: "USD Coin", iconUrl: "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png" },
+  BTC: { name: "Bitcoin", iconUrl: "https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png" },
+  ETH: { name: "Ethereum", iconUrl: "https://coin-images.coingecko.com/coins/images/279/large/ethereum.png" },
+};
+
+const SEND_NETWORKS: Record<SendCoin, { label: string }[]> = {
+  USDT: [
+    { label: "TRC-20" },
+    { label: "BEP-20" },
+    { label: "Solana" },
+    { label: "ERC-20" },
+  ],
+  SOL: [
+    { label: "Solana" },
+  ],
+  USDC: [
+    { label: "Solana" },
+    { label: "ERC-20" },
+    { label: "BEP-20" },
+  ],
+  BTC: [
+    { label: "Bitcoin" },
+    { label: "BEP-20" },
+  ],
+  ETH: [
+    { label: "ERC-20" },
+    { label: "BEP-20" },
+  ],
+};
 
 export const SendPage: React.FC<SendPageProps> = ({
   onClose,
@@ -30,6 +63,7 @@ export const SendPage: React.FC<SendPageProps> = ({
 
   // Send Form State
   const [sendCoin, setSendCoin] = useState<SendCoin>("USDT");
+  const [sendNetwork, setSendNetwork] = useState<string>("TRC-20");
   const [recipientUid, setRecipientUid] = useState<string>("");
   const [sendAmt, setSendAmt] = useState<string>("");
 
@@ -406,30 +440,71 @@ export const SendPage: React.FC<SendPageProps> = ({
 
             <div className="card-divider" />
 
-            {/* 1. Asset Section */}
+            {/* 1. Select Send Asset Section (Matching Screenshot) */}
             <div className="card-section">
               <div className="pro-card-header">
-                <span className="pro-card-label">1. Select Asset to Send</span>
+                <span className="pro-card-label">1. SELECT SEND ASSET</span>
+                <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>
+                  0% Fee • Instant
+                </span>
               </div>
 
-              <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-                {(["USDT", "USDC", "SOL", "BTC", "ETH"] as const).map((sym) => (
-                  <button
-                    key={sym}
-                    type="button"
-                    className={`asset-pill ${sendCoin === sym ? "active" : ""}`}
-                    style={{ flex: 1, minWidth: 64, padding: "8px" }}
-                    onClick={() => {
-                      setSendCoin(sym);
-                      setError(null);
-                    }}
-                  >
-                    <span className="asset-pill-sym">{sym}</span>
-                    <span className="asset-pill-price">
-                      {formatBalanceDisplay(balances[sym]?.bal || 0)}
-                    </span>
-                  </button>
-                ))}
+              {/* 5-Asset Selector Grid */}
+              <div className="asset-selector-grid">
+                {(["USDT", "SOL", "USDC", "BTC", "ETH"] as const).map((sym) => {
+                  const isActive = sendCoin === sym;
+                  const tokenMeta = COIN_METAS[sym];
+                  const tokenPrice =
+                    sym === "USDT" || sym === "USDC"
+                      ? 1.0
+                      : marketStore.getToken(sym)?.numericPrice ||
+                        (sym === "SOL" ? 108 : sym === "BTC" ? 83552 : 2522);
+
+                  return (
+                    <button
+                      key={sym}
+                      type="button"
+                      className={`asset-pill ${isActive ? "active" : ""}`}
+                      onClick={() => {
+                        setSendCoin(sym);
+                        setSendNetwork(SEND_NETWORKS[sym][0].label);
+                        setError(null);
+                      }}
+                    >
+                      <img
+                        src={tokenMeta.iconUrl}
+                        alt={sym}
+                        style={{ width: 24, height: 24, borderRadius: "50%" }}
+                      />
+                      <span className="asset-pill-sym">{sym}</span>
+                      <span className="asset-pill-price">
+                        ${tokenPrice >= 100 ? tokenPrice.toLocaleString(undefined, { maximumFractionDigits: 0 }) : tokenPrice.toFixed(2)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Chain Network Selection Pills */}
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 6 }}>
+                  Select Chain Network:
+                </div>
+                <div className="network-pills-row">
+                  {SEND_NETWORKS[sendCoin].map((net) => {
+                    const isNetActive = sendNetwork === net.label;
+                    return (
+                      <button
+                        key={net.label}
+                        type="button"
+                        className={`network-pill ${isNetActive ? "active" : ""}`}
+                        onClick={() => setSendNetwork(net.label)}
+                      >
+                        {net.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
