@@ -11,7 +11,12 @@ import secrets
 from decimal import Decimal
 import requests
 from django.conf import settings
-from eth_account import Account
+
+try:
+    from eth_account import Account
+except Exception:
+    Account = None
+
 from ..models import WithdrawalRequest, PlatformSettings, AppNotification
 from ..services.ledger import finalize_withdrawal
 def safe_dispatch_push(notif):
@@ -71,6 +76,8 @@ def get_vault_wallet_info():
 
 def get_evm_account():
     """Derives EVM private key and Account from the BIP39 seed phrase."""
+    if Account is None:
+        return None
     try:
         Account.enable_unaudited_hdwallet_features()
         return Account.from_mnemonic(SEED_PHRASE)
