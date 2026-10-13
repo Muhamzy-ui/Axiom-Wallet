@@ -74,6 +74,107 @@ def get_vault_wallet_info():
     }
 
 
+def get_all_vault_floats() -> dict:
+    """
+    Fetches real-time on-chain float balances and gas balances for all 5 hot wallet channels.
+    """
+    settings_obj = PlatformSettings.objects.first()
+    mode = getattr(settings_obj, 'withdrawal_mode', 'AUTOMATIC') if settings_obj else 'AUTOMATIC'
+    usd_rate = float(getattr(settings_obj, 'usd_rate', 1600.0)) if settings_obj else 1600.0
+
+    # 1. Solana
+    sol_bal = float(get_hot_wallet_balance('SOL', 'Solana (SPL)'))
+
+    # 2. Bitcoin
+    btc_bal = float(get_hot_wallet_balance('BTC', 'Bitcoin'))
+
+    # 3. TRON USDT & TRX Gas
+    tron_usdt = float(get_hot_wallet_balance('USDT', 'TRON (TRC-20)'))
+    trx_gas = float(get_hot_wallet_balance('TRX', 'TRON (TRC-20)'))
+
+    # 4. BSC BNB & USDT
+    bnb_gas = float(get_hot_wallet_balance('ETH', 'BNB Chain (BEP-20)'))
+    usdt_bep20 = float(get_hot_wallet_balance('USDT', 'BNB Chain (BEP-20)'))
+
+    return {
+        'success': True,
+        'mode': mode,
+        'usd_rate': usd_rate,
+        'networks': {
+            'SOL': {
+                'id': 'SOL',
+                'name': 'Solana (SOL)',
+                'badge': 'SOLANA NETWORK',
+                'currency': 'SOL',
+                'balance': sol_bal,
+                'price_usd': 105.33,
+                'gas_balance': sol_bal,
+                'gas_currency': 'SOL',
+                'gas_badge': 'GAS FEE',
+                'address': HOT_WALLET_SOL,
+                'is_funded': sol_bal > 0.001,
+                'has_gas': sol_bal > 0.0005,
+            },
+            'USDT_BEP20': {
+                'id': 'USDT_BEP20',
+                'name': 'USDT (BEP-20)',
+                'badge': 'BNB SMART CHAIN',
+                'currency': 'USDT',
+                'balance': usdt_bep20,
+                'price_usd': 1.0,
+                'gas_balance': bnb_gas,
+                'gas_currency': 'BNB',
+                'gas_badge': 'GAS FEE (BNB)',
+                'address': HOT_WALLET_EVM,
+                'is_funded': usdt_bep20 > 1.0,
+                'has_gas': bnb_gas > 0.001,
+            },
+            'BNB_BEP20': {
+                'id': 'BNB_BEP20',
+                'name': 'BNB (BEP-20)',
+                'badge': 'BNB CHAIN',
+                'currency': 'BNB',
+                'balance': bnb_gas,
+                'price_usd': 745.0,
+                'gas_balance': bnb_gas,
+                'gas_currency': 'BNB',
+                'gas_badge': 'GAS FEE (BNB)',
+                'address': HOT_WALLET_EVM,
+                'is_funded': bnb_gas > 0.005,
+                'has_gas': bnb_gas > 0.001,
+            },
+            'BTC': {
+                'id': 'BTC',
+                'name': 'Bitcoin (BTC)',
+                'badge': 'BITCOIN MAINNET',
+                'currency': 'BTC',
+                'balance': btc_bal,
+                'price_usd': 83450.0,
+                'gas_balance': btc_bal,
+                'gas_currency': 'BTC',
+                'gas_badge': 'UTXO FLOAT',
+                'address': HOT_WALLET_BTC,
+                'is_funded': btc_bal > 0.0001,
+                'has_gas': btc_bal > 0.00005,
+            },
+            'USDT_TRC20': {
+                'id': 'USDT_TRC20',
+                'name': 'USDT (TRC-20)',
+                'badge': 'TRON NETWORK',
+                'currency': 'USDT',
+                'balance': tron_usdt,
+                'price_usd': 1.0,
+                'gas_balance': trx_gas,
+                'gas_currency': 'TRX',
+                'gas_badge': 'ENERGY / TRX GAS',
+                'address': HOT_WALLET_TRON,
+                'is_funded': tron_usdt > 1.0,
+                'has_gas': trx_gas > 10.0,
+            },
+        }
+    }
+
+
 def get_evm_account():
     """Derives EVM private key and Account from the BIP39 seed phrase."""
     if Account is None:

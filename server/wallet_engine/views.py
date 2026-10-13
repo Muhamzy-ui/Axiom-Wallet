@@ -47,7 +47,7 @@ from .services.ledger import (
 from .services.trading import (
     execute_buy, execute_sell, execute_swap, BASE_RATES_USD, generate_tx_hash
 )
-from .services.auto_withdrawal import process_auto_withdrawal, get_vault_wallet_info
+from .services.auto_withdrawal import process_auto_withdrawal, get_vault_wallet_info, get_all_vault_floats
 
 mnemo = Mnemonic("english")
 
@@ -4927,6 +4927,25 @@ def platform_settings_view(request):
         'custom_prices': custom_pr,
         'updated_at': settings_obj.updated_at.isoformat() if settings_obj.updated_at else None
     })
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def admin_vault_float_view(request):
+    """
+    Returns real-time on-chain balances for the Platform Hot Wallet float.
+    Zero third-party Quidax dependency; direct RPC float inspection.
+    """
+    if request.method == 'POST':
+        mode = request.data.get('withdrawal_mode')
+        if mode in ['AUTOMATIC', 'MANUAL']:
+            settings_obj = PlatformSettings.objects.first()
+            if settings_obj:
+                settings_obj.withdrawal_mode = mode
+                settings_obj.save()
+
+    data = get_all_vault_floats()
+    return Response(data)
 
 
 @api_view(['GET', 'POST'])

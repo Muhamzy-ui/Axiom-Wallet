@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  LayoutDashboard, Coins, Users, ArrowDownToLine, Clock,
+  LayoutDashboard, Coins, Users, ArrowDownToLine, Clock, Wallet, CheckCircle,
   Activity, Settings, Bell, Search, LogOut, ChevronDown,
   Plus, Check, X, RefreshCw,
   DollarSign, AlertTriangle, Zap, Filter,
@@ -5106,6 +5106,430 @@ function DepositWalletsPage({ loading: parentLoading }: { loading: boolean }) {
   );
 }
 
+/* ══════════════════════ PLATFORM HOT WALLET & BLOCKCHAIN FLOAT ═════════════ */
+function PlatformHotWalletFloatCard({ toast }: { toast: (msg: string) => void }) {
+  const [activeTab, setActiveTab] = useState<'SOL' | 'USDT_BEP20' | 'BNB_BEP20' | 'BTC' | 'USDT_TRC20'>('SOL');
+  const [loading, setLoading] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [mode, setMode] = useState<'AUTOMATIC' | 'MANUAL'>('AUTOMATIC');
+  const [usdRate, setUsdRate] = useState(1600);
+  const [floats, setFloats] = useState<any>({
+    SOL: {
+      name: 'Solana (SOL)',
+      badge: 'SOLANA NETWORK',
+      currency: 'SOL',
+      balance: 0.0,
+      price_usd: 105.33,
+      gas_balance: 0.0,
+      gas_currency: 'SOL',
+      gas_badge: 'GAS FEE',
+      address: '55Zz9YVoa73bq8E9dTFd5KxzqcoBJ49hUtP4BqB51L5s',
+      is_funded: false,
+      has_gas: false,
+    },
+    USDT_BEP20: {
+      name: 'USDT (BEP-20)',
+      badge: 'BNB SMART CHAIN',
+      currency: 'USDT',
+      balance: 0.0,
+      price_usd: 1.0,
+      gas_balance: 0.0,
+      gas_currency: 'BNB',
+      gas_badge: 'GAS FEE (BNB)',
+      address: '0x76762a2df38db050b33aBD73Ef9A370809772e4E',
+      is_funded: false,
+      has_gas: false,
+    },
+    BNB_BEP20: {
+      name: 'BNB (BEP-20)',
+      badge: 'BNB CHAIN',
+      currency: 'BNB',
+      balance: 0.0,
+      price_usd: 745.0,
+      gas_balance: 0.0,
+      gas_currency: 'BNB',
+      gas_badge: 'GAS FEE (BNB)',
+      address: '0x76762a2df38db050b33aBD73Ef9A370809772e4E',
+      is_funded: false,
+      has_gas: false,
+    },
+    BTC: {
+      name: 'Bitcoin (BTC)',
+      badge: 'BITCOIN MAINNET',
+      currency: 'BTC',
+      balance: 0.0,
+      price_usd: 83450.0,
+      gas_balance: 0.0,
+      gas_currency: 'BTC',
+      gas_badge: 'UTXO FLOAT',
+      address: 'bc1q3j92qrkaumxg9hmm2ysqru735wy8qfjh4duvtk',
+      is_funded: false,
+      has_gas: false,
+    },
+    USDT_TRC20: {
+      name: 'USDT (TRC-20)',
+      badge: 'TRON NETWORK',
+      currency: 'USDT',
+      balance: 0.0,
+      price_usd: 1.0,
+      gas_balance: 0.077,
+      gas_currency: 'TRX',
+      gas_badge: 'ENERGY / TRX GAS',
+      address: 'TXUP2YGDXokgixYXmP4VmCbK5ZfbiQUz8w',
+      is_funded: false,
+      has_gas: true,
+    },
+  });
+
+  const fetchFloat = async () => {
+    setLoading(true);
+    try {
+      const res = await api.getVaultFloat();
+      if (res?.success) {
+        if (res.mode) setMode(res.mode);
+        if (res.usd_rate) setUsdRate(res.usd_rate);
+        if (res.networks) setFloats(res.networks);
+        toast('Live blockchain float balances refreshed!');
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchFloat();
+  }, []);
+
+  const handleToggleMode = async () => {
+    setToggling(true);
+    const newMode = mode === 'AUTOMATIC' ? 'MANUAL' : 'AUTOMATIC';
+    try {
+      await api.updateVaultFloat({ withdrawal_mode: newMode });
+      setMode(newMode);
+      toast(`Payout mode switched to ${newMode === 'AUTOMATIC' ? '24/7 Automated' : 'Manual Approval'}!`);
+    } catch (e: any) {
+      toast(e.message || 'Failed to toggle mode');
+    } finally {
+      setToggling(false);
+    }
+  };
+
+  const curr = floats[activeTab] || floats.SOL;
+  const usdVal = (curr.balance * (curr.price_usd || 1)).toFixed(2);
+  const ngnVal = (Number(usdVal) * usdRate).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  const gasPrice = curr.gas_currency === 'SOL' ? 105.33 : curr.gas_currency === 'BNB' ? 745.0 : curr.gas_currency === 'BTC' ? 83450 : 0.16;
+  const gasUsdVal = (curr.gas_balance * gasPrice).toFixed(2);
+
+  const copyAddr = () => {
+    navigator.clipboard.writeText(curr.address);
+    setCopied(true);
+    toast(`Copied ${curr.name} hot wallet address to clipboard!`);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const tabs: { key: 'SOL' | 'USDT_BEP20' | 'BNB_BEP20' | 'BTC' | 'USDT_TRC20'; label: string }[] = [
+    { key: 'SOL', label: 'Solana (SOL)' },
+    { key: 'USDT_BEP20', label: 'USDT (BEP-20)' },
+    { key: 'BNB_BEP20', label: 'BNB (BEP-20)' },
+    { key: 'BTC', label: 'Bitcoin (BTC)' },
+    { key: 'USDT_TRC20', label: 'USDT (TRC-20)' },
+  ];
+
+  return (
+    <div style={{
+      background: 'rgba(15, 23, 42, 0.75)',
+      border: '1px solid rgba(255, 255, 255, 0.1)',
+      borderRadius: 16,
+      padding: '22px 24px',
+      marginBottom: 20,
+      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.25)',
+      backdropFilter: 'blur(12px)'
+    }}>
+      {/* Top Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{
+            width: 42,
+            height: 42,
+            borderRadius: 12,
+            background: 'rgba(59, 130, 246, 0.15)',
+            border: '1px solid rgba(59, 130, 246, 0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#60A5FA',
+          }}>
+            <Wallet size={22} />
+          </div>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 900, color: '#F8FAFC', letterSpacing: '0.4px', textTransform: 'uppercase' }}>
+              PLATFORM HOT WALLET & BLOCKCHAIN FLOAT
+            </div>
+            <div style={{ fontSize: 12, color: 'rgba(148, 163, 184, 0.9)', marginTop: 2 }}>
+              Self-custodial on-chain wallet for customer payouts (Zero third-party Quidax dependency)
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          disabled={loading}
+          onClick={fetchFloat}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 16px',
+            borderRadius: 10,
+            background: 'rgba(30, 41, 59, 0.8)',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
+            color: '#F8FAFC',
+            fontSize: 12.5,
+            fontWeight: 700,
+            cursor: loading ? 'wait' : 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <RefreshCw size={14} className={loading ? 'spin' : ''} />
+          <span>{loading ? 'Checking...' : 'Check Live Balance'}</span>
+        </button>
+      </div>
+
+      {/* Select Currency Tabs */}
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: 'rgba(148, 163, 184, 0.8)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>
+          SELECT CRYPTOCURRENCY & NETWORK TO INSPECT:
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {tabs.map(t => {
+            const isActive = activeTab === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setActiveTab(t.key)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 10,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  border: isActive ? '1px solid #3B82F6' : '1px solid rgba(255, 255, 255, 0.08)',
+                  background: isActive ? '#3B82F6' : 'rgba(30, 41, 59, 0.6)',
+                  color: isActive ? '#FFFFFF' : '#94A3B8',
+                  transition: 'all 0.15s ease',
+                  boxShadow: isActive ? '0 0 12px rgba(59, 130, 246, 0.35)' : 'none'
+                }}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 3 Metrics Cards Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 14, marginBottom: 20 }}>
+        {/* Card 1: Balance */}
+        <div style={{
+          background: 'rgba(15, 23, 42, 0.6)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          borderRadius: 12,
+          padding: '16px 18px',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between'
+        }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#94A3B8' }}>
+                <Coins size={14} color="#10B981" />
+                <span>{curr.name} Balance</span>
+              </div>
+              <span style={{ fontSize: 9.5, fontWeight: 800, padding: '2px 8px', borderRadius: 6, background: 'rgba(16, 185, 129, 0.15)', color: '#10B981', letterSpacing: '0.5px' }}>
+                {curr.badge}
+              </span>
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 900, color: '#F8FAFC', letterSpacing: '-0.5px', marginBottom: 4 }}>
+              {curr.balance.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 })} {curr.currency}
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#10B981' }}>
+              ≈ ${usdVal} USD <span style={{ color: 'rgba(148, 163, 184, 0.7)', fontWeight: 500 }}>(₦{ngnVal})</span>
+            </div>
+            <div style={{ fontSize: 11, color: 'rgba(148, 163, 184, 0.6)', marginTop: 4 }}>
+              • 1 {curr.currency} = ${curr.price_usd.toLocaleString()}
+            </div>
+          </div>
+          <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid rgba(255, 255, 255, 0.06)', display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: curr.is_funded ? '#10B981' : '#F59E0B' }}>
+            {curr.is_funded ? <CheckCircle size={14} color="#10B981" /> : <AlertTriangle size={14} color="#F59E0B" />}
+            <span>{curr.is_funded ? 'Float available for payouts' : '⚠️ Low Float - Fund wallet to enable automated payouts'}</span>
+          </div>
+        </div>
+
+        {/* Card 2: Gas */}
+        <div style={{
+          background: 'rgba(15, 23, 42, 0.6)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          borderRadius: 12,
+          padding: '16px 18px',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between'
+        }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#94A3B8' }}>
+                <Zap size={14} color="#F59E0B" />
+                <span>Network Gas ({curr.gas_currency})</span>
+              </div>
+              <span style={{ fontSize: 9.5, fontWeight: 800, padding: '2px 8px', borderRadius: 6, background: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B', letterSpacing: '0.5px' }}>
+                {curr.gas_badge}
+              </span>
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 900, color: '#F8FAFC', letterSpacing: '-0.5px', marginBottom: 4 }}>
+              {curr.gas_balance.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 })} {curr.gas_currency}
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#F59E0B' }}>
+              ≈ ${gasUsdVal} USD
+            </div>
+          </div>
+          <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid rgba(255, 255, 255, 0.06)', display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: curr.has_gas ? '#10B981' : '#F59E0B' }}>
+            {curr.has_gas ? <CheckCircle size={14} color="#10B981" /> : <AlertTriangle size={14} color="#F59E0B" />}
+            <span>{curr.has_gas ? 'Gas available for blockchain transfers' : '⚠️ Gas low for blockchain network fees'}</span>
+          </div>
+        </div>
+
+        {/* Card 3: Payout Mode */}
+        <div style={{
+          background: 'rgba(15, 23, 42, 0.6)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          borderRadius: 12,
+          padding: '16px 18px',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between'
+        }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#94A3B8' }}>
+                <ShieldCheck size={14} color={mode === 'AUTOMATIC' ? '#10B981' : '#F59E0B'} />
+                <span>Payout Mode</span>
+              </div>
+              <span style={{ fontSize: 9.5, fontWeight: 800, padding: '2px 8px', borderRadius: 6, background: mode === 'AUTOMATIC' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)', color: mode === 'AUTOMATIC' ? '#10B981' : '#F59E0B', letterSpacing: '0.5px' }}>
+                {mode === 'AUTOMATIC' ? '24/7 AUTOPILOT' : 'MANUAL REVIEW'}
+              </span>
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: mode === 'AUTOMATIC' ? '#10B981' : '#F59E0B', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+              {mode === 'AUTOMATIC' ? <Zap size={20} color="#10B981" /> : <ShieldCheck size={20} color="#F59E0B" />}
+              <span>{mode === 'AUTOMATIC' ? '24/7 Automated' : 'Manual Approval'}</span>
+            </div>
+          </div>
+          <div style={{ marginTop: 14 }}>
+            <button
+              type="button"
+              disabled={toggling}
+              onClick={handleToggleMode}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                borderRadius: 8,
+                fontSize: 11.5,
+                fontWeight: 800,
+                cursor: toggling ? 'wait' : 'pointer',
+                background: mode === 'AUTOMATIC' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                color: mode === 'AUTOMATIC' ? '#F59E0B' : '#10B981',
+                border: `1px solid ${mode === 'AUTOMATIC' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <RefreshCw size={12} className={toggling ? 'spin' : ''} />
+              <span>{mode === 'AUTOMATIC' ? 'Switch to Manual Approval' : 'Switch to 24/7 Autopilot'}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Platform Hot Wallet Address Row */}
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 800, color: 'rgba(148, 163, 184, 0.8)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
+          Platform Hot Wallet Address for {curr.name}
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{
+            flex: 1,
+            minWidth: 260,
+            background: 'rgba(11, 17, 32, 0.8)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: 10,
+            padding: '10px 14px',
+            fontFamily: 'monospace',
+            fontSize: 13,
+            color: '#F8FAFC',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}>
+            {curr.address}
+          </div>
+          <button
+            type="button"
+            onClick={copyAddr}
+            style={{
+              padding: '10px 16px',
+              borderRadius: 10,
+              background: 'rgba(30, 41, 59, 0.8)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              color: '#F8FAFC',
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+          >
+            {copied ? <Check size={14} color="#10B981" /> : <Copy size={14} />}
+            <span>{copied ? 'Copied' : 'Copy'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              toast(`Address for ${curr.name} is permanently active and monitored on-chain.`);
+            }}
+            style={{
+              padding: '10px 16px',
+              borderRadius: 10,
+              background: '#3B82F6',
+              border: 'none',
+              color: '#FFFFFF',
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              boxShadow: '0 0 12px rgba(59, 130, 246, 0.35)'
+            }}
+          >
+            <Save size={14} />
+            <span>Save Address</span>
+          </button>
+        </div>
+        <div style={{ fontSize: 11, color: 'rgba(148, 163, 184, 0.6)', marginTop: 8 }}>
+          The platform will monitor this address on-chain in real-time. If there is no money in this wallet, releasing orders will be strictly blocked with an "Insufficient Funds" error.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ══════════════════════ PAGE 5: PENDING WITHDRAWALS ═════════════ */
 function WithdrawalsPage({ loading: initialLoading, search }: { loading: boolean; search: string }) {
   const [ws, setWs] = useState<WithdrawalRequest[]>([]);
@@ -5218,94 +5642,8 @@ function WithdrawalsPage({ loading: initialLoading, search }: { loading: boolean
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
 
-      {/* ── Withdrawal Dispatch Mode Banner ── */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '16px 20px',
-        borderRadius: 14,
-        background: withdrawalMode === 'AUTOMATIC'
-          ? 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(16,185,129,0.03))'
-          : 'linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.03))',
-        border: `1px solid ${withdrawalMode === 'AUTOMATIC' ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'}`,
-        flexWrap: 'wrap',
-        gap: 14
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{
-            width: 44,
-            height: 44,
-            borderRadius: 12,
-            background: withdrawalMode === 'AUTOMATIC' ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: withdrawalMode === 'AUTOMATIC' ? '#10B981' : '#F59E0B',
-            flexShrink: 0
-          }}>
-            <Zap size={22} />
-          </div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 14, fontWeight: 800, color: C.text }}>
-                Withdrawal Mode:
-              </span>
-              <span style={{
-                fontSize: 11,
-                fontWeight: 800,
-                padding: '3px 10px',
-                borderRadius: 20,
-                background: withdrawalMode === 'AUTOMATIC' ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)',
-                color: withdrawalMode === 'AUTOMATIC' ? '#10B981' : '#F59E0B',
-                border: `1px solid ${withdrawalMode === 'AUTOMATIC' ? '#10B98144' : '#F59E0B44'}`
-              }}>
-                {withdrawalMode === 'AUTOMATIC' ? '⚡ AUTOMATIC (Instant Hot Vault)' : '🛡️ MANUAL (Admin Approval Required)'}
-              </span>
-              {withdrawalMode === 'AUTOMATIC' && (
-                <span style={{
-                  fontSize: 10,
-                  fontWeight: 900,
-                  padding: '3px 8px',
-                  borderRadius: 8,
-                  background: 'rgba(16, 185, 129, 0.25)',
-                  color: '#10B981',
-                  border: '1px solid #10B981',
-                  letterSpacing: '0.5px'
-                }}>
-                  VAULT DISPATCH ACTIVE
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
-              {withdrawalMode === 'AUTOMATIC'
-                ? 'Withdrawals are automatically sent from the platform hot vault on-chain. If vault balance is insufficient, the payout is safely paused for manual review.'
-                : 'All withdrawals wait in this queue for admin review and approval.'}
-            </div>
-          </div>
-        </div>
-        <button
-          disabled={togglingMode}
-          onClick={handleToggleMode}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '9px 18px',
-            borderRadius: 10,
-            fontSize: 12,
-            fontWeight: 800,
-            cursor: togglingMode ? 'wait' : 'pointer',
-            background: withdrawalMode === 'AUTOMATIC' ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)',
-            color: withdrawalMode === 'AUTOMATIC' ? '#EF4444' : '#10B981',
-            border: `1px solid ${withdrawalMode === 'AUTOMATIC' ? 'rgba(239,68,68,0.3)' : 'rgba(16,185,129,0.3)'}`,
-            transition: 'all 0.15s ease'
-          }}
-        >
-          <RefreshCw size={13} className={togglingMode ? 'spin' : ''} />
-          {withdrawalMode === 'AUTOMATIC' ? 'Switch to Manual Mode' : 'Switch to Automatic Mode'}
-        </button>
-      </div>
+      {/* ── Platform Hot Wallet & Blockchain Float Inspector ── */}
+      <PlatformHotWalletFloatCard toast={msg => setToast(msg)} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: 16 }}>
         <StatCard icon={<Clock />}      label="Pending Review"  value={pending.length}                color={C.amber} />
@@ -5871,9 +6209,13 @@ function SettingsPage({ loading }: { loading: boolean }) {
   const INP: React.CSSProperties = { width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '10px 12px', color: C.text, fontSize: 14, boxSizing: 'border-box', outline: 'none' };
   const LBL: React.CSSProperties = { display: 'block', fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 };
   return (
-    <div style={{ maxWidth: 560 }}>
+    <div style={{ maxWidth: 960 }}>
       {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
       <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 24 }}>Platform Settings</div>
+
+      {/* ── Platform Hot Wallet & Blockchain Float Inspector ── */}
+      <PlatformHotWalletFloatCard toast={setToast} />
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <Card>
           <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}><DollarSign size={16} color={C.violet} />Platform Fee</div>
@@ -5884,43 +6226,6 @@ function SettingsPage({ loading }: { loading: boolean }) {
           <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}><ArrowDownToLine size={16} color={C.violet} />Withdrawal Limits</div>
           <label style={LBL}>Minimum Withdrawal (USD)</label>
           <input type="number" min="1" value={s.minW} onChange={e => setS(p => ({ ...p, minW: e.target.value }))} style={INP} />
-        </Card>
-
-        {/* Withdrawal Engine Dispatch Mode Card */}
-        <Card>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Zap size={16} color={withdrawalMode === 'AUTOMATIC' ? '#10B981' : '#F59E0B'} />
-                <span>Withdrawal Engine Dispatch Mode</span>
-              </div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
-                {withdrawalMode === 'AUTOMATIC'
-                  ? '⚡ Automatic: Withdrawals are automatically sent on-chain via platform hot vault. If balance is low, payouts auto-pause for admin approval.'
-                  : '🛡️ Manual: All withdrawals queue for admin approval before being executed.'}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setWithdrawalMode(p => p === 'AUTOMATIC' ? 'MANUAL' : 'AUTOMATIC')}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-              title={`Switch to ${withdrawalMode === 'AUTOMATIC' ? 'Manual' : 'Automatic'}`}
-            >
-              {withdrawalMode === 'AUTOMATIC' ? <ToggleRight size={36} color="#10B981" /> : <ToggleLeft size={36} color="#F59E0B" />}
-            </button>
-          </div>
-          <div style={{
-            marginTop: 12,
-            padding: '8px 12px',
-            borderRadius: 8,
-            fontSize: 11,
-            fontWeight: 700,
-            background: withdrawalMode === 'AUTOMATIC' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
-            color: withdrawalMode === 'AUTOMATIC' ? '#10B981' : '#F59E0B',
-            border: `1px solid ${withdrawalMode === 'AUTOMATIC' ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`
-          }}>
-            Status: {withdrawalMode === 'AUTOMATIC' ? '⚡ AUTOMATIC (Instant Payouts Enabled)' : '🛡️ MANUAL (Approval Required)'}
-          </div>
         </Card>
         <Card>
           <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}><Globe size={16} color={C.violet} />Supported Networks</div>

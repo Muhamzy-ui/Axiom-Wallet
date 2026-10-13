@@ -897,6 +897,24 @@ export const api = {
     return res.json();
   },
 
+  async getVaultFloat(): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin-api/vault-float/`, {
+      headers: getHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to fetch vault float');
+    return res.json();
+  },
+
+  async updateVaultFloat(data: { withdrawal_mode?: 'AUTOMATIC' | 'MANUAL' }): Promise<any> {
+    const res = await fetch(`${API_BASE}/admin-api/vault-float/`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Failed to update vault float');
+    return res.json();
+  },
+
   // Global Admin Top 8 Leaderboard Persistence
   async getLeaderboardTop8(): Promise<any[]> {
     try {
