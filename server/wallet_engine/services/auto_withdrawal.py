@@ -26,12 +26,12 @@ def safe_dispatch_push(notif):
     except Exception:
         pass
 
-# Vault Hot Wallet Configuration from Django Settings
-SEED_PHRASE = getattr(settings, 'WITHDRAWAL_SEED_PHRASE', 'chimney stay mass student diesel velvet dish moral patient teach pioneer welcome').strip().lower()
-HOT_WALLET_EVM = getattr(settings, 'HOT_WALLET_EVM', '0x76762a2df38db050b33aBD73Ef9A370809772e4E')
-HOT_WALLET_TRON = getattr(settings, 'HOT_WALLET_TRON', 'TXUP2YGDXokgixYXmP4VmCbK5ZfbiQUz8w')
-HOT_WALLET_BTC = getattr(settings, 'HOT_WALLET_BTC', 'bc1q3j92qrkaumxg9hmm2ysqru735wy8qfjh4duvtk')
-HOT_WALLET_SOL = getattr(settings, 'HOT_WALLET_SOL', '55Zz9YVoa73bq8E9dTFd5KxzqcoBJ49hUtP4BqB51L5s')
+# Vault Hot Wallet Configuration from Django Settings (Strictly from Environment Variables)
+SEED_PHRASE = getattr(settings, 'WITHDRAWAL_SEED_PHRASE', '').strip().lower()
+HOT_WALLET_EVM = getattr(settings, 'HOT_WALLET_EVM', '')
+HOT_WALLET_TRON = getattr(settings, 'HOT_WALLET_TRON', '')
+HOT_WALLET_BTC = getattr(settings, 'HOT_WALLET_BTC', '')
+HOT_WALLET_SOL = getattr(settings, 'HOT_WALLET_SOL', '')
 
 # RPC Providers
 ETH_RPCS = [
