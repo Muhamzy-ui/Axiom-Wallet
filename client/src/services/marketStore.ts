@@ -125,7 +125,7 @@ export interface UserOrder {
   price: number;
   timestamp: number;
   dateStr: string;
-  orderType?: "Market" | "Limit" | "TP/SL" | "P2P Transfer" | "Deposit" | "Withdrawal" | "Swap";
+  orderType?: "Market" | "Limit" | "TP/SL" | "P2P Transfer" | "P2P Receive" | "Deposit" | "Withdrawal" | "Swap";
   triggerNote?: string;
 }
 
@@ -803,13 +803,19 @@ class MarketStore {
         if (savedOrders) {
           const parsed = JSON.parse(savedOrders);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            this.userOrders = parsed.map((o: any) => ({
-              ...o,
-              tokenAmt: Number(o.tokenAmt) || 0,
-              amountUsd: Number(o.amountUsd) || 0,
-              price: Number(o.price) || 0,
-              timestamp: Number(o.timestamp) || Date.now()
-            }));
+            this.userOrders = parsed.map((o: any) => {
+              const noteL = String(o.triggerNote || "").toLowerCase();
+              const isRecv = o.orderType === "P2P Receive" || noteL.includes("from ") || noteL.includes("transfer from") || noteL.includes("received");
+              return {
+                ...o,
+                orderType: isRecv ? "P2P Receive" : o.orderType,
+                side: isRecv ? "Buy" : o.side,
+                tokenAmt: Number(o.tokenAmt) || 0,
+                amountUsd: Number(o.amountUsd) || 0,
+                price: Number(o.price) || 0,
+                timestamp: Number(o.timestamp) || Date.now()
+              };
+            });
           }
         }
       } catch { }
@@ -2000,7 +2006,7 @@ class MarketStore {
             price: p,
             timestamp: Date.now(),
             dateStr: "just now",
-            orderType: "P2P Transfer",
+            orderType: "P2P Receive",
             triggerNote: `Received via UID from ${senderUid || 'User'}: +${amount >= 1000 ? amount.toLocaleString() : amount.toFixed(4)} ${cleanSym}`,
           });
           if (this.userOrders.length > 50) this.userOrders = this.userOrders.slice(0, 50);
@@ -2176,19 +2182,22 @@ class MarketStore {
         try { seenSet = new Set(JSON.parse(rawSeen)); } catch {}
 
         (portfolio as any).recent_transactions.forEach((tx: any) => {
+          const txType = String(tx.type || "").toLowerCase();
+          const noteText = String(tx.note || "");
+          const noteLower = noteText.toLowerCase();
+          const isP2PReceive = txType === "p2p_receive" || noteLower.includes("transfer from") || noteLower.includes("from axm-") || (noteLower.includes("from ") && !noteLower.includes("sent")) || noteLower.includes("received");
+          const isDeposit = txType === "deposit" || isP2PReceive || noteLower.includes("deposit");
+          const isWithdrawal = txType === "withdrawal" || txType === "withdraw";
+          const isP2P = isP2PReceive || txType === "p2p" || txType === "p2p_transfer" || noteLower.includes("p2p") || noteLower.includes("uid");
+          const isSwap = txType === "swap";
+          const orderType: any = isWithdrawal ? "Withdrawal" : isSwap ? "Swap" : isP2PReceive ? "P2P Receive" : isP2P ? "P2P Transfer" : isDeposit ? "Deposit" : "Market";
+          const side = (isWithdrawal || (isP2P && !isP2PReceive) || String(tx.side || "").toUpperCase() === "SELL") ? "Sell" : "Buy";
+
+          const amtNum = Number(tx.amount) || 0;
+          const usdNum = Number(tx.usd_value ?? tx.value_usd) || (amtNum * (Number(tx.price) || 1));
+          const priceNum = Number(tx.price) || (amtNum > 0 ? (usdNum / amtNum) : 0);
+
           if (!existingOrderIds.has(tx.id)) {
-            const txType = String(tx.type || "").toLowerCase();
-            const isDeposit = txType === "deposit" || txType === "p2p_receive";
-            const isWithdrawal = txType === "withdrawal" || txType === "withdraw";
-            const isP2P = txType === "p2p_receive" || txType === "p2p" || txType === "p2p_transfer";
-            const isSwap = txType === "swap";
-            const orderType: any = isWithdrawal ? "Withdrawal" : isSwap ? "Swap" : isP2P ? "P2P Transfer" : isDeposit ? "Deposit" : "Market";
-            const side = (isWithdrawal || (isP2P && txType !== "p2p_receive") || String(tx.side || "").toUpperCase() === "SELL") ? "Sell" : "Buy";
-
-            const amtNum = Number(tx.amount) || 0;
-            const usdNum = Number(tx.usd_value ?? tx.value_usd) || (amtNum * (Number(tx.price) || 1));
-            const priceNum = Number(tx.price) || (amtNum > 0 ? (usdNum / amtNum) : 0);
-
             const newOrder: UserOrder = {
               id: tx.id,
               sym: tx.currency,
@@ -2200,7 +2209,7 @@ class MarketStore {
               timestamp: Number(tx.timestamp) || Date.now(),
               dateStr: tx.date_str || tx.date || new Date().toLocaleString(),
               orderType: orderType,
-              triggerNote: tx.note || (isWithdrawal ? `Confirmed Withdrawal` : isP2P ? (txType === "p2p_receive" ? `Received via UID Transfer` : `Sent via UID Transfer`) : isDeposit ? `Confirmed Deposit` : undefined),
+              triggerNote: tx.note || (isWithdrawal ? `Confirmed Withdrawal` : isP2P ? (isP2PReceive ? `Received via UID Transfer` : `Sent via UID Transfer`) : isDeposit ? `Confirmed Deposit` : undefined),
             };
 
             this.userOrders.push(newOrder);
@@ -2209,12 +2218,20 @@ class MarketStore {
 
             // Trigger floating notification for new credit
             if (!seenSet.has(tx.id) && (isP2P || isDeposit)) {
-              if (isP2P) {
+              if (isP2PReceive || isP2P) {
                 this.lastOrderAlert = `💸 Received +${tx.amount} ${tx.currency} via UID! ($${(tx.usd_value || 0).toFixed(2)})`;
               } else if (isDeposit) {
                 this.lastOrderAlert = `✅ Deposit Credited! +${tx.amount} ${tx.currency} ($${(tx.usd_value || 0).toFixed(2)}) is now available.`;
               }
               seenSet.add(tx.id);
+            }
+          } else {
+            // Update existing order in memory if it was previously misclassified
+            const existing = this.userOrders.find((o: any) => o.id === tx.id);
+            if (existing && isP2PReceive && (existing.orderType !== "P2P Receive" || existing.side !== "Buy")) {
+              existing.orderType = "P2P Receive";
+              existing.side = "Buy";
+              hasNewTx = true;
             }
           }
         });
@@ -2623,7 +2640,7 @@ class MarketStore {
         price: p,
         timestamp: Date.now(),
         dateStr: "just now",
-        orderType: "P2P Transfer",
+        orderType: "P2P Receive",
         triggerNote: `Received from Axiom Transfer: +${amount >= 1000 ? amount.toLocaleString() : amount.toFixed(4)} ${cleanSym}`,
       });
       const truncatedOrders = JSON.stringify(recOrders.slice(0, 50));

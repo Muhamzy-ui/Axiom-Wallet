@@ -1336,13 +1336,15 @@ def get_portfolio(request):
     # Collect recent user transactions (deposits, UID P2P transfers, trades)
     recent_transactions = []
     for d in confirmed_deposits[:20]:
-        is_p2p = 'P2P' in (d.wallet_address_used or '')
+        w_note = (d.wallet_address_used or '').lower()
+        is_p2p = 'p2p' in w_note or 'from' in w_note or 'axm-' in w_note or 'transfer' in w_note
         dep_c = d.currency.upper().lstrip('$')
         rate = BASE_RATES_USD.get(dep_c, Decimal('1.0'))
         usd_val = float(d.amount * rate)
         recent_transactions.append({
             'id': f"dep_{d.id}",
             'type': 'P2P_RECEIVE' if is_p2p else 'DEPOSIT',
+            'side': 'BUY',
             'currency': d.currency,
             'amount': float(d.amount),
             'usd_value': usd_val,

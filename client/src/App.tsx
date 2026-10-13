@@ -1274,11 +1274,31 @@ function UserOrdersList({
               </thead>
               <tbody>
                 {orders.map((o) => {
-                  const isSwap = o.orderType === "Swap" || (o.triggerNote?.toLowerCase().includes("swap") ?? false);
-                  const isWithdrawal = o.orderType === "Withdrawal" || (o.triggerNote?.toLowerCase().includes("withdrawal") ?? false);
-                  const isP2PReceive = o.triggerNote?.toLowerCase().includes("received") ?? false;
-                  const isP2PSend = (o.orderType === "P2P Transfer" || (o.triggerNote?.includes("P2P Sent") ?? false) || (o.triggerNote?.includes("UID") ?? false)) && !isP2PReceive;
-                  const isDeposit = o.orderType === "Deposit" || (o.triggerNote?.toLowerCase().includes("deposit") ?? false) || isP2PReceive;
+                  const noteLower = (o.triggerNote || "").toLowerCase();
+                  const isSwap = o.orderType === "Swap" || noteLower.includes("swap");
+                  const isWithdrawal = o.orderType === "Withdrawal" || noteLower.includes("withdrawal");
+                  const isP2PReceive =
+                    o.orderType === "P2P Receive" ||
+                    noteLower.includes("received") ||
+                    noteLower.includes("transfer from") ||
+                    noteLower.includes("from axm-") ||
+                    (noteLower.includes("from ") && !noteLower.includes("sent")) ||
+                    (o.orderType === "P2P Transfer" && o.side === "Buy");
+
+                  const isP2PSend =
+                    !isP2PReceive &&
+                    (o.orderType === "P2P Transfer" ||
+                     noteLower.includes("p2p sent") ||
+                     noteLower.includes("sent to") ||
+                     noteLower.includes("sent via") ||
+                     noteLower.includes("to uid") ||
+                     (noteLower.includes("uid") && !noteLower.includes("received") && !noteLower.includes("from")));
+
+                  const isDeposit =
+                    o.orderType === "Deposit" ||
+                    noteLower.includes("deposit") ||
+                    isP2PReceive;
+
                   const isDebit = isWithdrawal || isP2PSend;
                   const isBuy = o.side === "Buy" && !isSwap && !isDeposit;
                   const isSell = o.side === "Sell" && !isSwap && !isWithdrawal && !isP2PSend && !isDeposit;
@@ -1311,8 +1331,8 @@ function UserOrdersList({
                         </div>
                       </td>
                       <td className="dex-td">
-                        <span style={{ fontSize: 9.5, fontWeight: 700, color: isSwap ? "#67E8F9" : isDebit ? "#F87171" : "#A78BFA", textTransform: "uppercase" }}>
-                          {isSwap ? "Swap" : isWithdrawal ? "Withdrawal" : isP2PSend ? "P2P Transfer" : isDeposit ? "Deposit" : o.orderType || "Market"}
+                        <span style={{ fontSize: 9.5, fontWeight: 700, color: isSwap ? "#67E8F9" : isDebit ? "#F87171" : isP2PReceive || isDeposit ? "#10B981" : "#A78BFA", textTransform: "uppercase" }}>
+                          {isSwap ? "Swap" : isWithdrawal ? "Withdrawal" : isP2PSend ? "P2P Transfer" : isP2PReceive ? "P2P Receive" : isDeposit ? "Deposit" : o.orderType || "Market"}
                         </span>
                       </td>
                       <td className="dex-td" style={{ fontWeight: 800, color: valueColor, fontFamily: "monospace", fontSize: 11 }}>
@@ -5843,11 +5863,31 @@ function ProfileView({
               </thead>
               <tbody>
                 {userOrders.slice(0, 10).map((o) => {
-                  const isSwap = o.orderType === "Swap" || (o.triggerNote?.toLowerCase().includes("swap") ?? false);
-                  const isWithdrawal = o.orderType === "Withdrawal" || (o.triggerNote?.toLowerCase().includes("withdrawal") ?? false);
-                  const isP2PReceive = o.triggerNote?.toLowerCase().includes("received") ?? false;
-                  const isP2PSend = (o.orderType === "P2P Transfer" || (o.triggerNote?.includes("P2P Sent") ?? false) || (o.triggerNote?.includes("UID") ?? false)) && !isP2PReceive;
-                  const isDeposit = o.orderType === "Deposit" || (o.triggerNote?.toLowerCase().includes("deposit") ?? false) || isP2PReceive;
+                  const noteLower = (o.triggerNote || "").toLowerCase();
+                  const isSwap = o.orderType === "Swap" || noteLower.includes("swap");
+                  const isWithdrawal = o.orderType === "Withdrawal" || noteLower.includes("withdrawal");
+                  const isP2PReceive =
+                    o.orderType === "P2P Receive" ||
+                    noteLower.includes("received") ||
+                    noteLower.includes("transfer from") ||
+                    noteLower.includes("from axm-") ||
+                    (noteLower.includes("from ") && !noteLower.includes("sent")) ||
+                    (o.orderType === "P2P Transfer" && o.side === "Buy");
+
+                  const isP2PSend =
+                    !isP2PReceive &&
+                    (o.orderType === "P2P Transfer" ||
+                     noteLower.includes("p2p sent") ||
+                     noteLower.includes("sent to") ||
+                     noteLower.includes("sent via") ||
+                     noteLower.includes("to uid") ||
+                     (noteLower.includes("uid") && !noteLower.includes("received") && !noteLower.includes("from")));
+
+                  const isDeposit =
+                    o.orderType === "Deposit" ||
+                    noteLower.includes("deposit") ||
+                    isP2PReceive;
+
                   const isDebit = isWithdrawal || isP2PSend;
                   const isBuy = o.side === "Buy" && !isSwap && !isDeposit;
                   const isSell = o.side === "Sell" && !isSwap && !isWithdrawal && !isP2PSend && !isDeposit;
