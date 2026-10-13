@@ -843,41 +843,6 @@ export const DepositPage: React.FC<DepositPageProps> = ({
                   </span>
                 </div>
               </div>
-
-              <div className="card-divider" />
-
-              {/* Automatic On-Chain Deposit Detection Status */}
-              <div
-                className="card-section"
-                style={{
-                  background: "linear-gradient(145deg, rgba(16, 185, 129, 0.08) 0%, rgba(124, 58, 237, 0.06) 100%)",
-                  border: "1px solid rgba(16, 185, 129, 0.3)",
-                  borderRadius: 14,
-                  padding: "16px",
-                  position: "relative",
-                  overflow: "hidden",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <RefreshCw size={16} color="#10B981" className="animate-spin" />
-                    <span style={{ fontSize: 13, fontWeight: 800, color: "var(--text, #fff)" }}>
-                      Live Deposit Scanner Active
-                    </span>
-                  </div>
-                  <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700, padding: "2px 8px", background: "rgba(16, 185, 129, 0.15)", borderRadius: 6 }}>
-                    Auto-Detected
-                  </span>
-                </div>
-
-                <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 10px 0", lineHeight: 1.5 }}>
-                  Send your <b>{depositCoin}</b> ({depositNetwork.split(" ")[0]}) transfer to the address above. Our automated blockchain node validator continuously scans the network and will credit your Axiom Wallet balance automatically upon 1 block confirmation.
-                </p>
-
-                <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#10B981", fontSize: 11.5, fontWeight: 600 }}>
-                  <ShieldCheck size={14} /> Immediate vault credit & automatic redirect to wallet upon detection
-                </div>
-              </div>
             </div>
 
             {/* Back to Step 1 Button */}
