@@ -221,10 +221,11 @@ export const BuyPage: React.FC<BuyPageProps> = ({
   const tokensReceived = buyPriceUsd > 0 ? equivalentUsd / buyPriceUsd : 0;
 
   // AXIOM NETWORK DELIVERY CHARGES:
-  // - TRC-20 (TRON USDT): $2.00 USD (< $50), $3.00 USD (>= $50)
-  // - Solana (SOL, USDT-SPL, USDC-SPL): $2.00 USD (< $75), $3.00 USD (>= $75)
+  // - Solana (SOL, USDT-SPL, USDC-SPL): Flat $1.00 USD
+  // - BEP-20 (BNB Smart Chain, USDT-BEP): Flat $1.00 USD
+  // - TRC-20 (TRON USDT): Only TRC-20 scales with rate: $2.00 USD (< $50), $3.00 USD (>= $50)
   // - Ethereum / ERC-20 (ETH, USDT-ERC, USDC-ERC): $2.00 USD (< $75), $3.00 USD (>= $75)
-  // - Bitcoin & Others: $2.00 USD (< $75), $3.00 USD (>= $75)
+  // - Bitcoin & Others: $2.00 USD
   const getBuyOrderFee = (usd: number, net: string, coin: BuyCoin): { feeNgn: number; feeUsd: number; netName: string; label: string } => {
     const isErc = net.includes("Ethereum") || net.includes("ERC") || coin === "ETH";
     const isTrc = net.includes("TRON") || net.includes("TRC");
@@ -232,27 +233,27 @@ export const BuyPage: React.FC<BuyPageProps> = ({
     const isBtc = net.includes("Bitcoin") || net.includes("BTC") || coin === "BTC";
     const isBep = net.includes("BNB") || net.includes("BEP");
 
-    let feeUsd = 2.0;
+    let feeUsd = 1.0;
     let netName = "Network";
 
-    if (isTrc) {
+    if (isSol) {
+      netName = "Solana";
+      feeUsd = 1.0;
+    } else if (isBep) {
+      netName = "BEP-20";
+      feeUsd = 1.0;
+    } else if (isTrc) {
       netName = "TRC-20";
       feeUsd = usd >= 50.0 ? 3.0 : 2.0;
-    } else if (isSol) {
-      netName = "Solana";
-      feeUsd = usd >= 75.0 ? 3.0 : 2.0;
     } else if (isErc) {
       netName = "ERC-20";
       feeUsd = usd >= 75.0 ? 3.0 : 2.0;
     } else if (isBtc) {
       netName = "Bitcoin";
       feeUsd = usd >= 75.0 ? 3.0 : 2.0;
-    } else if (isBep) {
-      netName = "BEP-20";
-      feeUsd = usd >= 75.0 ? 3.0 : 2.0;
     } else {
       netName = "Network";
-      feeUsd = usd >= 75.0 ? 3.0 : 2.0;
+      feeUsd = 1.0;
     }
 
     const feeNgn = Math.round(feeUsd * rateToUsd);
