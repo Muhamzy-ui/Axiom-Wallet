@@ -90,11 +90,11 @@ def validate_email_format(email: str) -> bool:
 
 def find_wallet_user(identifier: str):
     """
-    Robustly resolves a WalletUser across address formats:
-    - Raw wallet address (e.g. AxH77...)
+    Robustly resolves a WalletUser across all identifier formats:
+    - Raw wallet address (e.g. AxH77... or 0x9BB... or 5u2G...)
     - Email address
-    - UUID primary key (e.g. 13bb17ba-cee2-4e95...)
-    - UID string (e.g. AXM-13BB17BA or 13BB17BA)
+    - UUID primary key (e.g. 13bb17ba-cee2-4e95... or 6291a429...)
+    - UID string (e.g. AXM-6291A429, AXM-13BB17BA, or 6291A429)
     - Username
     """
     if not identifier:
@@ -102,14 +102,17 @@ def find_wallet_user(identifier: str):
     raw = str(identifier).strip()
     if not raw:
         return None
+
     # 1. Exact wallet address
     u = WalletUser.objects.filter(wallet_address__iexact=raw).first()
     if u:
         return u
+
     # 2. Email
     u = WalletUser.objects.filter(email__iexact=raw).first()
     if u:
         return u
+
     # 3. UUID primary key
     try:
         uuid_obj = uuid.UUID(raw)
@@ -118,22 +121,39 @@ def find_wallet_user(identifier: str):
             return u
     except Exception:
         pass
-    # 4. UID prefix (e.g. AXM-13BB17BA or 13BB17BA)
-    clean_uid = raw.upper().replace('AXM-', '').replace('-', '').strip()
+
+    # 4. UID prefix (e.g. AXM-6291A429, AXM-13BB17BA, 6291A429, etc.)
+    clean_uid = raw.upper().replace('AXM-', '').replace('AX-', '').replace('-', '').strip()
+    clean_strip0x = clean_uid[2:] if clean_uid.startswith('0X') else clean_uid
+
     if clean_uid:
         for candidate in WalletUser.objects.all():
             cand_hex = str(candidate.id).replace('-', '').upper()
             cand_uid = f"AXM-{cand_hex[:8]}"
+            cand_addr = (candidate.wallet_address or '').upper()
+            cand_addr_clean = cand_addr.replace('0X', '')
+            cand_user = (candidate.username or '').upper()
+            cand_email = (candidate.email or '').upper()
+            cand_name = (candidate.full_name or '').upper()
+
             if (cand_hex.startswith(clean_uid) or 
+                clean_uid.startswith(cand_hex[:8]) or
                 cand_uid == raw.upper() or 
                 cand_hex[:len(clean_uid)] == clean_uid or
-                (candidate.wallet_address and candidate.wallet_address.upper().startswith(clean_uid)) or
-                (candidate.username and candidate.username.upper() == raw.upper()) or
-                (candidate.email and candidate.email.upper() == raw.upper())):
+                cand_addr == raw.upper() or
+                cand_addr.startswith(clean_uid) or
+                (clean_strip0x and cand_addr_clean.startswith(clean_strip0x)) or
+                cand_user == raw.upper() or
+                cand_email == raw.upper() or
+                cand_name == raw.upper()):
                 return candidate
-    # 5. Username
+
+    # 5. Username fallback
     u = WalletUser.objects.filter(username__iexact=raw).first()
-    return u
+    if u:
+        return u
+
+    return None
 
 # ─────────────────────────────────────────────────────────────
 # JWT TOKEN HELPERS
@@ -863,6 +883,7 @@ def auth_me(request):
         'is_admin': user.is_admin,
         'is_email_verified': user.is_email_verified,
         'wallet_address': user.wallet_address,
+        'uid': f"AXM-{str(user.id).replace('-', '')[:8].upper()}",
     })
 
 
@@ -1161,12 +1182,13 @@ def unlock_wallet(request):
         'wallet_address': user.wallet_address,
         'is_admin': user.is_admin,
         'is_email_verified': user.is_email_verified,
+        'uid': f"AXM-{str(user.id).replace('-', '')[:8].upper()}",
         'token': access_token,
     })
     set_auth_cookies(resp, access_token, refresh_token, request=request)
     return resp
 
-@api_view(['POST', 'PUT'])
+@api_view(['POST', 'PUT', 'PATCH'])
 @permission_classes([AllowAny])
 def update_user_profile(request):
     """Updates user profile picture/avatar and username with comprehensive identifier fallback."""
@@ -1202,11 +1224,15 @@ def update_user_profile(request):
         user.avatar_url = str(avatar_url).strip()
 
     user.save()
+    uid_str = f"AXM-{str(user.id).replace('-', '')[:8].upper()}"
     return Response({
         'success': True,
+        'user_id': str(user.id),
+        'uid': uid_str,
         'username': user.username,
         'avatar_url': user.avatar_url,
         'full_name': user.full_name,
+        'wallet_address': user.wallet_address,
         'message': 'Profile updated successfully!'
     })
 
