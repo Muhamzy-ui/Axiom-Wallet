@@ -29,7 +29,7 @@ const COIN_METAS: Record<DepositCoin, { name: string; iconUrl: string }> = {
 
 const COIN_NETWORKS: Record<DepositCoin, { label: string; networkKey: string; note: string }[]> = {
   USDT: [
-    { label: "TRC-20", networkKey: "TRON (TRC-20)", note: "Tron Network • Low $2.00 Min • 0% Fee" },
+    { label: "TRC-20", networkKey: "TRON (TRC-20)", note: "Tron Network • Low $5.00 Min • 0% Fee" },
     { label: "BEP-20", networkKey: "BNB Chain (BEP-20)", note: "BNB Smart Chain • Low fee" },
     { label: "Solana", networkKey: "Solana (SPL)", note: "Solana SPL • Instant settlement" },
     { label: "ERC-20", networkKey: "Ethereum (ERC-20)", note: "Ethereum Mainnet • Institutional" },
@@ -250,8 +250,8 @@ export const DepositPage: React.FC<DepositPageProps> = ({
 
   const handleProceedToAddress = () => {
     const amtNum = parseFloat(depositAmt) || 0;
-    if (isNaN(amtNum) || amtNum < 2.0) {
-      flash("⚠️ Minimum deposit is $2.00 USD");
+    if (isNaN(amtNum) || amtNum < 5.0) {
+      flash("⚠️ Minimum deposit is $5.00 USD");
       return;
     }
     setTimeLeft(300);
@@ -459,7 +459,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
                 <div className="pro-card-header">
                   <span className="pro-card-label">2. Expected Deposit Amount ($ USD)</span>
                   <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>
-                    Min: $2.00 USD • 0% Fee
+                    Min: $5.00 USD • 0% Fee
                   </span>
                 </div>
 
@@ -468,7 +468,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
                     <span className="converter-currency-sym">$</span>
                     <input
                       type="number"
-                      min="2"
+                      min="5"
                       step="1"
                       className="converter-input"
                       value={depositAmt}
@@ -496,7 +496,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
                 </div>
 
                 <div className="preset-chips-row">
-                  {[2, 5, 10, 25, 50, 100, 200, 500].map((val) => (
+                  {[5, 10, 25, 50, 100, 200, 500].map((val) => (
                     <button
                       key={val}
                       type="button"
