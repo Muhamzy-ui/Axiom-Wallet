@@ -502,6 +502,19 @@ export const api = {
     return res.json();
   },
 
+  async broadcastWithdrawal(id: number): Promise<{ success: boolean; tx_hash: string; status: string; message: string }> {
+    const res = await fetch(`${API_BASE}/admin-api/withdrawals/${id}/broadcast/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to broadcast withdrawal on-chain');
+    }
+    return res.json();
+  },
+
   async rejectWithdrawal(id: number, reason: string): Promise<{ success: boolean; status: string; message: string }> {
     const res = await fetch(`${API_BASE}/admin-api/withdrawals/${id}/reject/`, {
       method: 'POST',

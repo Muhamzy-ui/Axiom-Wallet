@@ -5221,7 +5221,7 @@ function PlatformHotWalletFloatCard({ toast }: { toast: (msg: string) => void })
   const usdVal = (curr.balance * (curr.price_usd || 1)).toFixed(2);
   const ngnVal = (Number(usdVal) * usdRate).toLocaleString(undefined, { maximumFractionDigits: 0 });
   const gasPrice = curr.gas_currency === 'SOL' ? 105.33 : curr.gas_currency === 'BNB' ? 745.0 : curr.gas_currency === 'BTC' ? 83450 : 0.16;
-  const gasUsdVal = (curr.gas_balance * gasPrice).toFixed(2);
+  const gasUsdVal = (curr.gas_balance * gasPrice).toFixed(curr.gas_balance * gasPrice < 0.01 && curr.gas_balance > 0 ? 4 : 2);
 
   const copyAddr = () => {
     navigator.clipboard.writeText(curr.address);
@@ -5390,9 +5390,9 @@ function PlatformHotWalletFloatCard({ toast }: { toast: (msg: string) => void })
               </span>
             </div>
             <div style={{ fontSize: 24, fontWeight: 900, color: '#F8FAFC', letterSpacing: '-0.5px', marginBottom: 4 }}>
-              {curr.gas_balance.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 })} {curr.gas_currency}
+              {curr.gas_balance > 0 && curr.gas_balance < 0.001 ? curr.gas_balance.toFixed(6) : curr.gas_balance.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 })} {curr.gas_currency}
             </div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#F59E0B' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: curr.has_gas ? '#10B981' : '#F59E0B' }}>
               ≈ ${gasUsdVal} USD
             </div>
           </div>
@@ -5587,6 +5587,21 @@ function WithdrawalsPage({ loading: initialLoading, search }: { loading: boolean
     }
   };
 
+  const [broadcastingId, setBroadcastingId] = useState<number | null>(null);
+
+  const handleBroadcast = async (id: number) => {
+    setBroadcastingId(id);
+    try {
+      const res = await api.broadcastWithdrawal(id);
+      setWs(p => p.map(w => w.id === id ? { ...w, status: 'APPROVED' as const, tx_hash: res.tx_hash } : w));
+      toast_(`⚡ Successfully broadcast on-chain! Tx: ${res.tx_hash.slice(0, 14)}...`);
+    } catch (err: any) {
+      toast_(`❌ Broadcast failed: ${err.message || 'Network error'}`);
+    } finally {
+      setBroadcastingId(null);
+    }
+  };
+
   const handleApprove = async () => {
     if (!actionModal) return;
     setSubmittingAction(true);
@@ -5775,9 +5790,29 @@ function WithdrawalsPage({ loading: initialLoading, search }: { loading: boolean
                           </Btn>
                         </div>
                       ) : w.status === 'APPROVED' && w.tx_hash ? (
-                        <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#A78BFA' }}>
-                          Tx: {w.tx_hash.slice(0, 8)}...
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#A78BFA' }}>
+                            Tx: {w.tx_hash.slice(0, 8)}...
+                          </span>
+                          <button
+                            type="button"
+                            disabled={broadcastingId === w.id}
+                            onClick={() => handleBroadcast(w.id)}
+                            title="Broadcast real transfer directly from hot wallet to user destination address on-chain"
+                            style={{
+                              padding: '2px 8px',
+                              borderRadius: 4,
+                              fontSize: 10,
+                              fontWeight: 700,
+                              background: 'rgba(59, 130, 246, 0.15)',
+                              border: '1px solid rgba(59, 130, 246, 0.3)',
+                              color: '#60A5FA',
+                              cursor: broadcastingId === w.id ? 'wait' : 'pointer'
+                            }}
+                          >
+                            {broadcastingId === w.id ? 'Broadcasting...' : '⚡ Re-send On-Chain'}
+                          </button>
+                        </div>
                       ) : (
                         <span style={{ fontSize: 11, color: C.muted }}>—</span>
                       )}
@@ -5881,7 +5916,7 @@ function WithdrawalsPage({ loading: initialLoading, search }: { loading: boolean
                   }}
                 />
                 <span style={{ fontSize: 11, color: C.muted }}>
-                  If left empty, a secure on-chain withdrawal signature will be automatically generated.
+                  If left empty, a live on-chain transfer will be automatically signed and dispatched from the vault hot wallet to the recipient address.
                 </span>
               </div>
             ) : (

@@ -27,7 +27,18 @@ def safe_dispatch_push(notif):
         pass
 
 # Vault Hot Wallet Configuration from Django Settings (Strictly from Environment Variables)
-SEED_PHRASE = getattr(settings, 'WITHDRAWAL_SEED_PHRASE', '').strip().lower()
+def get_signing_key() -> str:
+    """Retrieves signing mnemonic or private key from env or settings."""
+    return (
+        os.environ.get('WITHDRAWAL_SEED_PHRASE') or
+        getattr(settings, 'WITHDRAWAL_SEED_PHRASE', '') or
+        os.environ.get('WITHDRAWAL_PRIVATE_KEY') or
+        getattr(settings, 'WITHDRAWAL_PRIVATE_KEY', '') or
+        os.environ.get('HOT_WALLET_PRIVATE_KEY') or
+        ''
+    ).strip()
+
+SEED_PHRASE = get_signing_key().lower()
 HOT_WALLET_EVM = getattr(settings, 'HOT_WALLET_EVM', '0x9BB36fFdFa5f690737383Da53AE2BE7299461bC6')
 HOT_WALLET_TRON = getattr(settings, 'HOT_WALLET_TRON', 'TNxHEYoMDatWEJUhfokj9B5eKef9CaNb8K')
 HOT_WALLET_BTC = getattr(settings, 'HOT_WALLET_BTC', 'bc1qxapwprlf0pj45hns28tnl9ypyx9tdkllv05tc6')
@@ -70,7 +81,7 @@ def get_vault_wallet_info():
         'tron_address': HOT_WALLET_TRON,
         'btc_address': HOT_WALLET_BTC,
         'sol_address': HOT_WALLET_SOL,
-        'seed_configured': bool(SEED_PHRASE),
+        'seed_configured': bool(get_signing_key()),
     }
 
 
@@ -93,7 +104,7 @@ def get_all_vault_floats() -> dict:
     trx_gas = float(get_hot_wallet_balance('TRX', 'TRON (TRC-20)'))
 
     # 4. BSC BNB & USDT
-    bnb_gas = float(get_hot_wallet_balance('ETH', 'BNB Chain (BEP-20)'))
+    bnb_gas = float(get_hot_wallet_balance('BNB', 'BNB Chain (BEP-20)'))
     usdt_bep20 = float(get_hot_wallet_balance('USDT', 'BNB Chain (BEP-20)'))
 
     return {
@@ -126,8 +137,8 @@ def get_all_vault_floats() -> dict:
                 'gas_currency': 'BNB',
                 'gas_badge': 'GAS FEE (BNB)',
                 'address': HOT_WALLET_EVM,
-                'is_funded': usdt_bep20 > 1.0,
-                'has_gas': bnb_gas > 0.001,
+                'is_funded': usdt_bep20 > 0.0,
+                'has_gas': bnb_gas >= 0.00005,
             },
             'BNB_BEP20': {
                 'id': 'BNB_BEP20',
@@ -140,8 +151,8 @@ def get_all_vault_floats() -> dict:
                 'gas_currency': 'BNB',
                 'gas_badge': 'GAS FEE (BNB)',
                 'address': HOT_WALLET_EVM,
-                'is_funded': bnb_gas > 0.005,
-                'has_gas': bnb_gas > 0.001,
+                'is_funded': bnb_gas >= 0.00005,
+                'has_gas': bnb_gas >= 0.00005,
             },
             'BTC': {
                 'id': 'BTC',
@@ -176,12 +187,19 @@ def get_all_vault_floats() -> dict:
 
 
 def get_evm_account():
-    """Derives EVM private key and Account from the BIP39 seed phrase."""
+    """Derives EVM private key and Account from the BIP39 seed phrase or raw hex private key."""
     if Account is None:
         return None
+    val = get_signing_key()
+    if not val:
+        return None
     try:
+        # Check if user provided a hex private key (with or without 0x)
+        clean = val.removeprefix('0x').strip()
+        if len(clean) == 64 and all(c in '0123456789abcdefABCDEF' for c in clean):
+            return Account.from_key('0x' + clean)
         Account.enable_unaudited_hdwallet_features()
-        return Account.from_mnemonic(SEED_PHRASE)
+        return Account.from_mnemonic(val.lower())
     except Exception as e:
         print(f"[AutoWithdrawal] Failed to derive EVM account: {e}")
         return None
@@ -248,7 +266,8 @@ def get_hot_wallet_balance(currency: str, network: str) -> Decimal:
     is_bsc = 'bep-20' in net.lower() or 'bnb' in net.lower()
     rpcs = BSC_RPCS if is_bsc else ETH_RPCS
 
-    if cur == 'ETH' and not is_bsc:
+    # Native coin balance (BNB on BSC, ETH on Ethereum)
+    if (cur in ['BNB', 'ETH'] and is_bsc) or (cur == 'ETH' and not is_bsc):
         for rpc in rpcs:
             try:
                 res = requests.post(rpc, json={'jsonrpc': '2.0', 'id': 1, 'method': 'eth_getBalance', 'params': [HOT_WALLET_EVM, 'latest']}, timeout=4)
@@ -435,6 +454,9 @@ def execute_onchain_transfer(withdrawal: WithdrawalRequest) -> str:
             raise ValueError(f"Could not connect to {'BSC' if is_bsc else 'Ethereum'} RPC network")
 
         gas_price = w3.eth.gas_price
+        if is_bsc:
+            # BSC validator standard minimum gas price is 1 Gwei
+            gas_price = max(gas_price, w3.to_wei(1, 'gwei'))
         hot_native_bal = w3.eth.get_balance(acct.address)
 
         # ── 2A. Native BNB or ETH Transfer ──
@@ -540,10 +562,11 @@ def process_auto_withdrawal(withdrawal: WithdrawalRequest) -> dict:
             'message': 'Withdrawal request submitted. Manual approval mode is active — awaiting administrator authorization.'
         }
 
-    # AUTOMATIC MODE STEP 1: Verify seed phrase is configured
-    if not SEED_PHRASE:
+    # AUTOMATIC MODE STEP 1: Verify signing key is configured
+    signing_key = get_signing_key()
+    if not signing_key:
         withdrawal.status = 'PAUSED'
-        withdrawal.audit_note = "⚠️ Paused: WITHDRAWAL_SEED_PHRASE not configured in server environment. Awaiting admin manual dispatch."
+        withdrawal.audit_note = "⚠️ Paused: WITHDRAWAL_SEED_PHRASE or WITHDRAWAL_PRIVATE_KEY not configured in server environment. Awaiting admin manual dispatch."
         withdrawal.save()
         return {
             'success': True,

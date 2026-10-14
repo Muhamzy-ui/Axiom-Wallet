@@ -3602,7 +3602,7 @@ def admin_withdrawals_list(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def admin_approve_withdrawal(request, pk):
-    """Approves a pending withdrawal and records on-chain tx hash."""
+    """Approves a pending withdrawal and records real on-chain tx hash."""
     try:
         w = WithdrawalRequest.objects.get(pk=pk)
     except WithdrawalRequest.DoesNotExist:
@@ -3611,7 +3611,17 @@ def admin_approve_withdrawal(request, pk):
     if w.status == 'APPROVED':
         return Response({'error': 'Withdrawal is already approved.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    tx_hash = request.data.get('tx_hash', '').strip() or generate_tx_hash('wd_paid_')
+    tx_hash = request.data.get('tx_hash', '').strip()
+    if not tx_hash:
+        try:
+            from .services.auto_withdrawal import execute_onchain_transfer
+            tx_hash = execute_onchain_transfer(w)
+            w.audit_note = f"⚡ Automated on-chain dispatch: {tx_hash}"
+        except Exception as e:
+            return Response({
+                'error': f'On-chain broadcast failed: {str(e)}. Check hot wallet gas or paste a manual TxID.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
     finalize_withdrawal(w, tx_hash=tx_hash)
 
     try:
@@ -3620,7 +3630,7 @@ def admin_approve_withdrawal(request, pk):
             user=w.user,
             user_identifier=w.user.wallet_address or w.user.email or w.user.user_id,
             title=f"Withdrawal Approved 💸 ({w.amount} {w.currency})",
-            message=f"Your withdrawal of {w.amount} {w.currency} has been approved and broadcast on-chain.",
+            message=f"Your withdrawal of {w.amount} {w.currency} has been approved and broadcast on-chain: {tx_hash}",
             notification_type='WITHDRAWAL',
             link_url='/#wallet'
         )
@@ -3628,7 +3638,50 @@ def admin_approve_withdrawal(request, pk):
     except Exception:
         pass
 
-    return Response({'success': True, 'tx_hash': tx_hash, 'status': 'APPROVED', 'message': f'Withdrawal #{w.id} approved successfully!'})
+    return Response({'success': True, 'tx_hash': tx_hash, 'status': 'APPROVED', 'message': f'Withdrawal #{w.id} approved and dispatched successfully!'})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def admin_retry_onchain_broadcast(request, pk):
+    """Dispatches real on-chain transaction broadcast using the vault hot wallet."""
+    try:
+        w = WithdrawalRequest.objects.get(pk=pk)
+    except WithdrawalRequest.DoesNotExist:
+        return Response({'error': 'Withdrawal request not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        from .services.auto_withdrawal import execute_onchain_transfer
+        tx_hash = execute_onchain_transfer(w)
+        w.status = 'APPROVED'
+        w.tx_hash = tx_hash
+        w.audit_note = f"⚡ On-chain payout broadcast successfully: {tx_hash}"
+        w.save()
+
+        try:
+            w_notif = AppNotification.objects.create(
+                target_audience='USER',
+                user=w.user,
+                user_identifier=w.user.wallet_address or w.user.email or w.user.user_id,
+                title=f"Withdrawal Dispatched On-Chain 💸 ({w.amount} {w.currency})",
+                message=f"Your withdrawal of {w.amount} {w.currency} has been broadcast on-chain: {tx_hash}",
+                notification_type='WITHDRAWAL',
+                link_url='/#wallet'
+            )
+            dispatch_web_push(w_notif)
+        except Exception:
+            pass
+
+        return Response({
+            'success': True,
+            'tx_hash': tx_hash,
+            'status': 'APPROVED',
+            'message': f'Withdrawal #{w.id} broadcast on-chain! Tx: {tx_hash}'
+        })
+    except Exception as e:
+        return Response({
+            'error': f'On-chain broadcast failed: {str(e)}'
+        }, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
