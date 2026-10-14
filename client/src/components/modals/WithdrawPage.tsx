@@ -646,7 +646,7 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
                   }}>
                     <ArrowDownUp size={18} color="#A78BFA" style={{ flexShrink: 0, marginTop: 2 }} />
                     <div style={{ fontSize: 11.5, color: "#DDD6FE", lineHeight: 1.45 }}>
-                      <strong style={{ color: "#FFFFFF" }}>🔄 Automated Multi-Chain Swap & Bridge:</strong> Your available USDT balance (<strong>{availableCoinBalance.toFixed(2)} USDT</strong>) is unified. You can withdraw directly to <strong>BEP-20, TRC-20, Solana SPL, or ERC-20</strong>. Axiom automatically bridges and converts to your chosen network with 0% slippage and zero fees.
+                      <strong style={{ color: "#FFFFFF" }}>Automated Multi-Chain Swap & Bridge:</strong> Your available USDT balance (<strong>{availableCoinBalance.toFixed(2)} USDT</strong>) is unified. You can withdraw directly to <strong>BEP-20, TRC-20, Solana SPL, or ERC-20</strong>. Axiom automatically bridges and converts to your chosen network with 0% slippage and zero fees.
                     </div>
                   </div>
                 )}
