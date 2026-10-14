@@ -127,6 +127,12 @@ export interface UserOrder {
   dateStr: string;
   orderType?: "Market" | "Limit" | "TP/SL" | "P2P Transfer" | "P2P Receive" | "Deposit" | "Withdrawal" | "Swap";
   triggerNote?: string;
+  network?: string;
+  destinationAddress?: string;
+  txHash?: string;
+  withdrawalId?: number | string;
+  status?: string;
+  fee?: string;
 }
 
 export interface PendingOrder {
@@ -2540,52 +2546,104 @@ class MarketStore {
   }
 
   // Multi-asset withdrawal flow (USDT, SOL, USDC, BTC, ETH)
-  withdrawFunds(amount: number, sym = "USDC"): { success: boolean; message: string } {
+  withdrawFunds(
+    amount: number,
+    sym = "USDC",
+    meta?: {
+      network?: string;
+      destinationAddress?: string;
+      withdrawalId?: number | string;
+      txHash?: string;
+      status?: string;
+      fee?: string;
+    }
+  ): { success: boolean; message: string } {
     if (amount <= 0 || isNaN(amount)) return { success: false, message: "Enter a valid withdrawal amount" };
 
     const cleanSym = sym.toUpperCase();
+    let priceUsd = 1.0;
+    let successMsg = "";
+
     if (cleanSym === "SOL" || cleanSym === "BTC" || cleanSym === "ETH") {
       const curBal = this.balances[cleanSym]?.bal || 0;
       if (amount > curBal) {
         return { success: false, message: `Insufficient ${cleanSym} balance! Available: ${curBal.toFixed(4)}` };
       }
-      const p = this.getToken(cleanSym)?.numericPrice || 1;
+      priceUsd = this.getToken(cleanSym)?.numericPrice || (cleanSym === "SOL" ? 121.69 : cleanSym === "BTC" ? 77724.0 : 2650.0);
       this.balances[cleanSym].bal -= amount;
-      this.balances[cleanSym].usdValue = Number((this.balances[cleanSym].bal * p).toFixed(2));
-      this.savePersistedState();
-      this.notify();
-      return { success: true, message: `Successfully withdrew ${amount} ${cleanSym}!` };
-    }
-
-    if (amount < 1.0) return { success: false, message: "Minimum withdrawal is $1.00" };
-
-    const targetSym = cleanSym === "USDT" ? "USDT" : "USDC";
-    const curBal = this.balances[targetSym]?.bal || 0;
-
-    if (amount > curBal) {
-      const otherSym = targetSym === "USDC" ? "USDT" : "USDC";
-      const otherBal = this.balances[otherSym]?.bal || 0;
-      if (curBal + otherBal < amount) {
-        return { success: false, message: `Insufficient cash balance! Available: $${(curBal + otherBal).toFixed(2)}` };
-      }
-      this.balances[targetSym].bal = 0;
-      this.balances[targetSym].usdValue = 0;
-      this.balances[targetSym].totalInvested = 0;
-      const rem = amount - curBal;
-      this.balances[otherSym].bal -= rem;
-      this.balances[otherSym].usdValue = this.balances[otherSym].bal;
-      this.balances[otherSym].totalInvested = this.balances[otherSym].bal;
+      this.balances[cleanSym].usdValue = Number((this.balances[cleanSym].bal * priceUsd).toFixed(2));
+      successMsg = `Successfully withdrew ${amount} ${cleanSym}!`;
     } else {
-      this.balances[targetSym].bal -= amount;
-      this.balances[targetSym].usdValue = this.balances[targetSym].bal;
-      this.balances[targetSym].totalInvested = this.balances[targetSym].bal;
+      if (amount < 1.0) return { success: false, message: "Minimum withdrawal is $1.00" };
+
+      const targetSym = cleanSym === "USDT" ? "USDT" : "USDC";
+      const curBal = this.balances[targetSym]?.bal || 0;
+      priceUsd = 1.0;
+
+      if (amount > curBal) {
+        const otherSym = targetSym === "USDC" ? "USDT" : "USDC";
+        const otherBal = this.balances[otherSym]?.bal || 0;
+        if (curBal + otherBal < amount) {
+          return { success: false, message: `Insufficient cash balance! Available: $${(curBal + otherBal).toFixed(2)}` };
+        }
+        this.balances[targetSym].bal = 0;
+        this.balances[targetSym].usdValue = 0;
+        this.balances[targetSym].totalInvested = 0;
+        const rem = amount - curBal;
+        this.balances[otherSym].bal -= rem;
+        this.balances[otherSym].usdValue = this.balances[otherSym].bal;
+        this.balances[otherSym].totalInvested = this.balances[otherSym].bal;
+      } else {
+        this.balances[targetSym].bal -= amount;
+        this.balances[targetSym].usdValue = this.balances[targetSym].bal;
+        this.balances[targetSym].totalInvested = this.balances[targetSym].bal;
+      }
+      successMsg = `Successfully withdrew $${amount.toFixed(2)} ${targetSym}!`;
     }
 
-    this.savePersistedState();
+    // Record in userOrders so withdrawal is trackable in Recent Activity & Trade History
+    const usdVal = amount * priceUsd;
+    const netLabel = meta?.network || (cleanSym === "SOL" ? "Solana SPL" : "BNB Chain (BEP-20)");
+    const destShort = meta?.destinationAddress
+      ? `${meta.destinationAddress.slice(0, 6)}...${meta.destinationAddress.slice(-4)}`
+      : "wallet";
+
+    this.userOrders.unshift({
+      id: meta?.withdrawalId ? `wd-${meta.withdrawalId}` : `wd-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      sym: cleanSym,
+      name: cleanSym === "USDT" ? "Tether USD" : cleanSym === "USDC" ? "USD Coin" : cleanSym,
+      side: "Sell",
+      amountUsd: Number(usdVal.toFixed(2)),
+      tokenAmt: amount,
+      price: priceUsd,
+      timestamp: Date.now(),
+      dateStr: "just now",
+      orderType: "Withdrawal",
+      triggerNote: `Withdrawal (${netLabel}): -${amount >= 1000 ? amount.toLocaleString(undefined, { maximumFractionDigits: 1 }) : amount.toFixed(cleanSym === "USDT" || cleanSym === "USDC" ? 2 : 4)} ${cleanSym} to ${destShort}`,
+      network: meta?.network || netLabel,
+      destinationAddress: meta?.destinationAddress,
+      txHash: meta?.txHash,
+      withdrawalId: meta?.withdrawalId,
+      status: meta?.status || "PROCESSING",
+      fee: meta?.fee || "$0.00",
+    });
+
+    if (this.userOrders.length > 50) {
+      this.userOrders = this.userOrders.slice(0, 50);
+    }
+
+    this.lastOrderAlert = `💸 Withdrawal Initiated! -${amount.toFixed(cleanSym === "USDT" || cleanSym === "USDC" ? 2 : 4)} ${cleanSym} dispatched to ${netLabel}.`;
+    this.savePersistedStateNow();
+
+    const targetSyncId = this.getSyncIdentifier();
+    if (targetSyncId) {
+      api.syncBalances(targetSyncId, this.balances).catch(() => {});
+    }
+
     this.notify();
     return {
       success: true,
-      message: `Successfully withdrew $${amount.toFixed(2)} ${targetSym}!`,
+      message: successMsg,
     };
   }
 

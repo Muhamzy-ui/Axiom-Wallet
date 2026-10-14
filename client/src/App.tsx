@@ -23,6 +23,7 @@ import { copyToClipboard } from "./services/clipboard";
 import { DepositPage } from "./components/modals/DepositPage";
 import { BuyPage } from "./components/modals/BuyPage";
 import { WithdrawPage } from "./components/modals/WithdrawPage";
+import { WithdrawalReceiptModal } from "./components/modals/WithdrawalReceiptModal";
 import { SendPage } from "./components/modals/SendPage";
 import { ProfitShareModal } from "./components/modals/ProfitShareModal";
 import { CountrySelectModal } from "./components/modals/CountrySelectModal";
@@ -4797,6 +4798,7 @@ function ProfileView({
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSavedMsg, setProfileSavedMsg] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [selectedWithdrawalReceipt, setSelectedWithdrawalReceipt] = useState<UserOrder | null>(null);
   const currentPushPermission = pushPermission || notificationService.getPermissionState();
   const handleUpdatePushPermission = (p: any) => {
     if (setPushPermission) setPushPermission(p);
@@ -5907,11 +5909,45 @@ function ProfileView({
                   const valuePrefix = isDebit ? "-$" : isDeposit || isSell ? "+$" : "$";
 
                   return (
-                    <tr key={o.id} className="dex-tr">
+                    <tr
+                      key={o.id}
+                      className="dex-tr"
+                      style={{ cursor: isWithdrawal ? "pointer" : "default" }}
+                      onClick={() => {
+                        if (isWithdrawal) setSelectedWithdrawalReceipt(o);
+                      }}
+                    >
                       <td className="dex-td">
-                        <span className="dex-badge" style={badgeStyle}>
-                          {badgeLabel}
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span className="dex-badge" style={badgeStyle}>
+                            {badgeLabel}
+                          </span>
+                          {isWithdrawal && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedWithdrawalReceipt(o);
+                              }}
+                              style={{
+                                background: "rgba(16, 185, 129, 0.15)",
+                                border: "1px solid rgba(16, 185, 129, 0.35)",
+                                color: "#10B981",
+                                borderRadius: 6,
+                                padding: "2px 7px",
+                                fontSize: 10,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 3,
+                              }}
+                              title="View Official Withdrawal Receipt"
+                            >
+                              🧾 Receipt
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="dex-td">
                         <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: "var(--text)" }}>
@@ -5920,7 +5956,7 @@ function ProfileView({
                         </div>
                       </td>
                       <td className="dex-td" style={{ fontSize: 11, color: "var(--muted)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {isWithdrawal ? "Withdrawal (Settlement)" : isSwap ? "Instant Token Swap" : o.triggerNote || o.orderType}
+                        {isWithdrawal ? (o.triggerNote || "Withdrawal (Settlement)") : isSwap ? "Instant Token Swap" : o.triggerNote || o.orderType}
                       </td>
                       <td className="dex-td" style={{ fontFamily: "monospace", fontSize: 11, color: "var(--text)" }}>
                         {(() => {
@@ -6074,6 +6110,25 @@ function ProfileView({
           onSelect={handleSelectCountry}
           selectedCode={userCountryCode}
           title="Select Trading Country & Currency"
+        />
+      )}
+
+      {/* Official Transaction Receipt Modal for Recent Activity clicks */}
+      {selectedWithdrawalReceipt && (
+        <WithdrawalReceiptModal
+          receipt={{
+            withdrawalId: selectedWithdrawalReceipt.withdrawalId || selectedWithdrawalReceipt.id.replace("wd-", ""),
+            amount: selectedWithdrawalReceipt.tokenAmt,
+            currency: selectedWithdrawalReceipt.sym,
+            network: selectedWithdrawalReceipt.network || "BNB Chain (BEP-20)",
+            destinationAddress: selectedWithdrawalReceipt.destinationAddress || (authUser.wallet_address || "0x5C31D9899d719fCd8D3bc46d65B900476b7B066E"),
+            txHash: selectedWithdrawalReceipt.txHash,
+            status: selectedWithdrawalReceipt.status || "PROCESSING ON-CHAIN",
+            fee: selectedWithdrawalReceipt.fee || "$0.00 (Zero Fee • Covered by Axiom)",
+            timestamp: selectedWithdrawalReceipt.timestamp,
+            dateStr: selectedWithdrawalReceipt.dateStr,
+          }}
+          onClose={() => setSelectedWithdrawalReceipt(null)}
         />
       )}
     </div>
