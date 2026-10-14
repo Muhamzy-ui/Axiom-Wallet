@@ -59,13 +59,7 @@ export const api = {
 
   // Portfolio
   async getPortfolio(address: string): Promise<PortfolioData> {
-    const res = await fetch(`${API_BASE}/wallet/portfolio/?address=${encodeURIComponent(address)}&_t=${Date.now()}`, {
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-      },
-      cache: 'no-store',
-    });
+    const res = await fetch(`${API_BASE}/wallet/portfolio/?address=${encodeURIComponent(address)}&_t=${Date.now()}`);
     return res.json();
   },
 

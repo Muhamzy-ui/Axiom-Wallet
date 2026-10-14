@@ -3465,7 +3465,7 @@ def admin_metrics(request):
     active_traders = len(direct_users_qs)
 
     # 1. Deposits breakdown
-    deposits_all = list(PlatformDeposit.objects.filter(status='CONFIRMED', user__junior_admin__isnull=True).values('amount', 'currency', 'created_at'))
+    deposits_all = list(PlatformDeposit.objects.filter(status__in=['CONFIRMED', 'APPROVED', 'COMPLETED'], user__junior_admin__isnull=True).values('amount', 'currency', 'created_at'))
     def sum_deposits_usd_list(d_list):
         tot = Decimal('0.0')
         for d in d_list:
@@ -3491,13 +3491,13 @@ def admin_metrics(request):
     buys_month = [b for b in buys_all if b['created_at'] >= month_start]
     buys_month_usd = sum([b['price_usd'] * b['token_amount'] for b in buys_month], Decimal('0.0'))
 
-    # 3. Withdrawals breakdown
+    # 3. Withdrawals breakdown (includes both PENDING and PAUSED in queue)
     w_all = list(WithdrawalRequest.objects.filter(user__junior_admin__isnull=True).values('amount', 'currency', 'status'))
-    w_pending = [w for w in w_all if w['status'] == 'PENDING']
+    w_pending = [w for w in w_all if w['status'] in ['PENDING', 'PAUSED']]
     w_pending_count = len(w_pending)
     w_pending_usd = sum([w['amount'] * RATE_MAP.get(w['currency'].upper(), Decimal('1.0')) for w in w_pending], Decimal('0.0'))
 
-    w_approved = [w for w in w_all if w['status'] == 'APPROVED']
+    w_approved = [w for w in w_all if w['status'] in ['APPROVED', 'COMPLETED']]
     w_approved_count = len(w_approved)
     w_approved_usd = sum([w['amount'] * RATE_MAP.get(w['currency'].upper(), Decimal('1.0')) for w in w_approved], Decimal('0.0'))
 
@@ -3628,7 +3628,7 @@ def admin_approve_withdrawal(request, pk):
         w_notif = AppNotification.objects.create(
             target_audience='USER',
             user=w.user,
-            user_identifier=w.user.wallet_address or w.user.email or w.user.user_id,
+            user_identifier=w.user.wallet_address or w.user.email or str(w.user.id),
             title=f"Withdrawal Approved 💸 ({w.amount} {w.currency})",
             message=f"Your withdrawal of {w.amount} {w.currency} has been approved and broadcast on-chain: {tx_hash}",
             notification_type='WITHDRAWAL',

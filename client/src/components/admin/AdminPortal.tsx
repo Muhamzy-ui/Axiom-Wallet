@@ -52,7 +52,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExit }) => {
             localStorage.setItem('axiom_ja_id', res.junior_admin.id);
             localStorage.setItem('axiom_ja_data', JSON.stringify(res.junior_admin));
             localStorage.setItem('axiom_ja_token', res.token);
-            window.location.href = '/junior-admin';
+            window.location.href = '/#junior-admin';
             return;
           }
           authorized = true;

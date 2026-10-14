@@ -6825,9 +6825,32 @@ function JuniorAdminsPage({ loading: globalLoading, search = '' }: { loading: bo
         <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(34, 209, 248, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22D1F8', flexShrink: 0 }}>
           <Shield size={18} />
         </div>
-        <div style={{ fontSize: 12, color: C.text, lineHeight: 1.4 }}>
+        <div style={{ fontSize: 12, color: C.text, lineHeight: 1.4, flex: 1 }}>
           <span style={{ fontWeight: 800, color: '#22D1F8' }}>Strict User & Data Isolation Enforced: </span>
-          Junior Admin users are isolated to their own dashboard at <code style={{ color: '#22D1F8' }}>/junior-admin</code>. Your Super Admin "Users & Wallets", Deposits, and Withdrawals queues will NOT mix or display Junior Admin users.
+          Junior Admin users are isolated to their own dashboard at <code style={{ color: '#22D1F8' }}>/#junior-admin</code>. Your Super Admin "Users & Wallets", Deposits, and Withdrawals queues will NOT mix or display Junior Admin users.
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexShrink: 0 }}>
+          <a
+            href="/#junior-admin"
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              padding: '6px 14px',
+              borderRadius: 8,
+              background: 'rgba(34, 209, 248, 0.15)',
+              border: '1px solid rgba(34, 209, 248, 0.4)',
+              color: '#22D1F8',
+              fontSize: 12,
+              fontWeight: 800,
+              textDecoration: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+          >
+            <span>Open Junior Admin Portal</span>
+            <ExternalLink size={13} />
+          </a>
         </div>
       </div>
 
@@ -6957,6 +6980,29 @@ function JuniorAdminsPage({ loading: globalLoading, search = '' }: { loading: bo
                       {/* Actions */}
                       <td style={TD}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <a
+                            href="/#junior-admin"
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              padding: '4px 8px',
+                              borderRadius: 6,
+                              background: 'rgba(34,209,248,0.1)',
+                              border: '1px solid rgba(34,209,248,0.25)',
+                              color: '#22D1F8',
+                              fontSize: 11,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              textDecoration: 'none',
+                              fontWeight: 700
+                            }}
+                            title="Open Junior Admin Portal"
+                          >
+                            <ExternalLink size={12} />
+                            <span>Portal</span>
+                          </a>
                           <button
                             onClick={() => { setEditingJa({ ...ja }); setFormError(null); }}
                             style={{ padding: '4px 8px', borderRadius: 6, background: C.surface2, border: `1px solid ${C.border}`, color: C.text, fontSize: 11, cursor: 'pointer' }}
