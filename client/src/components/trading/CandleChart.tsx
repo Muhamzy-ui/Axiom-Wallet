@@ -8,6 +8,7 @@ import {
   CrosshairMode,
   IChartApi,
   ISeriesApi,
+  IPriceLine,
   UTCTimestamp,
   CandlestickData,
   AreaData,
@@ -26,6 +27,7 @@ export interface CandleChartProps {
   onToggleBackToLine?: () => void;
   chartHeight?: number;
   onAdjustHeight?: (delta: number) => void;
+  onOpenTpSlModal?: () => void;
 }
 
 interface OHLCVState {
@@ -46,6 +48,7 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   showCandle = false, // Line view is ALWAYS the default
   chartHeight,
   onAdjustHeight,
+  onOpenTpSlModal,
 }) => {
   const { isLight } = useTheme();
   const targetSym = (sym || tokenSymbol || 'BTC').toUpperCase();
@@ -53,6 +56,16 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const areaSeriesRef = useRef<ISeriesApi<'Area'> | null>(null);
+
+  // MetaTrader 5 (MT5 / Mata 5) execution lines on chart (Entry Buy, Take Profit, Stop Loss)
+  const mt5LinesRef = useRef<{
+    entryLineCandle?: IPriceLine;
+    entryLineArea?: IPriceLine;
+    tpLineCandle?: IPriceLine;
+    tpLineArea?: IPriceLine;
+    slLineCandle?: IPriceLine;
+    slLineArea?: IPriceLine;
+  }>({});
 
   // Time & dataset tracking to ensure strict ascending timestamps without gaps
   const lastTimeRef = useRef<number>(0);
@@ -136,6 +149,143 @@ export const CandleChart: React.FC<CandleChartProps> = ({
   };
 
   const effectiveHeight = chartHeight || 230;
+
+  // Synchronize MetaTrader 5 (MT5 / Mata 5) execution lines on chart (Entry Buy, Take Profit, Stop Loss)
+  const updateMt5Lines = useCallback(() => {
+    const candleSeries = candleSeriesRef.current;
+    const areaSeries = areaSeriesRef.current;
+
+    // Helper to safely remove old lines
+    const cleanupLines = () => {
+      if (mt5LinesRef.current.entryLineCandle && candleSeries) {
+        try { candleSeries.removePriceLine(mt5LinesRef.current.entryLineCandle); } catch {}
+        mt5LinesRef.current.entryLineCandle = undefined;
+      }
+      if (mt5LinesRef.current.entryLineArea && areaSeries) {
+        try { areaSeries.removePriceLine(mt5LinesRef.current.entryLineArea); } catch {}
+        mt5LinesRef.current.entryLineArea = undefined;
+      }
+      if (mt5LinesRef.current.tpLineCandle && candleSeries) {
+        try { candleSeries.removePriceLine(mt5LinesRef.current.tpLineCandle); } catch {}
+        mt5LinesRef.current.tpLineCandle = undefined;
+      }
+      if (mt5LinesRef.current.tpLineArea && areaSeries) {
+        try { areaSeries.removePriceLine(mt5LinesRef.current.tpLineArea); } catch {}
+        mt5LinesRef.current.tpLineArea = undefined;
+      }
+      if (mt5LinesRef.current.slLineCandle && candleSeries) {
+        try { candleSeries.removePriceLine(mt5LinesRef.current.slLineCandle); } catch {}
+        mt5LinesRef.current.slLineCandle = undefined;
+      }
+      if (mt5LinesRef.current.slLineArea && areaSeries) {
+        try { areaSeries.removePriceLine(mt5LinesRef.current.slLineArea); } catch {}
+        mt5LinesRef.current.slLineArea = undefined;
+      }
+    };
+
+    cleanupLines();
+
+    if (!candleSeries && !areaSeries) return;
+
+    const pos = marketStore.getUserPosition(targetSym);
+    if (!pos || !pos.hasPosition || pos.bal <= 0.000001 || !pos.avgBuyPrice || pos.avgBuyPrice <= 0) {
+      return;
+    }
+
+    const token = marketStore.getToken(targetSym);
+    const isMcap = dispMode === 'Mcap';
+    const isSol = currMode === 'SOL';
+    const solPrice = marketStore.getToken('SOL')?.numericPrice || 121.69;
+    const mult = isMcap ? (token.supply || 1_000_000_000) : isSol ? 1 / solPrice : 1;
+
+    const entryPrice = Number((pos.avgBuyPrice * mult).toFixed(8));
+    if (entryPrice <= 0) return;
+
+    const balFmt = pos.bal >= 1000 ? pos.bal.toLocaleString(undefined, { maximumFractionDigits: 1 }) : pos.bal.toFixed(pos.avgBuyPrice < 0.001 ? 0 : 2);
+    const entryTitle = `buy ${balFmt}`;
+
+    // MetaTrader 5 style green dashed horizontal buy position line
+    try {
+      if (candleSeries) {
+        mt5LinesRef.current.entryLineCandle = candleSeries.createPriceLine({
+          price: entryPrice,
+          color: '#10B981',
+          lineWidth: 2,
+          lineStyle: LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: entryTitle,
+        });
+      }
+      if (areaSeries) {
+        mt5LinesRef.current.entryLineArea = areaSeries.createPriceLine({
+          price: entryPrice,
+          color: '#10B981',
+          lineWidth: 2,
+          lineStyle: LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: entryTitle,
+        });
+      }
+    } catch {}
+
+    // MetaTrader 5 style Take Profit (TP) line
+    const tpRaw = pos.activeTpSl?.tpPrice;
+    if (tpRaw && tpRaw > 0) {
+      const tpPrice = Number((tpRaw * mult).toFixed(8));
+      const tpTitle = `t/p ${pos.activeTpSl?.tpPct ? `+${pos.activeTpSl.tpPct}%` : ''}`;
+      try {
+        if (candleSeries) {
+          mt5LinesRef.current.tpLineCandle = candleSeries.createPriceLine({
+            price: tpPrice,
+            color: '#06B6D4',
+            lineWidth: 2,
+            lineStyle: LineStyle.Dashed,
+            axisLabelVisible: true,
+            title: tpTitle,
+          });
+        }
+        if (areaSeries) {
+          mt5LinesRef.current.tpLineArea = areaSeries.createPriceLine({
+            price: tpPrice,
+            color: '#06B6D4',
+            lineWidth: 2,
+            lineStyle: LineStyle.Dashed,
+            axisLabelVisible: true,
+            title: tpTitle,
+          });
+        }
+      } catch {}
+    }
+
+    // MetaTrader 5 style Stop Loss (SL) line
+    const slRaw = pos.activeTpSl?.slPrice;
+    if (slRaw && slRaw > 0) {
+      const slPrice = Number((slRaw * mult).toFixed(8));
+      const slTitle = `s/l ${pos.activeTpSl?.slPct ? `-${pos.activeTpSl.slPct}%` : ''}`;
+      try {
+        if (candleSeries) {
+          mt5LinesRef.current.slLineCandle = candleSeries.createPriceLine({
+            price: slPrice,
+            color: '#EF4444',
+            lineWidth: 2,
+            lineStyle: LineStyle.Dashed,
+            axisLabelVisible: true,
+            title: slTitle,
+          });
+        }
+        if (areaSeries) {
+          mt5LinesRef.current.slLineArea = areaSeries.createPriceLine({
+            price: slPrice,
+            color: '#EF4444',
+            lineWidth: 2,
+            lineStyle: LineStyle.Dashed,
+            axisLabelVisible: true,
+            title: slTitle,
+          });
+        }
+      } catch {}
+    }
+  }, [targetSym, dispMode, currMode]);
 
   // Load and apply full dataset on targetSym, timeframe, dispMode, or currMode change
   const applyFullData = useCallback(() => {
@@ -292,7 +442,9 @@ export const CandleChart: React.FC<CandleChartProps> = ({
       change: displayChange,
       isPositive: isPos,
     });
-  }, [targetSym, timeframe, dispMode, currMode, isLight, formatVal]);
+
+    updateMt5Lines();
+  }, [targetSym, timeframe, dispMode, currMode, isLight, formatVal, updateMt5Lines]);
 
   // 1. Initialize TradingView Lightweight Chart
   useEffect(() => {
@@ -459,6 +611,26 @@ export const CandleChart: React.FC<CandleChartProps> = ({
 
     return () => {
       ro.disconnect();
+      if (mt5LinesRef.current.entryLineCandle && candleSeriesRef.current) {
+        try { candleSeriesRef.current.removePriceLine(mt5LinesRef.current.entryLineCandle); } catch {}
+      }
+      if (mt5LinesRef.current.entryLineArea && areaSeriesRef.current) {
+        try { areaSeriesRef.current.removePriceLine(mt5LinesRef.current.entryLineArea); } catch {}
+      }
+      if (mt5LinesRef.current.tpLineCandle && candleSeriesRef.current) {
+        try { candleSeriesRef.current.removePriceLine(mt5LinesRef.current.tpLineCandle); } catch {}
+      }
+      if (mt5LinesRef.current.tpLineArea && areaSeriesRef.current) {
+        try { areaSeriesRef.current.removePriceLine(mt5LinesRef.current.tpLineArea); } catch {}
+      }
+      if (mt5LinesRef.current.slLineCandle && candleSeriesRef.current) {
+        try { candleSeriesRef.current.removePriceLine(mt5LinesRef.current.slLineCandle); } catch {}
+      }
+      if (mt5LinesRef.current.slLineArea && areaSeriesRef.current) {
+        try { areaSeriesRef.current.removePriceLine(mt5LinesRef.current.slLineArea); } catch {}
+      }
+      mt5LinesRef.current = {};
+
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
@@ -639,11 +811,18 @@ export const CandleChart: React.FC<CandleChartProps> = ({
         change: displayChange,
         isPositive: isPos,
       });
+
+      updateMt5Lines();
     };
 
     const unsubscribe = marketStore.subscribe(handleTick);
     return unsubscribe;
-  }, [targetSym, timeframe, dispMode, currMode, isLight, applyFullData, formatVal]);
+  }, [targetSym, timeframe, dispMode, currMode, isLight, applyFullData, formatVal, updateMt5Lines]);
+
+  // Keep MT5 position lines synced whenever token, position, or currency mode changes
+  useEffect(() => {
+    updateMt5Lines();
+  }, [updateMt5Lines, targetSym, dispMode, currMode]);
 
   return (
     <div
@@ -860,6 +1039,67 @@ export const CandleChart: React.FC<CandleChartProps> = ({
             />
           </div>
         )}
+
+        {/* MetaTrader 5 (MT5 / Mata 5) Active Execution Badge */}
+        {(() => {
+          const pos = marketStore.getUserPosition(targetSym);
+          if (!pos || !pos.hasPosition || pos.bal <= 0.000001 || !pos.avgBuyPrice || pos.avgBuyPrice <= 0) return null;
+          const entryStr = formatVal(pos.avgBuyPrice);
+          const balStr = pos.bal >= 1000 ? pos.bal.toLocaleString(undefined, { maximumFractionDigits: 1 }) : pos.bal.toFixed(pos.avgBuyPrice < 0.001 ? 0 : 2);
+          const tpStr = pos.activeTpSl?.tpPrice ? formatVal(pos.activeTpSl.tpPrice) : null;
+          const slStr = pos.activeTpSl?.slPrice ? formatVal(pos.activeTpSl.slPrice) : null;
+
+          return (
+            <div
+              className="mt5-chart-position-pill"
+              style={{
+                position: 'absolute',
+                bottom: 8,
+                left: 10,
+                zIndex: 18,
+                background: isLight ? 'rgba(255, 255, 255, 0.95)' : 'rgba(15, 23, 42, 0.92)',
+                backdropFilter: 'blur(10px)',
+                border: '1px solid rgba(16, 185, 129, 0.45)',
+                borderRadius: 8,
+                padding: '4px 10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                fontSize: 11,
+                fontFamily: "'JetBrains Mono', 'Inter', monospace, sans-serif",
+                color: isLight ? '#0F172A' : '#F8FAFC',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+                pointerEvents: 'auto',
+                cursor: onOpenTpSlModal ? 'pointer' : 'default',
+                userSelect: 'none',
+              }}
+              onClick={onOpenTpSlModal}
+              title="MetaTrader 5 style position line active on chart. Click to adjust TP/SL"
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#10B981', fontWeight: 700 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', boxShadow: '0 0 6px #10B981' }} />
+                BUY {balStr} {targetSym}
+              </span>
+              <span style={{ color: isLight ? '#64748B' : '#94A3B8' }}>@</span>
+              <span style={{ fontWeight: 600 }}>{entryStr}</span>
+              {tpStr && (
+                <span style={{ color: '#06B6D4', fontWeight: 600, paddingLeft: 4, borderLeft: '1px solid rgba(255,255,255,0.15)' }}>
+                  TP {tpStr} {pos.activeTpSl?.tpPct ? `(+${pos.activeTpSl.tpPct}%)` : ''}
+                </span>
+              )}
+              {slStr && (
+                <span style={{ color: '#EF4444', fontWeight: 600, paddingLeft: 4, borderLeft: '1px solid rgba(255,255,255,0.15)' }}>
+                  SL {slStr} {pos.activeTpSl?.slPct ? `(-${pos.activeTpSl.slPct}%)` : ''}
+                </span>
+              )}
+              {onOpenTpSlModal && (
+                <span style={{ color: '#A78BFA', fontSize: 10, fontWeight: 600, marginLeft: 2, textDecoration: 'underline' }}>
+                  {pos.activeTpSl ? 'Adjust TP/SL' : '+ Set TP/SL'}
+                </span>
+              )}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

@@ -984,6 +984,7 @@ class MarketStore {
 
   private sellBlockedTokens: Record<string, boolean> = {};
   public blockSellAllNewTokens: boolean = false;
+  public globalBlockAllSelling: boolean = false;
 
   private initSellBlockedTokens() {
     if (typeof localStorage !== "undefined") {
@@ -993,6 +994,7 @@ class MarketStore {
           this.sellBlockedTokens = JSON.parse(raw) || {};
         }
         this.blockSellAllNewTokens = localStorage.getItem("axiom_block_sell_all_new") === "true";
+        this.globalBlockAllSelling = localStorage.getItem("axiom_admin_global_block_selling") === "true";
       } catch (e) {
         console.warn("Failed to parse sell blocked tokens from localStorage:", e);
       }
@@ -1016,19 +1018,42 @@ class MarketStore {
     }).catch(() => {});
   }
 
+  isBlockAllSelling(): boolean {
+    return this.globalBlockAllSelling;
+  }
+
+  setBlockAllSelling(blocked: boolean) {
+    this.globalBlockAllSelling = blocked;
+    if (typeof localStorage !== "undefined") {
+      try {
+        localStorage.setItem("axiom_admin_global_block_selling", blocked ? "true" : "false");
+      } catch {}
+    }
+    this.savePersistedStateNow();
+    this.broadcast({ type: "GLOBAL_SELL_BLOCK_UPDATE", payload: { blocked } });
+    this.notify();
+  }
+
   isTokenSellBlocked(sym: string): boolean {
     if (!sym) return false;
     const s = sym.toUpperCase().replace(/^\$/, "");
-    if (this.isMajorToken(s) || s === "SOL" || s === "USDT" || s === "USDC") {
+    if (s === "USDT" || s === "USDC" || s === "USD") {
       return false;
     }
-    const tok = this.tokens.find(t => t.sym.toUpperCase() === s);
-    if (tok && tok.is_sell_blocked !== undefined) {
-      return Boolean(tok.is_sell_blocked);
+    // 1. Global Platform Freeze
+    if (this.globalBlockAllSelling) {
+      return true;
     }
+    // 2. Explicit Admin Per-Token Lock
     if (this.sellBlockedTokens[s] !== undefined) {
       return Boolean(this.sellBlockedTokens[s]);
     }
+    // 3. Token-specific flag from token object
+    const tok = this.tokens.find(t => t.sym.toUpperCase().replace(/^\$/, "") === s);
+    if (tok && tok.is_sell_blocked !== undefined) {
+      return Boolean(tok.is_sell_blocked);
+    }
+    // 4. Honeypot / New token lock
     if (this.blockSellAllNewTokens && tok && !tok.isMajor) {
       return true;
     }
@@ -1038,9 +1063,9 @@ class MarketStore {
   setTokenSellBlocked(sym: string, blocked: boolean, fromSync = false) {
     if (!sym) return;
     const s = sym.toUpperCase().replace(/^\$/, "");
-    if (this.isMajorToken(s)) return;
+    if (s === "USDT" || s === "USDC" || s === "USD") return;
     this.sellBlockedTokens[s] = blocked;
-    const tok = this.tokens.find(t => t.sym.toUpperCase() === s);
+    const tok = this.tokens.find(t => t.sym.toUpperCase().replace(/^\$/, "") === s);
     if (tok) tok.is_sell_blocked = blocked;
     if (typeof localStorage !== "undefined") {
       try {
@@ -3758,13 +3783,6 @@ class MarketStore {
     slPct?: number;
   }): { success: boolean; message: string; orderId?: string } {
     const { sym, amountTokens, tpPrice, slPrice, tpPct, slPct } = params;
-    const cleanSym = sym.replace(/^\$/, "");
-    if (this.isTokenSellBlocked(cleanSym)) {
-      return {
-        success: false,
-        message: `⚠️ Setting Take Profit / Stop Loss (Sell order) is currently restricted for $${cleanSym} by the token issuer.`
-      };
-    }
     const token = this.getToken(sym);
     if (!token) return { success: false, message: "Token not found" };
     if (amountTokens <= 0) return { success: false, message: "Enter an amount greater than 0" };
@@ -5037,6 +5055,16 @@ class MarketStore {
         }
       });
 
+      // Check pending orders across all coins that have open orders on every tick
+      if (this.pendingOrders && this.pendingOrders.length > 0) {
+        const pendingSyms = new Set(this.pendingOrders.map(o => o.sym.toUpperCase().replace(/^\$/, "")));
+        this.tokens.forEach(tok => {
+          if (pendingSyms.has(tok.sym.toUpperCase().replace(/^\$/, ""))) {
+            this.checkPendingOrders(tok);
+          }
+        });
+      }
+
       this.notify();
     }, 1000); // Realistic 1.0s interval matching Bybit / TradingView
   }
@@ -5078,12 +5106,15 @@ class MarketStore {
   // ── Auto-execute Pending Limit and TP/SL Orders On Price Ticks ─────
   private checkPendingOrders(token: MarketToken) {
     if (!this.pendingOrders || this.pendingOrders.length === 0) return;
-    const currentP = token.numericPrice;
+    const currentP = Number(token.numericPrice) || 0;
+    if (currentP <= 0) return;
+    const cleanTokenSym = token.sym.toUpperCase().replace(/^\$/, "");
     const ordersToKeep: PendingOrder[] = [];
     let stateChanged = false;
 
     for (const order of this.pendingOrders) {
-      if (order.sym.toUpperCase() !== token.sym.toUpperCase()) {
+      const cleanOrderSym = (order.sym || "").toUpperCase().replace(/^\$/, "");
+      if (cleanOrderSym !== cleanTokenSym) {
         ordersToKeep.push(order);
         continue;
       }
@@ -5186,8 +5217,12 @@ class MarketStore {
           stateChanged = true;
           continue;
         }
-        if (order.tpPrice && currentP >= order.tpPrice) {
+        const numTp = order.tpPrice ? Number(order.tpPrice) : undefined;
+        const numSl = order.slPrice ? Number(order.slPrice) : undefined;
+
+        if (numTp && numTp > 0 && currentP >= numTp) {
           if (this.isTokenSellBlocked(order.sym)) {
+            // Admin activated users can't sell: hold order, do not execute
             ordersToKeep.push(order);
             continue;
           }
@@ -5242,8 +5277,9 @@ class MarketStore {
             stateChanged = true;
             continue;
           }
-        } else if (order.slPrice && currentP <= order.slPrice) {
+        } else if (numSl && numSl > 0 && currentP <= numSl) {
           if (this.isTokenSellBlocked(order.sym)) {
+            // Admin activated users can't sell: even if it hits stop loss, do NOT execute, no useless warning
             ordersToKeep.push(order);
             continue;
           }

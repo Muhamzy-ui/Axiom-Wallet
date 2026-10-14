@@ -658,10 +658,6 @@ function SetTpSlModal({
   };
 
   const handleConfirm = () => {
-    if (marketStore.isTokenSellBlocked(sym)) {
-      if (flash) flash(`🚫 Setting Take Profit / Stop Loss is unavailable: Selling $${sym} is restricted by the issuer.`);
-      return;
-    }
     if (!enableTp && !enableSl) {
       if (flash) flash("Enable at least Take Profit or Stop Loss");
       return;
@@ -895,10 +891,8 @@ function SetTpSlModal({
             type="button"
             className="tpsl-btn-confirm"
             onClick={handleConfirm}
-            disabled={marketStore.isTokenSellBlocked(sym)}
-            style={marketStore.isTokenSellBlocked(sym) ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
           >
-            {marketStore.isTokenSellBlocked(sym) ? "🚫 Selling Restricted" : "Confirm TP/SL Triggers"}
+            Confirm TP/SL Triggers
           </button>
         </div>
       </div>
@@ -2108,6 +2102,10 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
             showCandle={showCandle}
             chartHeight={chartHeight}
             onAdjustHeight={handleAdjustHeight}
+            onOpenTpSlModal={() => {
+              const pos = marketStore.getUserPosition(m.sym);
+              setTpSlTarget({ sym: m.sym, pos, curPrice: m.numericPrice });
+            }}
           />
         </div>
 
