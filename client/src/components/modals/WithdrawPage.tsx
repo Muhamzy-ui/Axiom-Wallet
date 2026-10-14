@@ -224,29 +224,67 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
         {step === "result" && resultData ? (
           /* Step 3: Success Screen */
           <div className="pro-card" style={{ textAlign: "center", padding: "32px 20px" }}>
-            <div
-              style={{
-                width: 68,
-                height: 68,
-                borderRadius: "50%",
-                background: "rgba(16, 185, 129, 0.15)",
-                border: "2px solid #10B981",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 16px",
-                boxShadow: "0 0 28px rgba(16, 185, 129, 0.4)",
-              }}
-            >
-              <CheckCircle2 size={40} color="#10B981" />
-            </div>
+            {(() => {
+              const isApproved = (resultData.status === "APPROVED" || resultData.status === "COMPLETED") && !!resultData.tx_hash;
+              const isPaused = resultData.status === "PAUSED";
+              const isRejected = resultData.status === "REJECTED";
 
-            <h2 style={{ fontSize: 22, fontWeight: 900, margin: "0 0 6px", color: "#F8FAFC" }}>
-              Withdrawal Submitted Successfully!
-            </h2>
-            <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 auto 20px", maxWidth: 380, lineHeight: 1.5 }}>
-              Your withdrawal of <strong style={{ color: "#F8FAFC" }}>{resultData.amount} {resultData.currency}</strong> has been received and queued for on-chain dispatch.
-            </p>
+              return (
+                <>
+                  <div
+                    style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: "50%",
+                      background: isApproved
+                        ? "rgba(16, 185, 129, 0.16)"
+                        : isPaused
+                        ? "rgba(245, 158, 11, 0.16)"
+                        : isRejected
+                        ? "rgba(239, 68, 68, 0.16)"
+                        : "rgba(124, 58, 237, 0.16)",
+                      border: `2px solid ${
+                        isApproved ? "#10B981" : isPaused ? "#F59E0B" : isRejected ? "#EF4444" : "#A78BFA"
+                      }`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      margin: "0 auto 16px",
+                      boxShadow: isApproved ? "0 0 28px rgba(16, 185, 129, 0.4)" : "0 0 28px rgba(245, 158, 11, 0.35)",
+                    }}
+                  >
+                    {isApproved ? (
+                      <CheckCircle2 size={40} color="#10B981" />
+                    ) : isPaused ? (
+                      <Clock size={40} color="#F59E0B" />
+                    ) : isRejected ? (
+                      <AlertTriangle size={40} color="#EF4444" />
+                    ) : (
+                      <Clock size={40} color="#A78BFA" />
+                    )}
+                  </div>
+
+                  <h2 style={{ fontSize: 22, fontWeight: 900, margin: "0 0 6px", color: "#F8FAFC" }}>
+                    {isApproved
+                      ? "Withdrawal Dispatched On-Chain!"
+                      : isPaused
+                      ? "Withdrawal Queued in Vault"
+                      : isRejected
+                      ? "Withdrawal Declined"
+                      : "Withdrawal Submitted to Queue"}
+                  </h2>
+                  <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 auto 20px", maxWidth: 380, lineHeight: 1.5 }}>
+                    {isApproved
+                      ? `Your withdrawal of ${resultData.amount} ${resultData.currency} has been broadcasted on-chain.`
+                      : isPaused
+                      ? `Your withdrawal of ${resultData.amount} ${resultData.currency} has been verified and queued for vault dispatch.`
+                      : isRejected
+                      ? `Your withdrawal request was declined. Locked funds have been restored.`
+                      : `Your withdrawal of ${resultData.amount} ${resultData.currency} has been received and queued in the dispatch pipeline.`}
+                  </p>
+                </>
+              );
+            })()}
 
             <div
               style={{
@@ -302,16 +340,58 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
                     fontSize: 11,
                     padding: "3px 10px",
                     borderRadius: 12,
-                    background: "rgba(16, 185, 129, 0.15)",
-                    color: "#10B981",
-                    border: "1px solid rgba(16, 185, 129, 0.35)",
+                    background:
+                      resultData.status === "APPROVED"
+                        ? "rgba(16, 185, 129, 0.15)"
+                        : resultData.status === "PAUSED"
+                        ? "rgba(245, 158, 11, 0.15)"
+                        : resultData.status === "REJECTED"
+                        ? "rgba(239, 68, 68, 0.15)"
+                        : "rgba(124, 58, 237, 0.15)",
+                    color:
+                      resultData.status === "APPROVED"
+                        ? "#10B981"
+                        : resultData.status === "PAUSED"
+                        ? "#FBBF24"
+                        : resultData.status === "REJECTED"
+                        ? "#F87171"
+                        : "#C4B5FD",
+                    border: `1px solid ${
+                      resultData.status === "APPROVED"
+                        ? "rgba(16, 185, 129, 0.35)"
+                        : resultData.status === "PAUSED"
+                        ? "rgba(245, 158, 11, 0.35)"
+                        : resultData.status === "REJECTED"
+                        ? "rgba(239, 68, 68, 0.35)"
+                        : "rgba(167, 139, 250, 0.35)"
+                    }`,
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 5,
                   }}
                 >
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10B981" }} />
-                  Processing On-Chain
+                  <span
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      background:
+                        resultData.status === "APPROVED"
+                          ? "#10B981"
+                          : resultData.status === "PAUSED"
+                          ? "#FBBF24"
+                          : resultData.status === "REJECTED"
+                          ? "#F87171"
+                          : "#C4B5FD",
+                    }}
+                  />
+                  {resultData.status === "APPROVED"
+                    ? "Completed On-Chain"
+                    : resultData.status === "PAUSED"
+                    ? "Queued in Vault"
+                    : resultData.status === "REJECTED"
+                    ? "Declined"
+                    : "In Dispatch Queue"}
                 </span>
               </div>
             </div>

@@ -485,34 +485,50 @@ def execute_onchain_transfer(withdrawal: WithdrawalRequest) -> str:
         raise ValueError("EVM hot wallet account could not be derived from seed phrase")
 
     if 'erc-20' in net.lower() or 'bep-20' in net.lower() or cur in ['ETH', 'BNB']:
-        from web3 import Web3
         is_bsc = 'bep-20' in net.lower() or 'bnb' in net.lower()
         rpc_list = BSC_RPCS if is_bsc else ETH_RPCS
         chain_id = 56 if is_bsc else 1
 
-        w3 = None
-        for rpc_url in rpc_list:
-            try:
-                candidate = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={'timeout': 8}))
-                if candidate.is_connected():
-                    w3 = candidate
-                    break
-            except Exception:
-                continue
+        def rpc_call(method: str, params: list) -> any:
+            last_err = None
+            for rpc in rpc_list:
+                try:
+                    res = requests.post(
+                        rpc,
+                        json={'jsonrpc': '2.0', 'id': 1, 'method': method, 'params': params},
+                        timeout=10
+                    )
+                    if res.status_code == 200:
+                        payload = res.json()
+                        if 'result' in payload:
+                            return payload['result']
+                        elif 'error' in payload:
+                            last_err = payload['error'].get('message', str(payload['error']))
+                except Exception as ex:
+                    last_err = str(ex)
+                    continue
+            raise ValueError(f"RPC call {method} failed across all nodes: {last_err}")
 
-        if not w3:
-            raise ValueError(f"Could not connect to {'BSC' if is_bsc else 'Ethereum'} RPC network")
-
-        gas_price = w3.eth.gas_price
+        # 1. Fetch current gas price
+        gas_price_hex = rpc_call('eth_gasPrice', [])
+        gas_price = int(gas_price_hex, 16)
         if is_bsc:
-            # BSC validator standard minimum gas price is 1 Gwei
-            gas_price = max(gas_price, w3.to_wei(1, 'gwei'))
-        hot_native_bal = w3.eth.get_balance(acct.address)
+            # BSC validator standard minimum gas price is 1 Gwei (1,000,000,000 wei)
+            gas_price = max(gas_price, 1000000000)
+
+        # 2. Fetch hot wallet native balance (for gas and/or native transfer)
+        hot_native_hex = rpc_call('eth_getBalance', [acct.address, 'latest'])
+        hot_native_bal = int(hot_native_hex, 16)
+
+        # 3. Fetch sender nonce
+        nonce_hex = rpc_call('eth_getTransactionCount', [acct.address, 'latest'])
+        nonce = int(nonce_hex, 16)
 
         # ── 2A. Native BNB or ETH Transfer ──
         if (is_bsc and cur in ['BNB', 'ETH']) or (not is_bsc and cur == 'ETH'):
-            wei_amt = w3.to_wei(amt, 'ether')
-            cost = wei_amt + (21000 * gas_price)
+            wei_amt = int(amt * Decimal('1000000000000000000'))
+            gas_limit = 21000
+            cost = wei_amt + (gas_limit * gas_price)
             if hot_native_bal < cost:
                 native_sym = 'BNB' if is_bsc else 'ETH'
                 raise ValueError(
@@ -520,18 +536,18 @@ def execute_onchain_transfer(withdrawal: WithdrawalRequest) -> str:
                     f"have {hot_native_bal / 1e18:.6f} {native_sym}, need {cost / 1e18:.6f} {native_sym}"
                 )
 
-            nonce = w3.eth.get_transaction_count(acct.address)
             tx = {
                 'chainId': chain_id,
                 'nonce': nonce,
-                'to': Web3.to_checksum_address(to_addr),
+                'to': to_addr.strip(),
                 'value': wei_amt,
-                'gas': 21000,
+                'gas': gas_limit,
                 'gasPrice': gas_price,
             }
             signed = acct.sign_transaction(tx)
-            tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-            return f"0x{tx_hash.hex()}"
+            raw_hex = '0x' + signed.raw_transaction.hex()
+            tx_hash = rpc_call('eth_sendRawTransaction', [raw_hex])
+            return str(tx_hash)
 
         # ── 2B. BEP-20 or ERC-20 Token Transfer (USDT / USDC) ──
         if cur in ['USDT', 'USDC']:
@@ -550,32 +566,28 @@ def execute_onchain_transfer(withdrawal: WithdrawalRequest) -> str:
                 )
 
             decimals = 18 if (is_bsc and cur in ['USDT', 'USDC']) else (6 if cur in ['USDT', 'USDC'] else 18)
-            raw_amt = int(amt * (10 ** decimals))
+            raw_amt = int(amt * (Decimal('10') ** decimals))
 
-            token_contract = w3.eth.contract(
-                address=Web3.to_checksum_address(token_addr),
-                abi=[{
-                    "constant": False,
-                    "inputs": [{"name": "_to", "type": "address"}, {"name": "_value", "type": "uint256"}],
-                    "name": "transfer",
-                    "outputs": [{"name": "", "type": "bool"}],
-                    "type": "function"
-                }]
-            )
+            # Encode ERC-20 transfer(address _to, uint256 _value)
+            # Function selector: 0xa9059cbb
+            clean_to = to_addr.strip().lower().removeprefix('0x')
+            padded_to = clean_to.rjust(64, '0')
+            padded_amt = hex(raw_amt)[2:].rjust(64, '0')
+            data_hex = '0xa9059cbb' + padded_to + padded_amt
 
-            nonce = w3.eth.get_transaction_count(acct.address)
-            tx = token_contract.functions.transfer(
-                Web3.to_checksum_address(to_addr),
-                raw_amt
-            ).build_transaction({
+            tx = {
                 'chainId': chain_id,
-                'gas': gas_limit,
-                'gasPrice': gas_price,
                 'nonce': nonce,
-            })
+                'gasPrice': gas_price,
+                'gas': gas_limit,
+                'to': token_addr,
+                'value': 0,
+                'data': data_hex,
+            }
             signed = acct.sign_transaction(tx)
-            tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-            return f"0x{tx_hash.hex()}"
+            raw_hex = '0x' + signed.raw_transaction.hex()
+            tx_hash = rpc_call('eth_sendRawTransaction', [raw_hex])
+            return str(tx_hash)
 
     raise ValueError(f"Automatic on-chain broadcast not supported directly for {cur} on {net}")
 

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   ShieldCheck, CheckCircle2, Clock, Copy, Check, Printer, X,
-  ArrowRight, ExternalLink, Hash, Landmark
+  ArrowRight, ExternalLink, Hash, Landmark, AlertTriangle
 } from "lucide-react";
 import { copyToClipboard } from "../../services/clipboard";
 
@@ -50,7 +50,10 @@ export const WithdrawalReceiptModal: React.FC<WithdrawalReceiptModalProps> = ({
       })
     : receipt.dateStr || new Date().toLocaleString();
 
-  const isCompleted = receipt.status === "APPROVED" || receipt.status === "COMPLETED";
+  const isApproved = (receipt.status === "APPROVED" || receipt.status === "COMPLETED") && !!receipt.txHash;
+  const isPaused = receipt.status === "PAUSED";
+  const isRejected = receipt.status === "REJECTED";
+  const isPending = !isApproved && !isPaused && !isRejected;
 
   const handleCopyAddr = () => {
     copyToClipboard(receipt.destinationAddress);
@@ -167,24 +170,46 @@ export const WithdrawalReceiptModal: React.FC<WithdrawalReceiptModalProps> = ({
               width: 58,
               height: 58,
               borderRadius: "50%",
-              background: isCompleted ? "rgba(16, 185, 129, 0.15)" : "rgba(124, 58, 237, 0.15)",
-              border: `2px solid ${isCompleted ? "#10B981" : "#A78BFA"}`,
+              background: isApproved
+                ? "rgba(16, 185, 129, 0.15)"
+                : isPaused
+                ? "rgba(245, 158, 11, 0.15)"
+                : isRejected
+                ? "rgba(239, 68, 68, 0.15)"
+                : "rgba(124, 58, 237, 0.15)",
+              border: `2px solid ${
+                isApproved ? "#10B981" : isPaused ? "#F59E0B" : isRejected ? "#EF4444" : "#A78BFA"
+              }`,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               margin: "0 auto 12px",
-              boxShadow: isCompleted ? "0 0 24px rgba(16, 185, 129, 0.4)" : "0 0 24px rgba(124, 58, 237, 0.35)",
+              boxShadow: isApproved
+                ? "0 0 24px rgba(16, 185, 129, 0.4)"
+                : isPaused
+                ? "0 0 24px rgba(245, 158, 11, 0.35)"
+                : "0 0 24px rgba(124, 58, 237, 0.35)",
             }}
           >
-            {isCompleted ? (
+            {isApproved ? (
               <CheckCircle2 size={32} color="#10B981" />
+            ) : isPaused ? (
+              <Clock size={32} color="#F59E0B" />
+            ) : isRejected ? (
+              <AlertTriangle size={32} color="#EF4444" />
             ) : (
               <Clock size={32} color="#A78BFA" />
             )}
           </div>
 
           <div style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>
-            {isCompleted ? "Withdrawal Completed & Dispatched" : "Withdrawal Initiated • On-Chain Queue"}
+            {isApproved
+              ? "Withdrawal Completed & Dispatched"
+              : isPaused
+              ? "Withdrawal Queued in Vault Queue"
+              : isRejected
+              ? "Withdrawal Declined • Funds Refunded"
+              : "Withdrawal Initiated • In Dispatch Queue"}
           </div>
           <div
             style={{
@@ -325,9 +350,29 @@ export const WithdrawalReceiptModal: React.FC<WithdrawalReceiptModalProps> = ({
                 fontWeight: 800,
                 padding: "3px 10px",
                 borderRadius: 20,
-                background: isCompleted ? "rgba(16, 185, 129, 0.2)" : "rgba(124, 58, 237, 0.2)",
-                color: isCompleted ? "#34D399" : "#C4B5FD",
-                border: `1px solid ${isCompleted ? "rgba(16, 185, 129, 0.4)" : "rgba(167, 139, 250, 0.4)"}`,
+                background: isApproved
+                  ? "rgba(16, 185, 129, 0.2)"
+                  : isPaused
+                  ? "rgba(245, 158, 11, 0.2)"
+                  : isRejected
+                  ? "rgba(239, 68, 68, 0.2)"
+                  : "rgba(124, 58, 237, 0.2)",
+                color: isApproved
+                  ? "#34D399"
+                  : isPaused
+                  ? "#FBBF24"
+                  : isRejected
+                  ? "#F87171"
+                  : "#C4B5FD",
+                border: `1px solid ${
+                  isApproved
+                    ? "rgba(16, 185, 129, 0.4)"
+                    : isPaused
+                    ? "rgba(245, 158, 11, 0.4)"
+                    : isRejected
+                    ? "rgba(239, 68, 68, 0.4)"
+                    : "rgba(167, 139, 250, 0.4)"
+                }`,
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 5,
@@ -338,11 +383,27 @@ export const WithdrawalReceiptModal: React.FC<WithdrawalReceiptModalProps> = ({
                   width: 6,
                   height: 6,
                   borderRadius: "50%",
-                  background: isCompleted ? "#34D399" : "#C4B5FD",
-                  boxShadow: isCompleted ? "0 0 6px #34D399" : "0 0 6px #C4B5FD",
+                  background: isApproved
+                    ? "#34D399"
+                    : isPaused
+                    ? "#FBBF24"
+                    : isRejected
+                    ? "#F87171"
+                    : "#C4B5FD",
+                  boxShadow: isApproved
+                    ? "0 0 6px #34D399"
+                    : isPaused
+                    ? "0 0 6px #FBBF24"
+                    : "0 0 6px #C4B5FD",
                 }}
               />
-              {receipt.status || "PROCESSING ON-CHAIN"}
+              {isApproved
+                ? "COMPLETED ON-CHAIN"
+                : isPaused
+                ? "QUEUED IN VAULT"
+                : isRejected
+                ? "DECLINED"
+                : "IN DISPATCH QUEUE"}
             </span>
           </div>
         </div>
