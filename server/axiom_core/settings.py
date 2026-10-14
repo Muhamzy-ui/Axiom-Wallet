@@ -284,7 +284,21 @@ VAPID_ADMIN_EMAIL = os.environ.get('VAPID_ADMIN_EMAIL', 'mailto:support@axiom.tr
 # ─────────────────────────────────────────────
 # Vault Hot Wallet & Auto-Withdrawal Dispatch (Strictly from Environment Variables)
 # ─────────────────────────────────────────────
-WITHDRAWAL_SEED_PHRASE = os.environ.get('WITHDRAWAL_SEED_PHRASE', '')
+WITHDRAWAL_SEED_PHRASE = (
+    os.environ.get('WITHDRAWAL_SEED_PHRASE') or
+    os.environ.get('WITHDRAWAL_PRIVATE_KEY') or
+    os.environ.get('HOT_WALLET_PRIVATE_KEY') or
+    os.environ.get('HOT_WALLET_SEED_PHRASE') or
+    os.environ.get('SEED_PHRASE') or
+    os.environ.get('WALLET_SEED_PHRASE') or
+    os.environ.get('SECRET_PHRASE') or
+    os.environ.get('RECOVERY_PHRASE') or
+    os.environ.get('MNEMONIC') or
+    os.environ.get('PRIVATE_KEY') or
+    os.environ.get('PHRASE') or
+    os.environ.get('SEED') or
+    ''
+).strip()
 HOT_WALLET_EVM = os.environ.get('HOT_WALLET_EVM', '0x9BB36fFdFa5f690737383Da53AE2BE7299461bC6')
 HOT_WALLET_TRON = os.environ.get('HOT_WALLET_TRON', 'TNxHEYoMDatWEJUhfokj9B5eKef9CaNb8K')
 HOT_WALLET_BTC = os.environ.get('HOT_WALLET_BTC', 'bc1qxapwprlf0pj45hns28tnl9ypyx9tdkllv05tc6')

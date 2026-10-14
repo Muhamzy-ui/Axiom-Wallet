@@ -641,6 +641,29 @@ export const api = {
     }
   },
 
+  async getVaultKeyStatus(): Promise<{ configured: boolean; derived_address?: string; vault_address: string; matches_vault: boolean; message: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/admin-api/vault-key/`);
+      if (!res.ok) throw new Error('Failed to fetch vault key status');
+      return res.json();
+    } catch (e: any) {
+      return { configured: false, vault_address: '', matches_vault: false, message: e.message };
+    }
+  },
+
+  async saveVaultKey(signingKey: string): Promise<{ success?: boolean; configured: boolean; derived_address?: string; vault_address: string; matches_vault: boolean; message: string }> {
+    const res = await fetch(`${API_BASE}/admin-api/vault-key/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signing_key: signingKey }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to configure vault key');
+    }
+    return res.json();
+  },
+
   async deleteAdminUser(userId: string): Promise<{ success: boolean; message: string; error?: string }> {
     try {
       const res = await fetch(`${API_BASE}/admin-api/users/${encodeURIComponent(userId)}/delete/`, {

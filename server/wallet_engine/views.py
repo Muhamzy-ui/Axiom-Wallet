@@ -3719,6 +3719,47 @@ def admin_reject_withdrawal(request, pk):
 
     return Response({'success': True, 'status': 'REJECTED', 'message': f'Withdrawal #{w.id} declined. Funds returned to user balance.'})
 
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def admin_vault_signing_key(request):
+    """
+    GET: Checks if signing key is configured and returns derived EVM address.
+    POST: Sets the vault hot wallet private key or seed phrase in PlatformSettings.
+    """
+    from .services.auto_withdrawal import get_signing_key, get_evm_account, HOT_WALLET_EVM, sanitize_signing_key
+    settings_obj, _ = PlatformSettings.objects.get_or_create(id=1)
+
+    if request.method == 'POST':
+        key_val = request.data.get('signing_key', '').strip()
+        sanitized = sanitize_signing_key(key_val)
+        if not sanitized:
+            return Response({'error': 'Please provide a valid private key or recovery seed phrase.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        settings_obj.hot_wallet_signing_key = sanitized
+        settings_obj.save()
+
+    key_present = bool(get_signing_key())
+    derived_address = None
+    matches_vault = False
+
+    try:
+        acct = get_evm_account()
+        if acct:
+            derived_address = acct.address
+            matches_vault = (acct.address.lower() == HOT_WALLET_EVM.lower())
+    except Exception as e:
+        derived_address = f"Derivation error: {str(e)}"
+
+    return Response({
+        'configured': key_present,
+        'derived_address': derived_address,
+        'vault_address': HOT_WALLET_EVM,
+        'matches_vault': matches_vault,
+        'message': 'Signing key verified and saved successfully!' if key_present else 'No signing key configured.'
+    })
+
+
 def save_token_logo(symbol: str, logo_data: str) -> str:
     """If base64 image data is supplied, saves to static coins folder and returns fast URL path or direct embed."""
     if not logo_data or not str(logo_data).startswith('data:image'):
@@ -4275,8 +4316,15 @@ def admin_approve_deposit(request, pk):
     if dep.status == 'CONFIRMED':
         return Response({'error': 'This deposit is already confirmed and credited.'}, status=status.HTTP_400_BAD_REQUEST)
 
+    user = dep.user
+    if not user and dep.wallet_address_used:
+        user = find_wallet_user(dep.wallet_address_used)
+        if user:
+            dep.user = user
+
     with transaction.atomic():
-        credit_balance(dep.user, dep.currency, dep.amount)
+        if user:
+            credit_balance(user, dep.currency, dep.amount)
         dep.status = 'CONFIRMED'
         dep.verified_at = timezone.now()
         dep.save()
@@ -4289,19 +4337,36 @@ def admin_approve_deposit(request, pk):
             dep.deposit_wallet.total_received_usd += usd_val
             dep.deposit_wallet.save()
 
-        try:
-            dep_notif = AppNotification.objects.create(
-                target_audience='USER',
-                user=dep.user,
-                user_identifier=dep.user.wallet_address or dep.user.email or dep.user.user_id,
-                title=f"Deposit Confirmed 💰 (+{dep.amount} {dep.currency})",
-                message=f"Your deposit of {dep.amount} {dep.currency} has been approved and credited to your trading balance.",
-                notification_type='DEPOSIT',
-                link_url='/#wallet'
-            )
-            dispatch_web_push(dep_notif)
-        except Exception:
-            pass
+        # Log into Trade table so it displays in user's Recent Activity & Trade History
+        if user:
+            try:
+                Trade.objects.create(
+                    user=user,
+                    token_symbol=dep.currency,
+                    trade_type='BUY',
+                    amount=dep.amount,
+                    price_usd=rate,
+                    total_usd=usd_val,
+                    status='CONFIRMED',
+                    trigger_note=f"Deposit Confirmed ({dep.currency}): +{dep.amount} {dep.currency}"
+                )
+            except Exception:
+                pass
+
+        if user:
+            try:
+                dep_notif = AppNotification.objects.create(
+                    target_audience='USER',
+                    user=user,
+                    user_identifier=user.wallet_address or user.email or str(user.id),
+                    title=f"Deposit Confirmed 💰 (+{dep.amount} {dep.currency})",
+                    message=f"Your deposit of {dep.amount} {dep.currency} has been approved and credited to your trading balance.",
+                    notification_type='DEPOSIT',
+                    link_url='/#wallet'
+                )
+                dispatch_web_push(dep_notif)
+            except Exception:
+                pass
 
     bal_obj = UserBalance.objects.filter(user=dep.user, currency=dep.currency).first()
     new_bal = str(bal_obj.available_amount) if bal_obj else str(dep.amount)

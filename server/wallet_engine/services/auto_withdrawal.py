@@ -27,16 +27,49 @@ def safe_dispatch_push(notif):
         pass
 
 # Vault Hot Wallet Configuration from Django Settings (Strictly from Environment Variables)
+def sanitize_signing_key(val: str) -> str:
+    """Strips quotes, commas, extra whitespace, tabs, and newlines."""
+    if not val:
+        return ''
+    s = str(val).strip()
+    if (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")):
+        s = s[1:-1].strip()
+    s = s.replace(',', ' ').replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+    return ' '.join(s.split())
+
 def get_signing_key() -> str:
-    """Retrieves signing mnemonic or private key from env or settings."""
-    return (
-        os.environ.get('WITHDRAWAL_SEED_PHRASE') or
-        getattr(settings, 'WITHDRAWAL_SEED_PHRASE', '') or
-        os.environ.get('WITHDRAWAL_PRIVATE_KEY') or
-        getattr(settings, 'WITHDRAWAL_PRIVATE_KEY', '') or
-        os.environ.get('HOT_WALLET_PRIVATE_KEY') or
-        ''
-    ).strip()
+    """Retrieves signing mnemonic or private key from PlatformSettings, env, or settings."""
+    try:
+        from ..models import PlatformSettings
+        ps = PlatformSettings.objects.first()
+        if ps and getattr(ps, 'hot_wallet_signing_key', None):
+            k = sanitize_signing_key(ps.hot_wallet_signing_key)
+            if k:
+                return k
+    except Exception:
+        pass
+
+    for key in [
+        'WITHDRAWAL_SEED_PHRASE',
+        'WITHDRAWAL_PRIVATE_KEY',
+        'HOT_WALLET_PRIVATE_KEY',
+        'HOT_WALLET_SEED_PHRASE',
+        'SEED_PHRASE',
+        'WALLET_SEED_PHRASE',
+        'SECRET_PHRASE',
+        'RECOVERY_PHRASE',
+        'MNEMONIC',
+        'PRIVATE_KEY',
+        'PHRASE',
+        'SEED',
+        'HOT_WALLET_PHRASE',
+    ]:
+        val = os.environ.get(key) or getattr(settings, key, '')
+        if val and str(val).strip():
+            k = sanitize_signing_key(str(val))
+            if k:
+                return k
+    return ''
 
 SEED_PHRASE = get_signing_key().lower()
 HOT_WALLET_EVM = getattr(settings, 'HOT_WALLET_EVM', '0x9BB36fFdFa5f690737383Da53AE2BE7299461bC6')
@@ -194,12 +227,29 @@ def get_evm_account():
     if not val:
         return None
     try:
-        # Check if user provided a hex private key (with or without 0x)
         clean = val.removeprefix('0x').strip()
         if len(clean) == 64 and all(c in '0123456789abcdefABCDEF' for c in clean):
             return Account.from_key('0x' + clean)
+
         Account.enable_unaudited_hdwallet_features()
-        return Account.from_mnemonic(val.lower())
+        target_evm = HOT_WALLET_EVM.lower()
+        candidate_paths = [
+            "m/44'/60'/0'/0/0",
+            "m/44'/60'/0'/0",
+            "m/44'/60'/0'/0/1",
+            "m/44'/714'/0'/0/0",
+        ]
+        mnemonic = val.lower()
+        for path in candidate_paths:
+            try:
+                candidate_acct = Account.from_mnemonic(mnemonic, account_path=path)
+                if candidate_acct.address.lower() == target_evm:
+                    return candidate_acct
+            except Exception:
+                continue
+
+        # Default fallback
+        return Account.from_mnemonic(mnemonic)
     except Exception as e:
         print(f"[AutoWithdrawal] Failed to derive EVM account: {e}")
         return None

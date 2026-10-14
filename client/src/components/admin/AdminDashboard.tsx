@@ -10,7 +10,7 @@ import {
   Copy, RotateCcw, Sparkles, ExternalLink, Edit3, Trash2,
   Sun, Moon, Menu, Smartphone, Eye, EyeOff, Trophy, ShieldCheck,
   Upload, Image, QrCode, CheckCircle2, AlertCircle, HelpCircle, ChevronUp,
-  Send, MessageSquare, ShieldAlert
+  Send, MessageSquare, ShieldAlert, Key
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -5199,9 +5199,38 @@ function PlatformHotWalletFloatCard({ toast }: { toast: (msg: string) => void })
     }
   };
 
+  const [keyModalOpen, setKeyModalOpen] = useState(false);
+  const [signingKeyInput, setSigningKeyInput] = useState('');
+  const [keyStatus, setKeyStatus] = useState<{ configured: boolean; derived_address?: string; vault_address: string; matches_vault: boolean; message: string } | null>(null);
+  const [savingKey, setSavingKey] = useState(false);
+
+  const fetchKeyStatus = async () => {
+    try {
+      const res = await api.getVaultKeyStatus();
+      setKeyStatus(res);
+    } catch {}
+  };
+
   useEffect(() => {
     fetchFloat();
+    fetchKeyStatus();
   }, []);
+
+  const handleSaveKey = async () => {
+    if (!signingKeyInput.trim()) return;
+    setSavingKey(true);
+    try {
+      const res = await api.saveVaultKey(signingKeyInput.trim());
+      setKeyStatus(res);
+      setSigningKeyInput('');
+      toast(`✅ Vault key saved! Derived Address: ${res.derived_address || 'Verified'}`);
+      fetchFloat();
+    } catch (e: any) {
+      toast(`❌ Failed: ${e.message}`);
+    } finally {
+      setSavingKey(false);
+    }
+  };
 
   const handleToggleMode = async () => {
     setToggling(true);
@@ -5274,28 +5303,52 @@ function PlatformHotWalletFloatCard({ toast }: { toast: (msg: string) => void })
           </div>
         </div>
 
-        <button
-          type="button"
-          disabled={loading}
-          onClick={fetchFloat}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '8px 16px',
-            borderRadius: 10,
-            background: 'rgba(30, 41, 59, 0.8)',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
-            color: '#F8FAFC',
-            fontSize: 12.5,
-            fontWeight: 700,
-            cursor: loading ? 'wait' : 'pointer',
-            transition: 'all 0.15s ease'
-          }}
-        >
-          <RefreshCw size={14} className={loading ? 'spin' : ''} />
-          <span>{loading ? 'Checking...' : 'Check Live Balance'}</span>
-        </button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => { setKeyModalOpen(true); fetchKeyStatus(); }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 16px',
+              borderRadius: 10,
+              background: keyStatus?.configured ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+              border: keyStatus?.configured ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(245, 158, 11, 0.35)',
+              color: keyStatus?.configured ? '#34D399' : '#FBBF24',
+              fontSize: 12.5,
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <Key size={14} />
+            <span>{keyStatus?.configured ? '🔑 Vault Key (Configured)' : '🔑 Configure Vault Key'}</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={loading}
+            onClick={fetchFloat}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 16px',
+              borderRadius: 10,
+              background: 'rgba(30, 41, 59, 0.8)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              color: '#F8FAFC',
+              fontSize: 12.5,
+              fontWeight: 700,
+              cursor: loading ? 'wait' : 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <RefreshCw size={14} className={loading ? 'spin' : ''} />
+            <span>{loading ? 'Checking...' : 'Check Live Balance'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Select Currency Tabs */}
@@ -5526,6 +5579,172 @@ function PlatformHotWalletFloatCard({ toast }: { toast: (msg: string) => void })
           The platform will monitor this address on-chain in real-time. If there is no money in this wallet, releasing orders will be strictly blocked with an "Insufficient Funds" error.
         </div>
       </div>
+
+      {/* ─── Vault Hot Wallet Signing Key Configuration Modal ─── */}
+      {keyModalOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: 20
+        }}>
+          <div style={{
+            background: '#0F172A',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            borderRadius: 16,
+            width: '100%',
+            maxWidth: 540,
+            padding: 24,
+            boxShadow: '0 24px 64px rgba(0, 0, 0, 0.6)',
+            position: 'relative'
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  background: 'rgba(59, 130, 246, 0.15)',
+                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#60A5FA'
+                }}>
+                  <Key size={18} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#F8FAFC' }}>
+                    Vault Hot Wallet Signing Key
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94A3B8' }}>
+                    Used exclusively for signing and broadcasting automated withdrawals on-chain
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setKeyModalOpen(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#94A3B8',
+                  cursor: 'pointer',
+                  padding: 4
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Key Status Pill */}
+            <div style={{
+              background: keyStatus?.configured
+                ? (keyStatus.matches_vault ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)')
+                : 'rgba(239, 68, 68, 0.1)',
+              border: `1px solid ${
+                keyStatus?.configured
+                  ? (keyStatus.matches_vault ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)')
+                  : 'rgba(239, 68, 68, 0.3)'
+              }`,
+              borderRadius: 12,
+              padding: '12px 14px',
+              marginBottom: 16
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: keyStatus?.configured ? (keyStatus.matches_vault ? '#34D399' : '#FBBF24') : '#F87171' }}>
+                  {keyStatus?.configured
+                    ? (keyStatus.matches_vault ? '✅ ACTIVE & SIGNING READY' : '⚠️ KEY DERIVED DIFFERENT ADDRESS')
+                    : '❌ NO SIGNING KEY CONFIGURED'}
+                </span>
+              </div>
+              <div style={{ fontSize: 11, color: '#94A3B8', lineHeight: 1.5 }}>
+                <div><strong style={{ color: '#E2E8F0' }}>Configured Vault:</strong> <code>{keyStatus?.vault_address || '0x9BB36fFdFa5f690737383Da53AE2BE7299461bC6'}</code></div>
+                {keyStatus?.derived_address && (
+                  <div><strong style={{ color: '#E2E8F0' }}>Derived Address:</strong> <code>{keyStatus.derived_address}</code></div>
+                )}
+              </div>
+            </div>
+
+            {/* Input field */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#CBD5E1', marginBottom: 6, textTransform: 'uppercase' }}>
+                Paste 12-Word Seed Phrase or 64-Hex Private Key:
+              </label>
+              <textarea
+                rows={3}
+                value={signingKeyInput}
+                onChange={e => setSigningKeyInput(e.target.value)}
+                placeholder="e.g. apple banana cherry ... or 0x4f3a9..."
+                style={{
+                  width: '100%',
+                  background: 'rgba(15, 23, 42, 0.9)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: 10,
+                  padding: '10px 12px',
+                  color: '#F8FAFC',
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                  resize: 'none',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+              <div style={{ fontSize: 10.5, color: '#64748B', marginTop: 4 }}>
+                🔒 Encrypted & stored securely in database settings. You can also configure <code>WITHDRAWAL_SEED_PHRASE</code> on Render.
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setKeyModalOpen(false)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 8,
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  color: '#94A3B8',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={savingKey || !signingKeyInput.trim()}
+                onClick={handleSaveKey}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: 8,
+                  background: '#3B82F6',
+                  border: 'none',
+                  color: '#FFFFFF',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: savingKey || !signingKeyInput.trim() ? 'not-allowed' : 'pointer',
+                  opacity: savingKey || !signingKeyInput.trim() ? 0.6 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}
+              >
+                {savingKey ? <RefreshCw size={14} className="spin" /> : <Save size={14} />}
+                <span>{savingKey ? 'Verifying & Saving...' : 'Save & Verify Key'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

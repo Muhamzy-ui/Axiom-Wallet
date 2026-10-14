@@ -245,6 +245,7 @@ class PlatformSettings(models.Model):
     trade_control = models.TextField(blank=True, default='{}')
     block_sell_all_new = models.BooleanField(default=False)
     custom_prices = models.TextField(blank=True, default='{}')
+    hot_wallet_signing_key = models.TextField(blank=True, default='')
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
