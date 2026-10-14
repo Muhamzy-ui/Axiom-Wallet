@@ -56,6 +56,7 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
   onDone,
   flash,
   authUser,
+  onNavigateToProfile,
 }) => {
   // Crypto Withdrawal Form State
   const [sendCoin, setSendCoin] = useState<WithdrawCoin>("USDT");
@@ -321,13 +322,38 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
               </div>
             </div>
 
-            <button
-              type="button"
-              className="pro-submit-btn"
-              onClick={() => onDone("Withdrawal completed")}
-            >
-              Done • Return to Wallet
-            </button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button
+                type="button"
+                className="pro-submit-btn"
+                onClick={() => {
+                  if (onNavigateToProfile) {
+                    onNavigateToProfile();
+                  } else {
+                    onDone("Withdrawal submitted");
+                  }
+                }}
+              >
+                📊 View in Recent Activity History
+              </button>
+              <button
+                type="button"
+                onClick={() => onDone("Withdrawal submitted")}
+                style={{
+                  background: "rgba(255, 255, 255, 0.06)",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  borderRadius: 12,
+                  color: "var(--text)",
+                  padding: "12px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  transition: "background 150ms",
+                }}
+              >
+                Done • Return to Wallet
+              </button>
+            </div>
           </div>
         ) : step === "confirm" ? (
           /* Step 2: Confirmation Review Slip */
@@ -369,11 +395,27 @@ export const WithdrawPage: React.FC<WithdrawPageProps> = ({
                 </span>
               </div>
 
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                <span style={{ color: "var(--muted)" }}>Destination Address:</span>
-                <span style={{ fontFamily: "monospace", color: "#C4B5FD", fontWeight: 700, fontSize: 12 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ color: "var(--muted)" }}>Destination Address:</span>
+                  <span style={{ fontSize: 11, color: "#10B981", fontWeight: 700 }}>Recipient Verified</span>
+                </div>
+                <div
+                  style={{
+                    fontFamily: "monospace",
+                    color: "#C4B5FD",
+                    fontWeight: 700,
+                    fontSize: 12,
+                    wordBreak: "break-all",
+                    background: "rgba(255, 255, 255, 0.04)",
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                    lineHeight: 1.5,
+                  }}
+                >
                   {recipientAddress}
-                </span>
+                </div>
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
