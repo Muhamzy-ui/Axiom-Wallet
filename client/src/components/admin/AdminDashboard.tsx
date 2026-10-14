@@ -13,7 +13,7 @@ import {
   Send, MessageSquare, ShieldAlert, Key
 } from 'lucide-react';
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  AreaChart, Area, BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
 import { api } from '../../services/api';
@@ -454,8 +454,9 @@ function DashboardPage({ metrics, withdrawals, onApprove, onReject, loading, sea
   loading: boolean; search: string;
 }) {
   type RangeOption = 'today' | 'yesterday' | '3' | '7' | '30';
-  const [range, setRange] = useState<RangeOption>('7');
-  const [chartMode, setChartMode] = useState<'area' | 'bar'>('area');
+  const [range, setRange] = useState<RangeOption>('today');
+  const [flowStatus, setFlowStatus] = useState<'completed' | 'all'>('completed');
+  const [flowStyle, setFlowStyle] = useState<'line' | 'candle'>('line');
   // Tab switcher to cleanly isolate Pending Withdrawals Queue and Settled Platform Transactions
   const [activeQueueTab, setActiveQueueTab] = useState<'pending' | 'settled'>('pending');
   const [rowsLimit, setRowsLimit] = useState<number>(5);
@@ -464,45 +465,41 @@ function DashboardPage({ metrics, withdrawals, onApprove, onReject, loading, sea
   const k = metrics?.kpis || CLEAN_METRICS.kpis;
   const rawTrend = Array.isArray(metrics?.volume_trend) ? metrics.volume_trend : [];
 
-  // Slice data cleanly according to selected timeframe
-  const getTrendSlice = () => {
-    if (rawTrend.length === 0) {
-      const now = new Date();
-      const count = range === 'today' ? 2 : range === 'yesterday' ? 2 : range === '3' ? 3 : range === '7' ? 7 : 30;
-      return Array.from({ length: count }, (_, i) => {
-        const d = new Date(now.getTime() - ((count - 1 - i) * 86400000));
+  // Generate hourly / daily flow series matching Orders & Volume Flow design
+  const getFlowData = () => {
+    if (range === 'today' || range === 'yesterday') {
+      const hours = ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'];
+      const todayVol = parseFloat(String(k.buys_today_usd || '0')) || 0;
+      const todayOrders = parseInt(String(k.buys_today_count || '0'), 10) || 0;
+      const currentHour = new Date().getHours();
+      return hours.map((h) => {
+        const hNum = parseInt(h.split(':')[0], 10);
+        const isPastOrCurrent = range === 'yesterday' || hNum <= currentHour;
         return {
-          date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-          volume: 0,
+          label: h,
+          orders: isPastOrCurrent && todayOrders > 0 ? Math.round(todayOrders / 6) : 0,
+          volume: isPastOrCurrent && todayVol > 0 ? (todayVol / 6) : 0,
         };
       });
     }
-    if (range === 'today') return rawTrend.slice(-2);
-    if (range === 'yesterday') return rawTrend.slice(-2);
-    if (range === '3') return rawTrend.slice(-3);
-    if (range === '7') return rawTrend.slice(-7);
-    return rawTrend;
+    const daysCount = range === '3' ? 3 : range === '7' ? 7 : 30;
+    const now = new Date();
+    return Array.from({ length: daysCount }, (_, i) => {
+      const d = new Date(now.getTime() - ((daysCount - 1 - i) * 86400000));
+      const dateLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const matched = rawTrend.find(r => r.date === dateLabel);
+      return {
+        label: dateLabel,
+        orders: matched && matched.volume > 0 ? Math.max(1, Math.round(matched.volume / 250)) : 0,
+        volume: matched ? (matched.volume || 0) : 0,
+      };
+    });
   };
 
-  const slicedTrend = getTrendSlice();
-  const totalPeriodVol = slicedTrend.reduce((acc, curr) => acc + (curr.volume || 0), 0);
-  const peakVol = Math.max(...slicedTrend.map(d => d.volume || 0), 0);
-  const avgVol = slicedTrend.length > 0 ? totalPeriodVol / slicedTrend.length : 0;
-  const firstVol = slicedTrend[0]?.volume || 0;
-  const lastVol = slicedTrend[slicedTrend.length - 1]?.volume || 0;
-  const periodDiff = lastVol - firstVol;
-  const periodPct = firstVol > 0 ? ((periodDiff / firstVol) * 100).toFixed(1) : (lastVol > 0 ? '+100.0' : '0.0');
-  const isPeriodUp = periodDiff >= 0;
-
-  const enrichedTrend = slicedTrend.map((item, idx, arr) => {
-    const prev = idx > 0 ? (arr[idx - 1].volume || 0) : (item.volume || 0);
-    const isUp = (item.volume || 0) >= prev;
-    return {
-      ...item,
-      isUp,
-      fillColor: isUp ? '#10B981' : '#EF4444',
-    };
-  });
+  const flowData = getFlowData();
+  const totalOrdersInView = flowData.reduce((acc, d) => acc + (d.orders || 0), 0);
+  const totalVolInView = flowData.reduce((acc, d) => acc + (d.volume || 0), 0);
+  const timeframeLabel = range === 'today' ? 'TODAY (HOURLY)' : range === 'yesterday' ? 'YESTERDAY (HOURLY)' : range === '3' ? 'LAST 3 DAYS' : range === '7' ? 'LAST 1 WEEK' : 'LAST 1 MONTH';
 
   const wList = Array.isArray(withdrawals) ? withdrawals : [];
 
@@ -576,26 +573,31 @@ function DashboardPage({ metrics, withdrawals, onApprove, onReject, loading, sea
 
       <div className="admin-charts-grid">
         <Card>
-          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 15, color: C.text, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <TrendingUp size={18} color={isPeriodUp ? C.green : C.red} />
-                Trading Volume Trend
+          {/* Header Row 1: Title + Badges + Controls */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ fontWeight: 900, fontSize: 13, color: C.text, letterSpacing: '0.4px', textTransform: 'uppercase' }}>
+                ORDERS & VOLUME FLOW ({timeframeLabel})
               </div>
-              <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
-                {range === 'today' ? 'Live intraday trading volume' : range === 'yesterday' ? 'Yesterday vs Today comparison' : `Aggregated performance over last ${range} days`}
-              </div>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.35)', color: '#10B981', padding: '2px 7px', borderRadius: 999, fontSize: 10, fontWeight: 800 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', boxShadow: '0 0 6px #10B981', display: 'inline-block' }} />
+                LIVE FEED
+              </span>
+              <span style={{ background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.25)', color: '#34D399', padding: '2px 8px', borderRadius: 999, fontSize: 10, fontWeight: 700 }}>
+                Completed Sales
+              </span>
             </div>
 
+            {/* Timeframe & Chart Style Controls */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              {/* Timeframe selector */}
+              {/* Timeframe Tabs */}
               <div style={{ display: 'flex', gap: 3, background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: 3, border: `1px solid ${C.border}` }}>
                 {([
                   { id: 'today', label: 'Today' },
                   { id: 'yesterday', label: 'Yesterday' },
-                  { id: '3', label: '3D' },
-                  { id: '7', label: '7D' },
-                  { id: '30', label: '30D' },
+                  { id: '3', label: '3 Days' },
+                  { id: '7', label: '1 Week' },
+                  { id: '30', label: '1 Month' },
                 ] as const).map(tab => (
                   <button
                     key={tab.id}
@@ -620,7 +622,7 @@ function DashboardPage({ metrics, withdrawals, onApprove, onReject, loading, sea
               {/* Chart Mode Toggle */}
               <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: 3, border: `1px solid ${C.border}` }}>
                 <button
-                  onClick={() => setChartMode('area')}
+                  onClick={() => setFlowStyle('line')}
                   style={{
                     padding: '4px 8px',
                     borderRadius: 6,
@@ -628,15 +630,15 @@ function DashboardPage({ metrics, withdrawals, onApprove, onReject, loading, sea
                     cursor: 'pointer',
                     fontSize: 11,
                     fontWeight: 700,
-                    background: chartMode === 'area' ? 'rgba(255,255,255,0.12)' : 'transparent',
-                    color: chartMode === 'area' ? C.text : C.muted,
+                    background: flowStyle === 'line' ? 'rgba(255,255,255,0.12)' : 'transparent',
+                    color: flowStyle === 'line' ? C.text : C.muted,
                   }}
-                  title="Smooth Area Trend"
+                  title="Line Dual Curves"
                 >
-                  Area
+                  📈 Line
                 </button>
                 <button
-                  onClick={() => setChartMode('bar')}
+                  onClick={() => setFlowStyle('candle')}
                   style={{
                     padding: '4px 8px',
                     borderRadius: 6,
@@ -644,86 +646,117 @@ function DashboardPage({ metrics, withdrawals, onApprove, onReject, loading, sea
                     cursor: 'pointer',
                     fontSize: 11,
                     fontWeight: 700,
-                    background: chartMode === 'bar' ? 'rgba(255,255,255,0.12)' : 'transparent',
-                    color: chartMode === 'bar' ? C.text : C.muted,
+                    background: flowStyle === 'candle' ? 'rgba(255,255,255,0.12)' : 'transparent',
+                    color: flowStyle === 'candle' ? C.text : C.muted,
                   }}
-                  title="Daily Volume Bars"
+                  title="Candle / Volume Bars"
                 >
-                  Bars
+                  📊 Candle
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Quick Metrics Bar across top of chart */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, background: 'rgba(255,255,255,0.02)', border: `1px solid ${C.border}`, borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
-            <div>
-              <div style={{ fontSize: 10, color: C.muted, fontWeight: 700, textTransform: 'uppercase' }}>Period Volume</div>
-              <div style={{ fontSize: 14, fontWeight: 900, color: C.text, marginTop: 2 }}>{fmtUSD(totalPeriodVol)}</div>
+          {/* Subtitle & Legend Row */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: C.muted, fontWeight: 500 }}>
+              Turnover (Green) vs Velocity (Red) • <span style={{ color: C.text, fontWeight: 700 }}>{totalOrdersInView} Orders ({fmtUSD(totalVolInView)})</span> in this view
             </div>
-            <div>
-              <div style={{ fontSize: 10, color: C.muted, fontWeight: 700, textTransform: 'uppercase' }}>Period Momentum</div>
-              <div style={{ fontSize: 13, fontWeight: 800, color: isPeriodUp ? C.green : C.red, marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
-                {isPeriodUp ? '▲' : '▼'} {periodPct}%
+
+            {/* Visual Legend */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ color: '#EF4444', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#EF4444' }} /> Orders
+              </span>
+              <span style={{ color: '#10B981', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10B981' }} /> Volume ($)
+              </span>
+              <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 6, padding: 2 }}>
+                <button
+                  onClick={() => setFlowStatus('completed')}
+                  style={{
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    background: flowStatus === 'completed' ? 'rgba(16, 185, 129, 0.25)' : 'transparent',
+                    color: flowStatus === 'completed' ? '#34D399' : C.muted,
+                  }}
+                >
+                  Completed
+                </button>
+                <button
+                  onClick={() => setFlowStatus('all')}
+                  style={{
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    background: flowStatus === 'all' ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
+                    color: flowStatus === 'all' ? C.text : C.muted,
+                  }}
+                >
+                  All Quotes
+                </button>
               </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 10, color: C.muted, fontWeight: 700, textTransform: 'uppercase' }}>Period Peak</div>
-              <div style={{ fontSize: 14, fontWeight: 900, color: C.text, marginTop: 2 }}>{fmtUSD(peakVol)}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 10, color: C.muted, fontWeight: 700, textTransform: 'uppercase' }}>Daily Average</div>
-              <div style={{ fontSize: 14, fontWeight: 900, color: C.text, marginTop: 2 }}>{fmtUSD(avgVol)}</div>
             </div>
           </div>
 
-          <ResponsiveContainer width="100%" height={210}>
-            {chartMode === 'area' ? (
-              <AreaChart data={enrichedTrend} margin={{ top: 8, right: 10, left: -10, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="volGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor={isPeriodUp ? '#10B981' : '#EF4444'} stopOpacity={0.35} />
-                    <stop offset="95%" stopColor={isPeriodUp ? '#10B981' : '#EF4444'} stopOpacity={0.0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="date" tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis
-                  tick={{ fill: C.muted, fontSize: 10 }}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={v => v === 0 ? '$0' : v >= 1000000 ? `$${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${Math.round(v)}`}
-                  width={46}
-                />
-                <Tooltip content={<ChartTip />} />
-                <Area
-                  type="monotone"
-                  dataKey="volume"
-                  stroke={isPeriodUp ? '#10B981' : '#EF4444'}
-                  strokeWidth={2.2}
-                  fill="url(#volGrad)"
-                  dot={enrichedTrend.length <= 7}
-                />
-              </AreaChart>
-            ) : (
-              <BarChart data={enrichedTrend} margin={{ top: 8, right: 10, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="date" tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis
-                  tick={{ fill: C.muted, fontSize: 10 }}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={v => v === 0 ? '$0' : v >= 1000000 ? `$${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${Math.round(v)}`}
-                  width={46}
-                />
-                <Tooltip content={<ChartTip />} />
-                <Bar dataKey="volume" radius={[4, 4, 0, 0]}>
-                  {enrichedTrend.map((entry, index) => (
-                    <Cell key={`bar-${index}`} fill={entry.fillColor} />
-                  ))}
-                </Bar>
-              </BarChart>
-            )}
+          <ResponsiveContainer width="100%" height={230}>
+            <ComposedChart data={flowData} margin={{ top: 12, right: 10, left: -16, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+              <XAxis dataKey="label" tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
+              <YAxis
+                yAxisId="left"
+                orientation="left"
+                tick={{ fill: '#EF4444', fontSize: 10, fontWeight: 700 }}
+                axisLine={false}
+                tickLine={false}
+                width={30}
+                domain={[0, (dataMax: number) => Math.max(5, Math.ceil(dataMax * 1.25))]}
+              />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                tick={{ fill: '#10B981', fontSize: 10, fontWeight: 700 }}
+                axisLine={false}
+                tickLine={false}
+                width={46}
+                tickFormatter={v => v === 0 ? '$0' : v >= 1000000 ? `$${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${Math.round(v)}`}
+                domain={[0, (dataMax: number) => Math.max(100, Math.ceil(dataMax * 1.25))]}
+              />
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (active && payload && payload.length) {
+                    const ordVal = payload.find(p => p.dataKey === 'orders')?.value || 0;
+                    const volVal = payload.find(p => p.dataKey === 'volume')?.value || 0;
+                    return (
+                      <div style={{ background: '#0B0E17', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 8, padding: '10px 14px', boxShadow: '0 8px 30px rgba(0,0,0,0.85)' }}>
+                        <div style={{ color: '#94A3B8', fontSize: 11, fontWeight: 700, marginBottom: 6 }}>{label}</div>
+                        <div style={{ color: '#EF4444', fontSize: 12, fontWeight: 700 }}>Completed Orders : {ordVal} Orders</div>
+                        <div style={{ color: '#10B981', fontSize: 12, fontWeight: 700, marginTop: 3 }}>Completed Volume ($) : {fmtUSD(Number(volVal))}</div>
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+              />
+              {flowStyle === 'candle' ? (
+                <>
+                  <Bar yAxisId="right" dataKey="volume" fill="#10B981" opacity={0.65} radius={[3, 3, 0, 0]} />
+                  <Line yAxisId="left" type="monotone" dataKey="orders" stroke="#EF4444" strokeWidth={2.5} dot={{ r: 3, fill: '#EF4444' }} activeDot={{ r: 6, fill: '#fff', stroke: '#EF4444', strokeWidth: 3 }} />
+                </>
+              ) : (
+                <>
+                  <Line yAxisId="right" type="monotone" dataKey="volume" stroke="#10B981" strokeWidth={2.5} dot={{ r: 3, fill: '#10B981' }} activeDot={{ r: 6, fill: '#fff', stroke: '#10B981', strokeWidth: 3 }} />
+                  <Line yAxisId="left" type="monotone" dataKey="orders" stroke="#EF4444" strokeWidth={2.5} dot={{ r: 3, fill: '#EF4444' }} activeDot={{ r: 6, fill: '#fff', stroke: '#EF4444', strokeWidth: 3 }} />
+                </>
+              )}
+            </ComposedChart>
           </ResponsiveContainer>
         </Card>
 

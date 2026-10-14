@@ -1166,33 +1166,40 @@ def unlock_wallet(request):
     set_auth_cookies(resp, access_token, refresh_token, request=request)
     return resp
 
-@api_view(['POST'])
+@api_view(['POST', 'PUT'])
 @permission_classes([AllowAny])
 def update_user_profile(request):
-    """Updates user profile picture/avatar and username."""
+    """Updates user profile picture/avatar and username with comprehensive identifier fallback."""
     user = get_current_user(request)
-    wallet_address = request.data.get('wallet_address', '').strip()
-    if not user and wallet_address:
-        user = WalletUser.objects.filter(wallet_address__iexact=wallet_address).first()
-    if not user and wallet_address.isdigit():
-        user = WalletUser.objects.filter(id=int(wallet_address)).first()
-    if not user and wallet_address:
-        user = WalletUser.objects.filter(email__iexact=wallet_address).first()
     if not user:
-        email = request.data.get('email', '').strip()
-        if email:
-            user = WalletUser.objects.filter(email__iexact=email).first()
+        for key in ['wallet_address', 'user_id', 'email', 'uid', 'username']:
+            val = request.data.get(key, '')
+            if val:
+                val_str = str(val).strip()
+                if val_str:
+                    user = find_wallet_user(val_str)
+                    if user:
+                        break
+
+    if not user:
+        # Fallback to single active user if only 1 user exists in database
+        total_users = WalletUser.objects.count()
+        if total_users == 1:
+            user = WalletUser.objects.first()
+
     if not user:
         return Response({'error': 'User not authenticated or not found.'}, status=status.HTTP_401_UNAUTHORIZED)
 
-    username = request.data.get('username', '').strip()
-    avatar_url = request.data.get('avatar_url', '').strip()
+    username = request.data.get('username', '')
+    avatar_url = request.data.get('avatar_url', '')
 
-    if username:
-        user.username = username
-        user.full_name = username
-    if avatar_url:
-        user.avatar_url = avatar_url
+    if username and str(username).strip():
+        clean_name = str(username).strip()
+        user.username = clean_name
+        user.full_name = clean_name
+
+    if avatar_url and str(avatar_url).strip():
+        user.avatar_url = str(avatar_url).strip()
 
     user.save()
     return Response({

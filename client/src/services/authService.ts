@@ -289,12 +289,16 @@ export async function updateUserProfile(params: {
   username?: string;
   avatar_url?: string;
   wallet_address?: string;
+  user_id?: string;
+  email?: string;
 }): Promise<AuthResponse> {
   const walletAddress = params.wallet_address || getStoredWalletAddress() || '';
   return apiPost('/user/profile/', {
     username: params.username,
     avatar_url: params.avatar_url,
     wallet_address: walletAddress,
+    user_id: params.user_id,
+    email: params.email,
   });
 }
 
