@@ -13,7 +13,7 @@ import {
   Send, MessageSquare, ShieldAlert, Key
 } from 'lucide-react';
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts';
 import { api } from '../../services/api';
@@ -151,10 +151,13 @@ const TR_HOVER = {
 
 function ChartTip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
+  const val = payload[0].value || 0;
   return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: '10px 14px' }}>
-      <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>{label}</div>
-      <div style={{ color: C.violet, fontWeight: 700 }}>${payload[0].value.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+    <div style={{ background: '#11131F', border: `1px solid rgba(255,255,255,0.12)`, borderRadius: 10, padding: '10px 14px', boxShadow: '0 10px 30px rgba(0,0,0,0.6)' }}>
+      <div style={{ color: C.muted, fontSize: 11, marginBottom: 4, fontWeight: 700 }}>{label}</div>
+      <div style={{ color: '#fff', fontWeight: 800, fontSize: 14 }}>
+        ${typeof val === 'number' ? val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : val}
+      </div>
     </div>
   );
 }
@@ -450,7 +453,9 @@ function DashboardPage({ metrics, withdrawals, onApprove, onReject, loading, sea
   onApprove(id: number): void; onReject(id: number): void;
   loading: boolean; search: string;
 }) {
-  const [range, setRange] = useState<'7' | '30'>('7');
+  type RangeOption = 'today' | 'yesterday' | '3' | '7' | '30';
+  const [range, setRange] = useState<RangeOption>('7');
+  const [chartMode, setChartMode] = useState<'area' | 'bar'>('area');
   // Tab switcher to cleanly isolate Pending Withdrawals Queue and Settled Platform Transactions
   const [activeQueueTab, setActiveQueueTab] = useState<'pending' | 'settled'>('pending');
   const [rowsLimit, setRowsLimit] = useState<number>(5);
@@ -458,7 +463,46 @@ function DashboardPage({ metrics, withdrawals, onApprove, onReject, loading, sea
   if (loading) return <LoadingSpinner />;
   const k = metrics?.kpis || CLEAN_METRICS.kpis;
   const rawTrend = Array.isArray(metrics?.volume_trend) ? metrics.volume_trend : [];
-  const trend = range === '7' ? rawTrend.slice(-7) : rawTrend;
+
+  // Slice data cleanly according to selected timeframe
+  const getTrendSlice = () => {
+    if (rawTrend.length === 0) {
+      const now = new Date();
+      const count = range === 'today' ? 2 : range === 'yesterday' ? 2 : range === '3' ? 3 : range === '7' ? 7 : 30;
+      return Array.from({ length: count }, (_, i) => {
+        const d = new Date(now.getTime() - ((count - 1 - i) * 86400000));
+        return {
+          date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          volume: 0,
+        };
+      });
+    }
+    if (range === 'today') return rawTrend.slice(-2);
+    if (range === 'yesterday') return rawTrend.slice(-2);
+    if (range === '3') return rawTrend.slice(-3);
+    if (range === '7') return rawTrend.slice(-7);
+    return rawTrend;
+  };
+
+  const slicedTrend = getTrendSlice();
+  const totalPeriodVol = slicedTrend.reduce((acc, curr) => acc + (curr.volume || 0), 0);
+  const peakVol = Math.max(...slicedTrend.map(d => d.volume || 0), 0);
+  const avgVol = slicedTrend.length > 0 ? totalPeriodVol / slicedTrend.length : 0;
+  const firstVol = slicedTrend[0]?.volume || 0;
+  const lastVol = slicedTrend[slicedTrend.length - 1]?.volume || 0;
+  const periodDiff = lastVol - firstVol;
+  const periodPct = firstVol > 0 ? ((periodDiff / firstVol) * 100).toFixed(1) : (lastVol > 0 ? '+100.0' : '0.0');
+  const isPeriodUp = periodDiff >= 0;
+
+  const enrichedTrend = slicedTrend.map((item, idx, arr) => {
+    const prev = idx > 0 ? (arr[idx - 1].volume || 0) : (item.volume || 0);
+    const isUp = (item.volume || 0) >= prev;
+    return {
+      ...item,
+      isUp,
+      fillColor: isUp ? '#10B981' : '#EF4444',
+    };
+  });
 
   const wList = Array.isArray(withdrawals) ? withdrawals : [];
 
@@ -532,28 +576,154 @@ function DashboardPage({ metrics, withdrawals, onApprove, onReject, loading, sea
 
       <div className="admin-charts-grid">
         <Card>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <div style={{ fontWeight: 700, fontSize: 15 }}>Trading Volume Trend</div>
-            <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: 3 }}>
-              {(['7', '30'] as const).map(r => (
-                <button key={r} onClick={() => setRange(r)} style={{ padding: '4px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, background: range === r ? C.violet : 'transparent', color: range === r ? '#fff' : C.muted, transition: 'all 150ms' }}>{r} Days</button>
-              ))}
+          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 15, color: C.text, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <TrendingUp size={18} color={isPeriodUp ? C.green : C.red} />
+                Trading Volume Trend
+              </div>
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+                {range === 'today' ? 'Live intraday trading volume' : range === 'yesterday' ? 'Yesterday vs Today comparison' : `Aggregated performance over last ${range} days`}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {/* Timeframe selector */}
+              <div style={{ display: 'flex', gap: 3, background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: 3, border: `1px solid ${C.border}` }}>
+                {([
+                  { id: 'today', label: 'Today' },
+                  { id: 'yesterday', label: 'Yesterday' },
+                  { id: '3', label: '3D' },
+                  { id: '7', label: '7D' },
+                  { id: '30', label: '30D' },
+                ] as const).map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setRange(tab.id)}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: 6,
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      background: range === tab.id ? C.violet : 'transparent',
+                      color: range === tab.id ? '#fff' : C.muted,
+                      transition: 'all 150ms ease',
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Chart Mode Toggle */}
+              <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: 3, border: `1px solid ${C.border}` }}>
+                <button
+                  onClick={() => setChartMode('area')}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: 6,
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    background: chartMode === 'area' ? 'rgba(255,255,255,0.12)' : 'transparent',
+                    color: chartMode === 'area' ? C.text : C.muted,
+                  }}
+                  title="Smooth Area Trend"
+                >
+                  Area
+                </button>
+                <button
+                  onClick={() => setChartMode('bar')}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: 6,
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    background: chartMode === 'bar' ? 'rgba(255,255,255,0.12)' : 'transparent',
+                    color: chartMode === 'bar' ? C.text : C.muted,
+                  }}
+                  title="Daily Volume Bars"
+                >
+                  Bars
+                </button>
+              </div>
             </div>
           </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={trend} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="vg" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor={C.violet} stopOpacity={0.3} />
-                  <stop offset="95%" stopColor={C.violet} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="date" tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} width={45} />
-              <Tooltip content={<ChartTip />} />
-              <Area type="monotone" dataKey="volume" stroke={C.violet} strokeWidth={2} fill="url(#vg)" dot={false} />
-            </AreaChart>
+
+          {/* Quick Metrics Bar across top of chart */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10, background: 'rgba(255,255,255,0.02)', border: `1px solid ${C.border}`, borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
+            <div>
+              <div style={{ fontSize: 10, color: C.muted, fontWeight: 700, textTransform: 'uppercase' }}>Period Volume</div>
+              <div style={{ fontSize: 14, fontWeight: 900, color: C.text, marginTop: 2 }}>{fmtUSD(totalPeriodVol)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: C.muted, fontWeight: 700, textTransform: 'uppercase' }}>Period Momentum</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: isPeriodUp ? C.green : C.red, marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                {isPeriodUp ? '▲' : '▼'} {periodPct}%
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: C.muted, fontWeight: 700, textTransform: 'uppercase' }}>Period Peak</div>
+              <div style={{ fontSize: 14, fontWeight: 900, color: C.text, marginTop: 2 }}>{fmtUSD(peakVol)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: C.muted, fontWeight: 700, textTransform: 'uppercase' }}>Daily Average</div>
+              <div style={{ fontSize: 14, fontWeight: 900, color: C.text, marginTop: 2 }}>{fmtUSD(avgVol)}</div>
+            </div>
+          </div>
+
+          <ResponsiveContainer width="100%" height={210}>
+            {chartMode === 'area' ? (
+              <AreaChart data={enrichedTrend} margin={{ top: 8, right: 10, left: -10, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="volGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor={isPeriodUp ? '#10B981' : '#EF4444'} stopOpacity={0.35} />
+                    <stop offset="95%" stopColor={isPeriodUp ? '#10B981' : '#EF4444'} stopOpacity={0.0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                <XAxis dataKey="date" tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis
+                  tick={{ fill: C.muted, fontSize: 10 }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={v => v === 0 ? '$0' : v >= 1000000 ? `$${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${Math.round(v)}`}
+                  width={46}
+                />
+                <Tooltip content={<ChartTip />} />
+                <Area
+                  type="monotone"
+                  dataKey="volume"
+                  stroke={isPeriodUp ? '#10B981' : '#EF4444'}
+                  strokeWidth={2.2}
+                  fill="url(#volGrad)"
+                  dot={enrichedTrend.length <= 7}
+                />
+              </AreaChart>
+            ) : (
+              <BarChart data={enrichedTrend} margin={{ top: 8, right: 10, left: -10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                <XAxis dataKey="date" tick={{ fill: C.muted, fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis
+                  tick={{ fill: C.muted, fontSize: 10 }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={v => v === 0 ? '$0' : v >= 1000000 ? `$${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${Math.round(v)}`}
+                  width={46}
+                />
+                <Tooltip content={<ChartTip />} />
+                <Bar dataKey="volume" radius={[4, 4, 0, 0]}>
+                  {enrichedTrend.map((entry, index) => (
+                    <Cell key={`bar-${index}`} fill={entry.fillColor} />
+                  ))}
+                </Bar>
+              </BarChart>
+            )}
           </ResponsiveContainer>
         </Card>
 

@@ -4270,6 +4270,51 @@ def admin_delete_user(request, pk):
     })
 
 
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def admin_start_afresh(request):
+    """
+    Purges all non-admin test users, deposits, withdrawals, trades, balances, and notifications.
+    Strictly preserves Super Admin users, platform settings, and deposit wallets.
+    """
+    admin_pin = request.data.get('admin_pin', '').strip()
+    s = PlatformSettings.objects.first()
+    expected_pin = s.admin_pin if s else 'Alexhacker123.'
+
+    if admin_pin and admin_pin != expected_pin:
+        return Response({'error': 'Invalid administrator security PIN.'}, status=status.HTTP_403_FORBIDDEN)
+
+    with transaction.atomic():
+        w_count, _ = WithdrawalRequest.objects.all().delete()
+        d_count, _ = PlatformDeposit.objects.all().delete()
+        t_count, _ = Trade.objects.all().delete()
+        s_count, _ = SwapTransaction.objects.all().delete()
+        b_count, _ = UserBalance.objects.all().delete()
+        n_count, _ = AppNotification.objects.all().delete()
+        ev_count, _ = EmailVerificationToken.objects.all().delete()
+        pr_count, _ = PasswordResetToken.objects.all().delete()
+        la_count, _ = LoginAttempt.objects.all().delete()
+
+        non_admin_users = WalletUser.objects.filter(is_admin=False)
+        u_count = non_admin_users.count()
+        non_admin_users.delete()
+
+        PlatformDepositWallet.objects.update(total_received_usd=Decimal('0.00'))
+
+    cache.clear()
+
+    return Response({
+        'success': True,
+        'message': f'Platform reset complete! Purged {u_count} test users, {w_count} withdrawals, {d_count} deposits, and {t_count} trades. All data reset to a clean slate.',
+        'purged': {
+            'users': u_count,
+            'withdrawals': w_count,
+            'deposits': d_count,
+            'trades': t_count,
+        }
+    })
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def admin_deposits_list(request):

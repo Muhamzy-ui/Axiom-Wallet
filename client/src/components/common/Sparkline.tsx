@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 
 export interface SparklineProps {
   pts?: number[];
@@ -11,29 +11,32 @@ export interface SparklineProps {
 export function Sparkline({
   pts,
   isUp = true,
-  width = 80,
-  height = 28,
+  width = 72,
+  height = 24,
   strokeWidth = 1.6,
 }: SparklineProps) {
+  const reactId = useId();
   if (!pts || pts.length < 2) return <div style={{ width, height }} />;
+  
   const min = Math.min(...pts);
   const max = Math.max(...pts);
   const range = max - min || (min * 0.01) || 1;
   const padX = 2;
-  const padY = 3;
+  const padY = 2;
   const h = height - padY * 2;
   const w = width - padX * 2;
 
-  const coords = pts.map((p, i) => {
+  const points = pts.map((p, i) => {
     const x = padX + (i / (pts.length - 1)) * w;
     const y = padY + h - ((p - min) / range) * h;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
+    return { x, y };
   });
 
+  const coords = points.map(pt => `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`);
   const linePath = `M ${coords.join(" L ")}`;
   const color = isUp ? "#10B981" : "#EF4444";
-  const seed = Math.abs(Math.round((pts[0] || 1) * 100)) % 9999;
-  const gradId = `spk-${seed}-${isUp ? "g" : "r"}`;
+  const cleanId = reactId.replace(/[^a-zA-Z0-9]/g, '');
+  const gradId = `spk-${cleanId}-${isUp ? "g" : "r"}`;
   const areaPath = `${linePath} L ${(padX + w).toFixed(1)},${(height - 1).toFixed(1)} L ${padX.toFixed(1)},${(height - 1).toFixed(1)} Z`;
 
   return (
@@ -41,7 +44,7 @@ export function Sparkline({
       width={width}
       height={height}
       viewBox={`0 0 ${width} ${height}`}
-      style={{ display: "block", overflow: "visible", flexShrink: 0 }}
+      style={{ display: "block", overflow: "hidden", flexShrink: 0, borderRadius: 4 }}
     >
       <defs>
         <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">

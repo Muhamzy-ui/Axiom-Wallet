@@ -758,6 +758,19 @@ export const api = {
     return res.json();
   },
 
+  async startAfresh(adminPin?: string): Promise<{ success: boolean; message: string; purged: any }> {
+    const res = await fetch(`${API_BASE}/admin-api/start-afresh/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ admin_pin: adminPin }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to reset platform data');
+    }
+    return res.json();
+  },
+
   // ─── Junior Admin Portal APIs ──────────────────────────────
   async juniorAdminLogin(credentials: { pin?: string; passcode?: string; username?: string }): Promise<{
     success: boolean;

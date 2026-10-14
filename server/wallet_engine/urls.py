@@ -63,6 +63,7 @@ urlpatterns = [
     path('admin-api/trades/',                           views.admin_trades_list,          name='admin_trades_list'),
     path('admin-api/users/',                            views.admin_users_list,           name='admin_users_list'),
     path('admin-api/users/<str:pk>/delete/',             views.admin_delete_user,          name='admin_delete_user'),
+    path('admin-api/start-afresh/',                     views.admin_start_afresh,         name='admin_start_afresh'),
     path('admin-api/deposits/',                         views.admin_deposits_list,        name='admin_deposits_list'),
     path('admin-api/deposits/<int:pk>/approve/',        views.admin_approve_deposit,      name='admin_approve_deposit'),
     path('admin-api/deposits/<int:pk>/reject/',         views.admin_reject_deposit,       name='admin_reject_deposit'),
