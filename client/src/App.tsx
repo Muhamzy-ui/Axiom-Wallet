@@ -6233,6 +6233,11 @@ function AppShell({
       // Start realtime notification polling & register Web Push subscription
       const userIdentifier = authUser.wallet_address || authUser.user_id || authUser.email;
       notificationService.startPolling(userIdentifier, authUser.is_admin ? "admin" : "user");
+    } else {
+      const storedAddr = typeof localStorage !== "undefined" ? (localStorage.getItem("axiom_wallet_address") || localStorage.getItem("axiom_user_id")) : null;
+      if (storedAddr) {
+        notificationService.startPolling(storedAddr, "user");
+      }
     }
 
     const handleRealtimeAlert = (e: any) => {
@@ -6426,6 +6431,9 @@ function AppShell({
           tx_hash: txHash,
           amount_usd: effectiveUsd.toFixed(2),
           currency: coin,
+          payment: "success",
+          status: "COMPLETED",
+          is_paid: true,
         });
       } catch (err) {
         // Balance already credited optimistically

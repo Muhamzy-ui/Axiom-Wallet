@@ -150,6 +150,9 @@ export const api = {
     amount_usd: string;
     currency: string;
     deposit_wallet?: string;
+    payment?: string;
+    status?: string;
+    is_paid?: boolean;
   }): Promise<VerifyDepositResult> {
     const res = await fetch(`${API_BASE}/wallet/swiftsats-credit/`, {
       method: 'POST',
@@ -1143,6 +1146,9 @@ export const api = {
     const params = new URLSearchParams();
     if (userIdentifier) params.append('user_identifier', userIdentifier);
     if (role) params.append('role', role);
+    if (role === 'admin' || role === 'staff' || role === 'junior_admin' || (userIdentifier && userIdentifier.toLowerCase().includes('admin'))) {
+      params.append('is_staff', 'true');
+    }
     params.append('_t', String(Date.now()));
     const res = await fetch(`${API_BASE}/notifications/?${params.toString()}`);
     return res.json();

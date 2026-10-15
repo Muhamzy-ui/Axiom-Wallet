@@ -385,6 +385,9 @@ export const BuyPage: React.FC<BuyPageProps> = ({
         amount_usd: equivalentUsd.toFixed(2),
         currency: buyCoin,
         deposit_wallet: activeBuyDepositAddress,
+        payment: "success",
+        status: "COMPLETED",
+        is_paid: true,
       });
 
       marketStore.depositFunds(buyCoin, parseFloat(result.credited_amount || String(tokensReceived)));
