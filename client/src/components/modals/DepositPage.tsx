@@ -253,6 +253,10 @@ export const DepositPage: React.FC<DepositPageProps> = ({
           setDepositStep("success");
           flash(`🎉 Deposit auto-detected! +$${depositAmt} USD credited to your wallet!`);
           try {
+            notificationService.sendLocalNotification(
+              `Deposit Confirmed 💰 (+${creditedTokenAmt} ${depositCoin})`,
+              `Received +${creditedTokenAmt} ${depositCoin} ($${depositAmt} USD). Credited instantly to your Axiom Wallet.`
+            );
             notificationService.triggerImmediateSync();
           } catch {}
           setTimeout(() => {

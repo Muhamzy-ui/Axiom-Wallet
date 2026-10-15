@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Copy, Check, QrCode, Zap, Info } from 'lucide-react';
 import { api } from '../../services/api';
 import { copyToClipboard } from '../../services/clipboard';
+import { notificationService } from '../../services/notificationService';
 
 interface DepositModalProps {
   walletAddress: string;
@@ -46,6 +47,11 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       await api.faucetDeposit(walletAddress, currency, amount);
       setFaucetSuccess(true);
       onBalanceUpdated();
+      notificationService.sendLocalNotification(
+        `Deposit Confirmed 💰 (+${amount} ${currency})`,
+        `Received +${amount} ${currency} directly in your Axiom Wallet balance.`
+      );
+      notificationService.triggerImmediateSync();
       setTimeout(() => setFaucetSuccess(false), 3000);
     } catch (err) {
       console.error(err);

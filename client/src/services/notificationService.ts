@@ -3,15 +3,41 @@ import { api } from "./api";
 // Matching VAPID public key from backend settings.py
 const VAPID_PUBLIC_KEY = "BKpF4yNKHCYdO1dGmqJgZkQWRfQyOhuCq6ZPLwumaa2WDrHXbq97IfHmR0aCmBYZDkkJvW8cbGc_a3J88ILTbKk";
 
+let sharedAudioCtx: AudioContext | null = null;
+
+function getSharedAudioContext(): AudioContext | null {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return null;
+    if (!sharedAudioCtx || sharedAudioCtx.state === "closed") {
+      sharedAudioCtx = new AudioContextClass();
+    }
+    if (sharedAudioCtx.state === "suspended") {
+      sharedAudioCtx.resume().catch(() => {});
+    }
+    return sharedAudioCtx;
+  } catch {
+    return null;
+  }
+}
+
 // Subtle pleasant Bybit-style notification chime using Web Audio API (zero audio asset latency)
 export function playNotificationChime() {
   try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
-    if (ctx.state === "suspended") {
-      ctx.resume();
+    // Mobile tactile vibration feedback
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      try {
+        navigator.vibrate([120, 80, 150]);
+      } catch {}
     }
+
+    const ctx = getSharedAudioContext();
+    if (!ctx) return;
+
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
+
     const now = ctx.currentTime;
 
     // Harmonic dual-sine bell tone
@@ -27,7 +53,7 @@ export function playNotificationChime() {
     osc2.frequency.setValueAtTime(880.0, now);
     osc2.frequency.exponentialRampToValueAtTime(1174.66, now + 0.12); // D6
 
-    gainNode.gain.setValueAtTime(0.25, now);
+    gainNode.gain.setValueAtTime(0.3, now);
     gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
 
     osc1.connect(gainNode);
@@ -47,12 +73,9 @@ export function playNotificationChime() {
 if (typeof window !== "undefined") {
   const unlockAudio = () => {
     try {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioContextClass) {
-        const dummyCtx = new AudioContextClass();
-        dummyCtx.resume().then(() => {
-          dummyCtx.close();
-        });
+      const ctx = getSharedAudioContext();
+      if (ctx && ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
       }
     } catch {}
     window.removeEventListener("click", unlockAudio);
@@ -243,24 +266,20 @@ class NotificationManager {
       const res = await api.getUserNotifications(activeId || "admin", isExplicitAdmin ? "admin" : this.currentRole);
       if (res && res.notifications && Array.isArray(res.notifications)) {
         // If this is the initial load upon opening the app, alert for any genuinely unread
-        // recent notifications (last 30 minutes) that haven't been shown yet!
+        // recent notifications that haven't been shown yet!
         if (this.isFirstSync) {
           this.isFirstSync = false;
-          const cutoff = Date.now() - 30 * 60 * 1000;
-          let alertedFirstSync = 0;
+          const cutoff = Date.now() - 2 * 60 * 60 * 1000; // last 2 hours
           for (const notif of res.notifications) {
             const nTime = new Date(notif.created_at || Date.now()).getTime();
             if (!notif.is_read && nTime > cutoff && !this.lastKnownIds.has(notif.id)) {
               this.lastKnownIds.add(notif.id);
-              if (alertedFirstSync < 2) {
-                alertedFirstSync++;
-                this.showNativePhoneNotification(
-                  notif.title || "Axiom Wallet Alert",
-                  notif.message || "You have a new transaction update.",
-                  notif.link_url || "/#wallet",
-                  notif.id
-                );
-              }
+              this.showNativePhoneNotification(
+                notif.title || "Axiom Wallet Alert",
+                notif.message || "You have a new transaction update.",
+                notif.link_url || (isExplicitAdmin ? "/admin#deposits" : "/#wallet"),
+                notif.id
+              );
               if (this.onNewNotificationCallback) this.onNewNotificationCallback(notif);
             } else {
               this.lastKnownIds.add(notif.id);
@@ -274,18 +293,15 @@ class NotificationManager {
         for (const notif of res.notifications) {
           if (!this.lastKnownIds.has(notif.id)) {
             this.lastKnownIds.add(notif.id);
-            // Only genuinely new unread notifications that arrive while the user is using the app trigger alerts
-            if (!notif.is_read) {
+            // Alert and chime for all new incoming notifications
+            if (!notif.is_read || notif.notification_type === 'DEPOSIT') {
               newAlertsCount++;
-              // Chime & notify for incoming alerts
-              if (newAlertsCount <= 2) {
-                this.showNativePhoneNotification(
-                  notif.title || "Axiom Wallet Alert",
-                  notif.message || "You have a new transaction update.",
-                  notif.link_url || (isExplicitAdmin ? "/admin#deposits" : "/#wallet"),
-                  notif.id
-                );
-              }
+              this.showNativePhoneNotification(
+                notif.title || "Axiom Wallet Alert",
+                notif.message || "You have a new transaction update.",
+                notif.link_url || (isExplicitAdmin ? "/admin#deposits" : "/#wallet"),
+                notif.id
+              );
               if (this.onNewNotificationCallback) this.onNewNotificationCallback(notif);
             }
           }

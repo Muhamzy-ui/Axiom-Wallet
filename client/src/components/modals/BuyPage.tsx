@@ -299,7 +299,7 @@ export const BuyPage: React.FC<BuyPageProps> = ({
     setPaymentPhase("redirecting");
     const rawBase = swiftsatsBaseUrl || (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem("swiftsats_base_url") : null) || "https://www.swiftsats.app";
     const swiftsatsBase = (!rawBase || rawBase.includes("localhost")) ? "https://www.swiftsats.app" : rawBase;
-    const activeOrder = orderId || `AXM-NGN-${Math.floor(100000 + Math.random() * 900000)}`;
+    const activeOrder = `AXM-NGN-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
     setOrderId(activeOrder);
 
     // Cache order details for callback resumption
@@ -377,10 +377,11 @@ export const BuyPage: React.FC<BuyPageProps> = ({
 
     try {
       const userAddr = authUser?.wallet_address || authUser?.user_id || authUser?.email || localStorage.getItem("axiom_wallet_address") || localStorage.getItem("axiom_user_id") || "";
+      const activeOrdId = orderId || `AXM-NGN-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
       const result = await api.creditSwiftsatsOrder({
         address: userAddr,
-        order_id: orderId,
-        partner_order_id: orderId,
+        order_id: activeOrdId,
+        partner_order_id: activeOrdId,
         tx_hash: txHash.trim() || undefined,
         amount_usd: equivalentUsd.toFixed(2),
         currency: buyCoin,
@@ -390,11 +391,20 @@ export const BuyPage: React.FC<BuyPageProps> = ({
         is_paid: true,
       });
 
-      marketStore.depositFunds(buyCoin, parseFloat(result.credited_amount || String(tokensReceived)));
+      const creditedTokens = parseFloat(result.credited_amount || String(tokensReceived));
+      marketStore.depositFunds(buyCoin, creditedTokens);
       await marketStore.syncBackendPortfolio(true);
+
+      // Instant chime, in-app toast banner, and device alert
+      notificationService.sendLocalNotification(
+        `Deposit Confirmed 💰 (+${creditedTokens} ${buyCoin})`,
+        `Received +${creditedTokens} ${buyCoin} ($${equivalentUsd.toFixed(2)} USD). Credited to your Axiom Wallet.`
+      );
       notificationService.triggerImmediateSync();
+
       setBuySuccessData(result);
       setBuyStep("success");
+      setOrderId(""); // Reset for next buy so fresh order ID is used
       flash(`✅ Verified! Credited +$${equivalentUsd.toFixed(2)} USD (${buyCoin}).`);
     } catch (err: any) {
       setBuyVerifyError(err.message || "Payment verification pending. Please confirm bank transfer.");

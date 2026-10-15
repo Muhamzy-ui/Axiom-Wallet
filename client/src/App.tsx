@@ -6243,7 +6243,10 @@ function AppShell({
     const handleRealtimeAlert = (e: any) => {
       const detail = e.detail;
       if (detail && detail.message) {
-        flash(detail.message);
+        const fullMsg = detail.title && !detail.message.includes(detail.title)
+          ? `${detail.title}: ${detail.message}`
+          : detail.message;
+        flash(fullMsg);
         marketStore.syncBackendPortfolio(true);
       }
     };
@@ -6440,7 +6443,15 @@ function AppShell({
       } finally {
         // Strictly trigger portfolio sync to reconcile true database balance
         await marketStore.syncBackendPortfolio(true);
+        const unitStr = tokenUnits < 1 ? tokenUnits.toFixed(4) : tokenUnits.toFixed(2);
+        notificationService.sendLocalNotification(
+          `Deposit Confirmed 💰 (+${unitStr} ${coin})`,
+          `Received +${unitStr} ${coin} ($${effectiveUsd.toFixed(2)} USD) via SwiftSats Gateway.`
+        );
         notificationService.triggerImmediateSync();
+        if (typeof window !== "undefined" && window.localStorage) {
+          window.localStorage.removeItem("axiom_last_order_id");
+        }
       }
     };
 

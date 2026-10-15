@@ -2672,22 +2672,46 @@ def swiftsats_order_credit(request):
         return Response({'error': 'User account not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     partner_order_id = request.data.get('partner_order_id', '').strip()
-    effective_hash = tx_hash or f"SS-{order_id}"
-    clean_order_id = order_id.replace('SS-', '').replace('SWIFTSATS-', '').replace('AXM-NGN-', '').strip() if order_id else ''
-    clean_partner_id = partner_order_id.replace('SS-', '').replace('SWIFTSATS-', '').replace('AXM-NGN-', '').strip() if partner_order_id else ''
+    effective_hash = tx_hash or (f"SS-{order_id}-{int(time.time())}" if order_id else f"SS-TX-{uuid.uuid4().hex[:12]}")
 
-    # 1. Has this order already been confirmed by webhook or prior verified check?
-    existing_confirmed = PlatformDeposit.objects.filter(
-        Q(tx_hash=effective_hash) |
-        (Q(tx_hash__icontains=order_id) if order_id else Q(pk__isnull=True)) |
-        (Q(tx_hash__icontains=clean_order_id) if clean_order_id else Q(pk__isnull=True)) |
-        (Q(tx_hash__icontains=partner_order_id) if partner_order_id else Q(pk__isnull=True)) |
-        (Q(tx_hash__icontains=clean_partner_id) if clean_partner_id else Q(pk__isnull=True)),
-        status='CONFIRMED'
-    ).first()
+    # 1. Has this exact transaction or order already been confirmed?
+    existing_confirmed = None
+    if tx_hash:
+        existing_confirmed = PlatformDeposit.objects.filter(tx_hash__iexact=tx_hash, status='CONFIRMED').first()
+    elif order_id and len(order_id) >= 10:
+        existing_confirmed = PlatformDeposit.objects.filter(
+            Q(tx_hash__iexact=order_id) | Q(tx_hash__iexact=f"SS-{order_id}"),
+            status='CONFIRMED'
+        ).first()
 
     if existing_confirmed:
         bal_obj = UserBalance.objects.filter(user=user, currency=currency).first()
+        # Always guarantee user and admin real-time notification dispatch
+        try:
+            dep_notif = AppNotification.objects.create(
+                target_audience='USER',
+                user=user,
+                user_identifier=user.wallet_address or user.email or str(user.id),
+                title=f"Deposit Confirmed 💰 (+{existing_confirmed.amount} {currency})",
+                message=f"Received +{existing_confirmed.amount} {currency} via SwiftSats Gateway.",
+                notification_type='DEPOSIT',
+                link_url='/#wallet'
+            )
+            dispatch_web_push(dep_notif)
+
+            admin_notif = AppNotification.objects.create(
+                target_audience='ADMINS',
+                user=None,
+                user_identifier='admin',
+                title=f"Deposit Confirmed 💰 (+{existing_confirmed.amount} {currency})",
+                message=f"Received +{existing_confirmed.amount} {currency} from {user.email or user.wallet_address} via SwiftSats.",
+                notification_type='DEPOSIT',
+                link_url='/admin#deposits'
+            )
+            dispatch_web_push(admin_notif)
+        except Exception as e:
+            print(f"[SwiftSats existing_confirmed notification error] {e}")
+
         return Response({
             'success': True,
             'credited_amount': str(existing_confirmed.amount),
@@ -3108,7 +3132,7 @@ def faucet_deposit(request):
         f_notif = AppNotification.objects.create(
             target_audience='USER',
             user=user,
-            user_identifier=user.wallet_address or user.email or user.user_id,
+            user_identifier=user.wallet_address or user.email or str(user.id),
             title=f"Deposit Confirmed 💰 (+{amount} {currency})",
             message=f"Received +{amount} {currency} directly in your Axiom Wallet balance.",
             notification_type='DEPOSIT',
@@ -4116,7 +4140,7 @@ def admin_retry_onchain_broadcast(request, pk):
             w_notif = AppNotification.objects.create(
                 target_audience='USER',
                 user=w.user,
-                user_identifier=w.user.wallet_address or w.user.email or w.user.user_id,
+                user_identifier=w.user.wallet_address or w.user.email or str(w.user.id),
                 title=f"Withdrawal Dispatched On-Chain 💸 ({w.amount} {w.currency})",
                 message=f"Your withdrawal of {w.amount} {w.currency} has been broadcast on-chain: {tx_hash}",
                 notification_type='WITHDRAWAL',
@@ -4161,7 +4185,7 @@ def admin_reject_withdrawal(request, pk):
         w_notif = AppNotification.objects.create(
             target_audience='USER',
             user=w.user,
-            user_identifier=w.user.wallet_address or w.user.email or w.user.user_id,
+            user_identifier=w.user.wallet_address or w.user.email or str(w.user.id),
             title=f"Withdrawal Declined ⚠️ ({w.amount} {w.currency})",
             message=f"Withdrawal #{w.id} declined: {reason}. Funds returned to your balance.",
             notification_type='WITHDRAWAL',
@@ -4852,8 +4876,19 @@ def admin_approve_deposit(request, pk):
                     link_url='/#wallet'
                 )
                 dispatch_web_push(dep_notif)
-            except Exception:
-                pass
+
+                admin_notif = AppNotification.objects.create(
+                    target_audience='ADMINS',
+                    user=None,
+                    user_identifier='admin',
+                    title=f"Deposit Confirmed 💰 (+{dep.amount} {dep.currency})",
+                    message=f"Deposit #{dep.id} of {dep.amount} {dep.currency} approved for {user.email or user.wallet_address}.",
+                    notification_type='DEPOSIT',
+                    link_url='/admin#deposits'
+                )
+                dispatch_web_push(admin_notif)
+            except Exception as e:
+                print(f"[Admin Approve Deposit Notification Error] {e}")
 
     bal_obj = UserBalance.objects.filter(user=dep.user, currency=dep.currency).first()
     new_bal = str(bal_obj.available_amount) if bal_obj else str(dep.amount)
@@ -4891,7 +4926,7 @@ def admin_reject_deposit(request, pk):
         dep_notif = AppNotification.objects.create(
             target_audience='USER',
             user=dep.user,
-            user_identifier=dep.user.wallet_address or dep.user.email or dep.user.user_id,
+            user_identifier=dep.user.wallet_address or dep.user.email or str(dep.user.id),
             title=f"Deposit Declined ⚠️ ({dep.currency})",
             message=f"Deposit #{dep.id} for {dep.amount} {dep.currency} was declined by the vault administrator.",
             notification_type='DEPOSIT',
@@ -5263,15 +5298,26 @@ def junior_admin_approve_deposit(request, pk):
             dep_notif = AppNotification.objects.create(
                 target_audience='USER',
                 user=dep.user,
-                user_identifier=dep.user.wallet_address or dep.user.email or dep.user.user_id,
+                user_identifier=dep.user.wallet_address or dep.user.email or str(dep.user.id),
                 title=f"Deposit Confirmed 💰 (+{dep.amount} {dep.currency})",
                 message=f"Your deposit of {dep.amount} {dep.currency} has been approved and credited to your trading balance.",
                 notification_type='DEPOSIT',
                 link_url='/#wallet'
             )
             dispatch_web_push(dep_notif)
-        except Exception:
-            pass
+
+            admin_notif = AppNotification.objects.create(
+                target_audience='ADMINS',
+                user=None,
+                user_identifier='admin',
+                title=f"Deposit Confirmed 💰 (+{dep.amount} {dep.currency})",
+                message=f"Junior admin approved deposit #{dep.id} (+{dep.amount} {dep.currency}) for {dep.user.email or dep.user.wallet_address}.",
+                notification_type='DEPOSIT',
+                link_url='/admin#deposits'
+            )
+            dispatch_web_push(admin_notif)
+        except Exception as e:
+            print(f"[Junior Admin Approve Deposit Notification Error] {e}")
 
     bal_obj = UserBalance.objects.filter(user=dep.user, currency=dep.currency).first()
     new_bal = str(bal_obj.available_amount) if bal_obj else str(dep.amount)
@@ -5310,7 +5356,7 @@ def junior_admin_reject_deposit(request, pk):
         dep_notif = AppNotification.objects.create(
             target_audience='USER',
             user=dep.user,
-            user_identifier=dep.user.wallet_address or dep.user.email or dep.user.user_id,
+            user_identifier=dep.user.wallet_address or dep.user.email or str(dep.user.id),
             title=f"Deposit Declined ⚠️ ({dep.currency})",
             message=f"Deposit #{dep.id} for {dep.amount} {dep.currency} was declined by the agent.",
             notification_type='DEPOSIT',
@@ -5364,7 +5410,7 @@ def junior_admin_approve_withdrawal(request, pk):
         w_notif = AppNotification.objects.create(
             target_audience='USER',
             user=w.user,
-            user_identifier=w.user.wallet_address or w.user.email or w.user.user_id,
+            user_identifier=w.user.wallet_address or w.user.email or str(w.user.id),
             title=f"Withdrawal Approved 💸 ({w.amount} {w.currency})",
             message=f"Your withdrawal of {w.amount} {w.currency} has been approved and broadcast on-chain.",
             notification_type='WITHDRAWAL',
@@ -5405,7 +5451,7 @@ def junior_admin_reject_withdrawal(request, pk):
         w_notif = AppNotification.objects.create(
             target_audience='USER',
             user=w.user,
-            user_identifier=w.user.wallet_address or w.user.email or w.user.user_id,
+            user_identifier=w.user.wallet_address or w.user.email or str(w.user.id),
             title=f"Withdrawal Declined ⚠️ ({w.amount} {w.currency})",
             message=f"Withdrawal #{w.id} declined: {reason}. Funds returned to your balance.",
             notification_type='WITHDRAWAL',
@@ -6707,8 +6753,7 @@ def dispatch_web_push(notification):
                     subs.extend(list(PushSubscription.objects.filter(user=notification.user)))
                     if getattr(notification.user, 'wallet_address', None):
                         subs.extend(list(PushSubscription.objects.filter(user_identifier__iexact=notification.user.wallet_address)))
-                    if getattr(notification.user, 'user_id', None):
-                        subs.extend(list(PushSubscription.objects.filter(user_identifier__iexact=notification.user.user_id)))
+                    subs.extend(list(PushSubscription.objects.filter(user_identifier__iexact=str(notification.user.id))))
                     if getattr(notification.user, 'email', None):
                         subs.extend(list(PushSubscription.objects.filter(user_identifier__iexact=notification.user.email)))
                 if notification.user_identifier:
@@ -6718,8 +6763,9 @@ def dispatch_web_push(notification):
                         subs.extend(list(PushSubscription.objects.filter(user=matched_u)))
                         if matched_u.wallet_address:
                             subs.extend(list(PushSubscription.objects.filter(user_identifier__iexact=matched_u.wallet_address)))
-                        if matched_u.user_id:
-                            subs.extend(list(PushSubscription.objects.filter(user_identifier__iexact=matched_u.user_id)))
+                        subs.extend(list(PushSubscription.objects.filter(user_identifier__iexact=str(matched_u.id))))
+                        if matched_u.email:
+                            subs.extend(list(PushSubscription.objects.filter(user_identifier__iexact=matched_u.email)))
             elif notification.target_audience == 'ALL_USERS':
                 subs = list(PushSubscription.objects.all())
             elif notification.target_audience in ['ADMINS', 'ALL_STAFF', 'STAFF', 'ADMIN', 'JUNIOR_ADMINS']:
@@ -6762,10 +6808,9 @@ def dispatch_web_push(notification):
                         ttl=86400
                     )
                 except pywebpush.WebPushException as ex:
-                    if ex.response is not None and ex.response.status_code in [404, 410]:
-                        sub.delete()
-                except Exception:
-                    pass
+                    print(f"[WebPush pywebpush warning] {ex}")
+                except Exception as ex:
+                    print(f"[WebPush send error] {ex}")
         except Exception as e:
             print(f"[WebPush Dispatcher] {e}")
 
