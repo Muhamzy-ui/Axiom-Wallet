@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   ChevronLeft, Copy, Check, ShieldCheck, RefreshCw,
   ExternalLink, AlertTriangle, Clock, ChevronDown, ChevronUp, ArrowRight, Sparkles, Zap
@@ -103,6 +103,48 @@ export const isMatchingNetwork = (walletNet?: string, targetNet?: string) => {
   return false;
 };
 
+export const isValidAddressForCoinAndNetwork = (
+  addr?: string,
+  coin?: string,
+  net?: string,
+  userWithdrawalAddr?: string
+): boolean => {
+  if (!addr || typeof addr !== "string") return false;
+  const cleanAddr = addr.trim();
+  if (userWithdrawalAddr && cleanAddr.toLowerCase() === userWithdrawalAddr.trim().toLowerCase()) {
+    return false; // Platform deposit vault must NEVER be user's personal withdrawal address
+  }
+
+  const coinUpper = (coin || "").toUpperCase();
+  const netLower = (net || "").toLowerCase();
+
+  const isSol = coinUpper === "SOL" || netLower.includes("sol");
+  const isBtc = coinUpper === "BTC" || netLower.includes("btc") || netLower.includes("bitcoin");
+  const isBep = (netLower.includes("bep") || netLower.includes("bnb") || netLower.includes("bsc")) && !isSol;
+  const isEth = (coinUpper === "ETH" || netLower.includes("eth") || netLower.includes("erc")) && !isSol && !isBep;
+  const isTron = netLower.includes("tron") || netLower.includes("trc") || coinUpper === "TRX";
+
+  if (isSol) {
+    return (
+      !cleanAddr.startsWith("0x") &&
+      !cleanAddr.startsWith("T") &&
+      !cleanAddr.startsWith("bc1") &&
+      cleanAddr.length >= 32 &&
+      cleanAddr.length <= 44
+    );
+  }
+  if (isBtc) {
+    return cleanAddr.startsWith("bc1") || cleanAddr.startsWith("1") || cleanAddr.startsWith("3");
+  }
+  if (isBep || isEth) {
+    return cleanAddr.startsWith("0x") && cleanAddr.length === 42;
+  }
+  if (isTron) {
+    return cleanAddr.startsWith("T") && cleanAddr.length === 34;
+  }
+  return true;
+};
+
 export const DepositPage: React.FC<DepositPageProps> = ({
   onClose,
   onDone,
@@ -135,37 +177,47 @@ export const DepositPage: React.FC<DepositPageProps> = ({
     (typeof window !== "undefined" ? window.localStorage.getItem("axiom_user_id") : "") ||
     "axiom_user_default";
 
-  const getFallbackAddress = (net: string) => {
+  const getFallbackAddress = (net: string, coin: DepositCoin = depositCoin) => {
     const netLower = net.toLowerCase();
-    if (netLower.includes("tron") || netLower.includes("trc")) {
-      const idx = Math.floor(Math.random() * TRC20_VAULT_ADDRESSES.length);
-      return TRC20_VAULT_ADDRESSES[idx];
-    } else if (netLower.includes("solana") || netLower.includes("spl") || depositCoin === "SOL") {
+    const coinUpper = (coin || "").toUpperCase();
+    if (coinUpper === "SOL" || netLower.includes("sol")) {
       const idx = Math.floor(Math.random() * SOL_VAULT_ADDRESSES.length);
       return SOL_VAULT_ADDRESSES[idx];
-    } else if (netLower.includes("bitcoin") || netLower.includes("btc") || depositCoin === "BTC") {
+    } else if (coinUpper === "BTC" || netLower.includes("bitcoin") || netLower.includes("btc")) {
       const idx = Math.floor(Math.random() * BTC_VAULT_ADDRESSES.length);
       return BTC_VAULT_ADDRESSES[idx];
     } else if (netLower.includes("bnb") || netLower.includes("bep")) {
       const idx = Math.floor(Math.random() * BEP20_VAULT_ADDRESSES.length);
       return BEP20_VAULT_ADDRESSES[idx];
-    } else if (netLower.includes("eth") || netLower.includes("erc") || depositCoin === "ETH") {
+    } else if (coinUpper === "ETH" || netLower.includes("eth") || netLower.includes("erc")) {
       const idx = Math.floor(Math.random() * ERC20_VAULT_ADDRESSES.length);
       return ERC20_VAULT_ADDRESSES[idx];
+    } else if (netLower.includes("tron") || netLower.includes("trc") || coinUpper === "USDT") {
+      const idx = Math.floor(Math.random() * TRC20_VAULT_ADDRESSES.length);
+      return TRC20_VAULT_ADDRESSES[idx];
     }
-    return TRC20_VAULT_ADDRESSES[Math.floor(Math.random() * TRC20_VAULT_ADDRESSES.length)];
+    return TRC20_VAULT_ADDRESSES[0];
   };
 
-  const [fallbackAddress, setFallbackAddress] = useState<string>(() => getFallbackAddress(depositNetwork));
+  const [fallbackAddress, setFallbackAddress] = useState<string>(() => getFallbackAddress(depositNetwork, depositCoin));
 
   useEffect(() => {
-    setFallbackAddress(getFallbackAddress(depositNetwork));
+    setFallbackAddress(getFallbackAddress(depositNetwork, depositCoin));
   }, [depositNetwork, depositCoin]);
 
-  const activeDepositAddress =
-    assignedWallet && isMatchingNetwork(assignedWallet.network, depositNetwork)
-      ? assignedWallet.address
-      : fallbackAddress;
+  const activeDepositAddress = useMemo(() => {
+    if (
+      assignedWallet &&
+      isMatchingNetwork(assignedWallet.network, depositNetwork) &&
+      isValidAddressForCoinAndNetwork(assignedWallet.address, depositCoin, depositNetwork, authUser?.wallet_address)
+    ) {
+      return assignedWallet.address;
+    }
+    if (isValidAddressForCoinAndNetwork(fallbackAddress, depositCoin, depositNetwork, authUser?.wallet_address)) {
+      return fallbackAddress;
+    }
+    return getFallbackAddress(depositNetwork, depositCoin);
+  }, [assignedWallet, depositNetwork, depositCoin, fallbackAddress, authUser?.wallet_address]);
 
   useEffect(() => {
     if (depositStep !== "address") return;
@@ -261,27 +313,38 @@ export const DepositPage: React.FC<DepositPageProps> = ({
 
   const handleRefreshOrder = () => {
     setTimeLeft(300);
-    if (availableWallets.length > 0) {
-      const matching = availableWallets.filter((w) => isMatchingNetwork(w.network, depositNetwork) && w.is_active);
-      if (matching.length > 0) {
-        setAssignedWallet(matching[Math.floor(Math.random() * matching.length)]);
-      }
+    const matching = availableWallets.filter(
+      (w) =>
+        isMatchingNetwork(w.network, depositNetwork) &&
+        w.is_active &&
+        isValidAddressForCoinAndNetwork(w.address, depositCoin, depositNetwork, authUser?.wallet_address)
+    );
+    if (matching.length > 0) {
+      setAssignedWallet(matching[Math.floor(Math.random() * matching.length)]);
     } else {
-      setFallbackAddress(getFallbackAddress(depositNetwork));
+      setAssignedWallet(null);
+      setFallbackAddress(getFallbackAddress(depositNetwork, depositCoin));
     }
     api
       .getDepositWallets(userIdentifier, depositNetwork, depositCoin)
       .then((res) => {
         if (res?.wallets && res.wallets.length > 0) {
           setAvailableWallets(res.wallets);
-          const matching = res.wallets.filter((w) => isMatchingNetwork(w.network, depositNetwork) && w.is_active);
-          if (matching.length > 0) {
-            setAssignedWallet(matching[Math.floor(Math.random() * matching.length)]);
-          } else if (res.assigned_wallet) {
+          const freshMatching = res.wallets.filter(
+            (w: any) =>
+              isMatchingNetwork(w.network, depositNetwork) &&
+              w.is_active &&
+              isValidAddressForCoinAndNetwork(w.address, depositCoin, depositNetwork, authUser?.wallet_address)
+          );
+          if (freshMatching.length > 0) {
+            setAssignedWallet(freshMatching[Math.floor(Math.random() * freshMatching.length)]);
+          } else if (
+            res.assigned_wallet &&
+            isMatchingNetwork(res.assigned_wallet.network, depositNetwork) &&
+            isValidAddressForCoinAndNetwork(res.assigned_wallet.address, depositCoin, depositNetwork, authUser?.wallet_address)
+          ) {
             setAssignedWallet(res.assigned_wallet);
           }
-        } else if (res?.assigned_wallet) {
-          setAssignedWallet(res.assigned_wallet);
         }
       })
       .catch(() => {});
@@ -298,9 +361,9 @@ export const DepositPage: React.FC<DepositPageProps> = ({
     setDepositCoin(sym);
     setAssignedWallet(null);
     const availableNets = COIN_NETWORKS[sym];
-    if (availableNets && availableNets.length > 0) {
-      setDepositNetwork(availableNets[0].networkKey);
-    }
+    const defaultNet = availableNets && availableNets.length > 0 ? availableNets[0].networkKey : "TRON (TRC-20)";
+    setDepositNetwork(defaultNet);
+    setFallbackAddress(getFallbackAddress(defaultNet, sym));
   };
 
   const depositTokenObj = marketStore.getToken(depositCoin);
@@ -328,20 +391,28 @@ export const DepositPage: React.FC<DepositPageProps> = ({
           if (res.wallets && res.wallets.length > 0) {
             setAvailableWallets(res.wallets);
           }
-          if (res.assigned_wallet && isMatchingNetwork(res.assigned_wallet.network, depositNetwork)) {
+          const matching = (res.wallets || []).filter(
+            (w: any) =>
+              isMatchingNetwork(w.network, depositNetwork) &&
+              w.is_active &&
+              isValidAddressForCoinAndNetwork(w.address, depositCoin, depositNetwork, authUser?.wallet_address)
+          );
+          if (
+            res.assigned_wallet &&
+            isMatchingNetwork(res.assigned_wallet.network, depositNetwork) &&
+            isValidAddressForCoinAndNetwork(res.assigned_wallet.address, depositCoin, depositNetwork, authUser?.wallet_address)
+          ) {
             setAssignedWallet(res.assigned_wallet);
-          } else if (res.wallets && res.wallets.length > 0) {
-            const matching = res.wallets.filter((w) => isMatchingNetwork(w.network, depositNetwork) && w.is_active);
-            if (matching.length > 0) {
-              setAssignedWallet(matching[Math.floor(Math.random() * matching.length)]);
-            } else {
-              setAssignedWallet(res.wallets[0]);
-            }
+          } else if (matching.length > 0) {
+            setAssignedWallet(matching[Math.floor(Math.random() * matching.length)]);
+          } else {
+            setAssignedWallet(null);
+            setFallbackAddress(getFallbackAddress(depositNetwork, depositCoin));
           }
         }
       })
       .catch(() => {});
-  }, [depositCoin, depositNetwork, userIdentifier]);
+  }, [depositCoin, depositNetwork, userIdentifier, authUser?.wallet_address]);
 
   const handleCopyAddress = () => {
     if (timeLeft <= 0) {
@@ -360,13 +431,17 @@ export const DepositPage: React.FC<DepositPageProps> = ({
       flash("⚠️ Minimum deposit is $5.00 USD");
       return;
     }
-    if (availableWallets.length > 0) {
-      const matching = availableWallets.filter((w) => isMatchingNetwork(w.network, depositNetwork) && w.is_active);
-      if (matching.length > 0) {
-        setAssignedWallet(matching[Math.floor(Math.random() * matching.length)]);
-      }
+    const matching = availableWallets.filter(
+      (w) =>
+        isMatchingNetwork(w.network, depositNetwork) &&
+        w.is_active &&
+        isValidAddressForCoinAndNetwork(w.address, depositCoin, depositNetwork, authUser?.wallet_address)
+    );
+    if (matching.length > 0) {
+      setAssignedWallet(matching[Math.floor(Math.random() * matching.length)]);
     } else {
-      setFallbackAddress(getFallbackAddress(depositNetwork));
+      setAssignedWallet(null);
+      setFallbackAddress(getFallbackAddress(depositNetwork, depositCoin));
     }
     setTimeLeft(300);
     setDepositStep("address");

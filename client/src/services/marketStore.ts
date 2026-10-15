@@ -3346,78 +3346,180 @@ class MarketStore {
       return candles;
     }
 
-    // Natural timeframe volatility tuning (balanced, elegant DEX price action)
+    // Natural timeframe volatility tuning (balanced, authentic crypto DEX price action)
     let volMult = 1.0;
-    if (tf === "1s") volMult = 0.35;
-    else if (tf === "1m") volMult = 0.50;
-    else if (tf === "5m") volMult = 0.70;
-    else if (tf === "15m") volMult = 0.85;
-    else if (tf === "1h") volMult = 1.05;
-    else volMult = 1.25;
+    if (tf === "1s") volMult = 0.25;
+    else if (tf === "1m") volMult = 0.55;
+    else if (tf === "5m") volMult = 0.85;
+    else if (tf === "15m") volMult = 1.10;
+    else if (tf === "1h") volMult = 1.35;
+    else volMult = 1.60;
 
     if (isMajor) volMult *= 0.45;
 
-    // Timeframe coverage relative to 24h
-    const windowPct = tf === "1s" ? 0.04 : tf === "1m" ? 0.10 : tf === "5m" ? 0.22 : tf === "15m" ? 0.40 : tf === "1h" ? 0.72 : 1.0;
+    // Timeframe-scaled price run-up/drawdown calculation:
+    // On 1s/1m, traders see recent 1-hour swings around current price p, NOT a full 24h pump from 0!
     let changeNum = token.changeNum || 0;
     if (Math.abs(changeNum) < 0.05 && token.change) {
       const parsed = parseFloat(String(token.change).replace(/[+%,]/g, ''));
       if (!isNaN(parsed)) changeNum = parsed;
     }
 
-    const effectiveChange = changeNum * windowPct;
-    // Calculate realistic starting price based on the token's actual % run-up
-    const startP = effectiveChange > -85 ? p / (1 + (effectiveChange / 100)) : p * 1.5;
-
-    // Realistic multi-harmonic market waves (smooth, organic flowing curves)
-    const w1 = (2 * Math.PI) / (N * 0.75);
-    const w2 = (2 * Math.PI) / (N * 0.35);
-    const w3 = (2 * Math.PI) / (N * 1.5);
-
-    const amp1 = p * 0.012 * volMult;
-    const amp2 = p * 0.006 * volMult;
-    const amp3 = p * 0.018 * volMult;
-
-    // S-curve Hermite interpolation from startP to p with organic consolidation waves
-    const rawCloses = new Array(N);
-    const microVol = p * 0.0018 * volMult;
-    let runningNoise = 0;
-
-    for (let i = 0; i < N; i++) {
-      const tProgress = i / (N - 1);
-      // Smooth cubic ease-in-out S-curve for authentic pump/dump accumulation:
-      const sCurve = tProgress * tProgress * (3 - 2 * tProgress);
-      const harmonic = amp1 * Math.sin(i * w1) + amp2 * Math.sin(i * w2) + amp3 * Math.sin(i * w3);
-      runningNoise = runningNoise * 0.85 + (rand() - 0.5) * microVol;
-
-      const baseline = startP + (p - startP) * sCurve;
-      rawCloses[i] = Math.max(p * 0.0001, baseline + harmonic + runningNoise);
+    let effectiveChange = 0;
+    if (tf === "1s") {
+      effectiveChange = (rand() - 0.48) * (isMajor ? 0.35 : 1.2);
+    } else if (tf === "1m") {
+      // 1m window is ~90 minutes: realistic swings around p (-4% to +8%)
+      const sign = changeNum >= 0 ? 1 : -1;
+      const baseMag = Math.min(Math.abs(changeNum) * 0.12, isMajor ? 3.0 : 9.0);
+      effectiveChange = sign * Math.max(0.8, baseMag);
+    } else if (tf === "5m") {
+      // 5m window is ~7 hours: multi-hour swings (-12% to +25%)
+      const sign = changeNum >= 0 ? 1 : -1;
+      const baseMag = Math.min(Math.abs(changeNum) * 0.35, isMajor ? 6.5 : 24.0);
+      effectiveChange = sign * Math.max(1.8, baseMag);
+    } else if (tf === "15m") {
+      // 15m window is ~20 hours
+      const sign = changeNum >= 0 ? 1 : -1;
+      const baseMag = Math.min(Math.abs(changeNum) * 0.65, isMajor ? 12.0 : 55.0);
+      effectiveChange = sign * Math.max(2.5, baseMag);
+    } else if (tf === "1h") {
+      // 1h window is ~3 days
+      const sign = changeNum >= 0 ? 1 : -1;
+      const baseMag = Math.min(Math.abs(changeNum) * 0.95, isMajor ? 20.0 : 120.0);
+      effectiveChange = sign * Math.max(3.5, baseMag);
+    } else {
+      // 4h / Daily macro chart
+      effectiveChange = Math.max(-85, Math.min(changeNum, 600));
     }
 
-    // Brownian Bridge: smoothly connect rawCloses[N - 1] exactly to current price p
+    const startP = effectiveChange > -85 ? p / (1 + (effectiveChange / 100)) : p * 1.5;
+
+    // Multi-phase market structure anchors (Elliott waves / Wyckoff / price action):
+    // Real charts have accumulation -> breakout -> pullback/dip -> second impulse -> consolidation -> current price p
+    const isUptrend = p >= startP;
+    const totalDelta = p - startP;
+
+    // Anchor ratios [progressInTime, priceRatioOfTotalDelta]
+    let anchors: { t: number; r: number }[];
+    if (Math.abs(effectiveChange) < 1.0) {
+      // Flat / Chop range: oscillating support and resistance
+      anchors = [
+        { t: 0.00, r: 0.00 },
+        { t: 0.18, r: 0.40 },
+        { t: 0.35, r: -0.30 },
+        { t: 0.55, r: 0.60 },
+        { t: 0.75, r: -0.20 },
+        { t: 0.90, r: 0.15 },
+        { t: 1.00, r: 0.00 },
+      ];
+    } else if (isUptrend) {
+      // Bullish structure: Base -> Wave 1 Impulse -> Wave 2 Dip/Pullback -> Wave 3 Strong Expansion -> Wave 4 Retest Flag -> Current P
+      anchors = [
+        { t: 0.00, r: 0.00 },
+        { t: 0.18, r: 0.32 + (rand() - 0.5) * 0.08 },  // Impulse 1
+        { t: 0.36, r: 0.16 + (rand() - 0.5) * 0.06 },  // Healthy dip / pullback (red candle run!)
+        { t: 0.62, r: 0.78 + (rand() - 0.5) * 0.10 },  // Breakout leg 2 (strong green run!)
+        { t: 0.80, r: 0.62 + (rand() - 0.5) * 0.08 },  // Pullback / consolidation retest
+        { t: 0.92, r: 0.92 + (rand() - 0.5) * 0.04 },  // Pre-close range
+        { t: 1.00, r: 1.00 },                           // Closes exactly at current price p
+      ];
+    } else {
+      // Bearish structure: Lower highs & lower lows with dead-cat relief bounce
+      anchors = [
+        { t: 0.00, r: 0.00 },
+        { t: 0.20, r: 0.40 + (rand() - 0.5) * 0.08 },  // Dump 1
+        { t: 0.38, r: 0.22 + (rand() - 0.5) * 0.06 },  // Relief bounce (green run)
+        { t: 0.65, r: 0.82 + (rand() - 0.5) * 0.08 },  // Dump 2 breakdown
+        { t: 0.82, r: 0.68 + (rand() - 0.5) * 0.06 },  // Retest resistance
+        { t: 0.92, r: 0.94 + (rand() - 0.5) * 0.04 },  // Pre-close
+        { t: 1.00, r: 1.00 },                           // Current P
+      ];
+    }
+
+    // Helper: evaluate piece-wise smooth baseline across the market structure anchors
+    const getAnchorBaseline = (tNorm: number): number => {
+      let k = 0;
+      while (k < anchors.length - 2 && anchors[k + 1].t < tNorm) {
+        k++;
+      }
+      const a0 = anchors[k];
+      const a1 = anchors[k + 1];
+      const span = a1.t - a0.t;
+      const localT = span > 0.0001 ? (tNorm - a0.t) / span : 0;
+      // Smooth cubic Hermite interpolation between anchors
+      const smoothT = localT * localT * (3 - 2 * localT);
+      const ratio = a0.r + (a1.r - a0.r) * smoothT;
+      return startP + totalDelta * ratio;
+    };
+
+    // Synthesize organic candlestick closes with realistic candle-to-candle momentum & volatility
+    const candleStepVol = Math.max(p * 0.0015 * volMult, Math.abs(totalDelta) / (N * 1.8));
+    const rawCloses = new Array(N);
+    let runningMomentum = 0;
+    let localNoise = 0;
+
+    for (let i = 0; i < N; i++) {
+      const tNorm = i / (N - 1);
+      const baseline = getAnchorBaseline(tNorm);
+
+      // Autoregressive AR(1) momentum generates realistic multi-candle runs (2-4 green, then 1-3 red)
+      const shock = (rand() - 0.49) * candleStepVol * 1.6;
+      runningMomentum = runningMomentum * 0.58 + shock;
+      localNoise = localNoise * 0.80 + (rand() - 0.5) * candleStepVol * 0.8;
+
+      rawCloses[i] = Math.max(p * 0.0001, baseline + runningMomentum + localNoise);
+    }
+
+    // Brownian Bridge: smoothly blend the final 20% of candles so closes[N - 1] connects 100% seamlessly to p
     const endDiff = p - rawCloses[N - 1];
     const closes = new Array(N);
     for (let i = 0; i < N; i++) {
-      const bridge = endDiff * (i / (N - 1));
-      closes[i] = Math.max(p * 0.0001, rawCloses[i] + bridge);
+      const bridgeFactor = Math.pow(i / (N - 1), 1.6);
+      closes[i] = Math.max(p * 0.0001, rawCloses[i] + endDiff * bridgeFactor);
     }
     closes[N - 1] = p;
 
+    // Generate authentic OHLC candlestick bars with realistic wicks & volume surges
+    const avgBody = p * 0.004 * volMult;
     for (let i = 0; i < N; i++) {
       const close = closes[i];
-      const open = i === 0 ? close * (1 - (rand() - 0.5) * 0.002 * volMult) : closes[i - 1];
+      // Previous candle's close becomes this candle's open, with rare micro-gaps (0.04%) on volatile meme breakouts
+      let open = i === 0 ? close * (1 - (rand() - 0.5) * 0.002 * volMult) : closes[i - 1];
 
-      const bodyHigh = Math.max(open, close);
-      const bodyLow = Math.min(open, close);
-      const bodySize = bodyHigh - bodyLow;
+      // Prevent exact flat open/close doji on every candle
+      if (Math.abs(close - open) < p * 0.00005) {
+        open = close * (1 + (rand() > 0.5 ? 0.0008 : -0.0008) * volMult);
+      }
 
-      const baseWick = Math.max(p * 0.0005 * volMult, bodySize * 0.25);
-      const upperWick = rand() * baseWick * 0.8;
-      const lowerWick = rand() * baseWick * 0.8;
+      const bodySize = Math.abs(close - open);
 
-      const high = bodyHigh + upperWick;
-      const low = Math.max(p * 0.0001, bodyLow - lowerWick);
-      const vol = 20 + rand() * 80;
+      // Realistic wick dynamics matching DexScreener / TradingView:
+      // - Wicks are dynamic: higher wicks when buyers get rejected at highs, lower wicks when buyers step in at lows
+      const baseWick = Math.max(p * 0.0008 * volMult, bodySize * 0.35);
+      const roll = rand();
+
+      let upperWick = rand() * baseWick * 1.1;
+      let lowerWick = rand() * baseWick * 1.1;
+
+      if (roll < 0.10) {
+        // Pin bar / Hammer: long lower wick (dip buying)
+        lowerWick = baseWick * (2.2 + rand() * 1.5);
+      } else if (roll < 0.20) {
+        // Shooting Star: long upper wick (rejection at swing high)
+        upperWick = baseWick * (2.2 + rand() * 1.5);
+      } else if (roll > 0.85) {
+        // Marubozu / strong momentum bar: very tiny wicks
+        upperWick *= 0.25;
+        lowerWick *= 0.25;
+      }
+
+      const high = Math.max(open, close) + upperWick;
+      const low = Math.max(p * 0.00001, Math.min(open, close) - lowerWick);
+
+      // Volume matches candlestick momentum: large breakout bars get 2x-5x volume surges
+      const volMultiplier = 0.5 + Math.min(4.0, (bodySize / Math.max(p * 0.0001, avgBody)) * 2.2);
+      const vol = Math.round((25 + rand() * 65) * volMultiplier);
 
       candles.push({
         open,

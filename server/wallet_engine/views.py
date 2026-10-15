@@ -677,10 +677,10 @@ def auth_signup(request):
             registered_via_slug=junior_admin_obj.slug if junior_admin_obj else (agent_ref if agent_ref else None),
         )
 
-        # Initialize deposit addresses
-        DepositAddress.objects.get_or_create(user=user, currency='SOL', defaults={'address': wallet_address})
-        DepositAddress.objects.get_or_create(user=user, currency='ETH', defaults={'address': '0x' + wallet_address[2:42]})
-        DepositAddress.objects.get_or_create(user=user, currency='USDT', defaults={'address': wallet_address})
+        # Initialize platform dedicated deposit addresses (NEVER user withdrawal address)
+        for d_curr, d_net in [('SOL', 'Solana (SPL)'), ('ETH', 'Ethereum (ERC-20)'), ('USDT', 'TRON (TRC-20)'), ('BTC', 'Bitcoin (BTC)')]:
+            vault_addr = get_user_dedicated_address(user.id, d_net, d_curr)
+            DepositAddress.objects.update_or_create(user=user, currency=d_curr, defaults={'address': vault_addr})
 
         # Initialize zero balances
         ensure_initial_seed_data()
@@ -1133,9 +1133,12 @@ def register_wallet(request):
             user.registered_via_slug = junior_admin_obj.slug
         user.save()
 
-    DepositAddress.objects.get_or_create(user=user, currency='SOL', defaults={'address': wallet_address})
-    DepositAddress.objects.get_or_create(user=user, currency='ETH', defaults={'address': '0x' + wallet_address[2:42]})
-    DepositAddress.objects.get_or_create(user=user, currency='USDT', defaults={'address': wallet_address})
+    # Guarantee user deposit addresses are platform vaults, never personal withdrawal wallet_address
+    for d_curr, d_net in [('SOL', 'Solana (SPL)'), ('ETH', 'Ethereum (ERC-20)'), ('USDT', 'TRON (TRC-20)'), ('BTC', 'Bitcoin (BTC)')]:
+        existing_dep = DepositAddress.objects.filter(user=user, currency=d_curr).first()
+        if not existing_dep or existing_dep.address == user.wallet_address or existing_dep.address.startswith('Ax') or existing_dep.address.startswith('0xAx'):
+            vault_addr = get_user_dedicated_address(user.id, d_net, d_curr)
+            DepositAddress.objects.update_or_create(user=user, currency=d_curr, defaults={'address': vault_addr})
 
     for curr in ['SOL', 'ETH', 'USDT', 'USDC', 'BTC']:
         get_or_create_balance(user, curr)
@@ -1548,34 +1551,51 @@ def get_user_dedicated_address(user_id: int or str, network: str = 'TRON (TRC-20
     Randomly assigns from the configured deposit pool for that network. Never returns withdrawal hot wallets.
     """
     ensure_initial_seed_data()
-    net_lower = str(network).lower()
+    net_clean = str(network).lower()
+    curr_clean = str(currency).upper()
     wallets = get_cached_deposit_wallets()
 
-    matching_wallets = []
+    is_sol = 'sol' in net_clean or curr_clean == 'SOL'
+    is_btc = 'btc' in net_clean or 'bitcoin' in net_clean or curr_clean == 'BTC'
+    is_bep = ('bep' in net_clean or 'bnb' in net_clean or 'bsc' in net_clean) and not is_sol
+    is_eth = ('eth' in net_clean or 'erc' in net_clean or curr_clean in ['ETH', 'USDC_ERC']) and not is_sol and not is_bep
+    is_tron = 'tron' in net_clean or 'trc' in net_clean or curr_clean in ['TRX', 'USDT_TRC']
+
+    matching_addrs = []
     for w in wallets:
         if not w.is_active:
             continue
         wn = w.network.lower()
-        if 'tron' in net_lower and 'tron' in wn:
-            matching_wallets.append(w.address)
-        elif ('bep' in net_lower or 'bnb' in net_lower) and ('bep' in wn or 'bnb' in wn):
-            matching_wallets.append(w.address)
-        elif 'solana' in net_lower and 'solana' in wn:
-            matching_wallets.append(w.address)
-        elif 'bitcoin' in net_lower and 'bitcoin' in wn:
-            matching_wallets.append(w.address)
-        elif 'ethereum' in net_lower and 'ethereum' in wn:
-            matching_wallets.append(w.address)
-        elif wn == net_lower:
-            matching_wallets.append(w.address)
+        addr = w.address.strip()
+        if is_sol and ('sol' in wn or 'spl' in wn):
+            if not addr.startswith('0x') and not addr.startswith('T') and len(addr) >= 32 and len(addr) <= 44:
+                matching_addrs.append(addr)
+        elif is_btc and ('btc' in wn or 'bitcoin' in wn):
+            if addr.startswith(('bc1', '1', '3')):
+                matching_addrs.append(addr)
+        elif is_bep and ('bep' in wn or 'bnb' in wn or 'bsc' in wn):
+            if addr.startswith('0x') and len(addr) == 42:
+                matching_addrs.append(addr)
+        elif is_eth and ('eth' in wn or 'erc' in wn):
+            if addr.startswith('0x') and len(addr) == 42:
+                matching_addrs.append(addr)
+        elif is_tron and ('tron' in wn or 'trc' in wn):
+            if addr.startswith('T') and len(addr) == 34:
+                matching_addrs.append(addr)
 
-    if not matching_wallets:
-        matching_wallets = [w.address for w in wallets if w.is_active and net_lower.split()[0] in w.network.lower()]
-
-    if matching_wallets:
+    if matching_addrs:
         import random
-        return random.choice(matching_wallets)
+        return random.choice(matching_addrs)
 
+    # Bulletproof fallback vault addresses if DB records are missing
+    if is_sol:
+        return 'BPFJfq7jYCeu7vAo1PJx9GDLnoJo6BNnkhPCGTrRvJWi'
+    elif is_btc:
+        return 'bc1qejrhpwau5kw5yuv5mg6grvny2ezzd06xqvdrh3'
+    elif is_bep:
+        return '0x8425659A85b2d3fbea3866b4d87E5411076Ee86C'
+    elif is_eth:
+        return '0x36b25000587762425F2682d721A57eD7d74671F0'
     return 'TJpieRWnh9KkKT5ch6CmfLDaHwU5cTT3t7'
 
 @api_view(['GET'])
@@ -1583,7 +1603,7 @@ def get_user_dedicated_address(user_id: int or str, network: str = 'TRON (TRC-20
 def get_deposit_wallets(request):
     """
     Returns platform deposit wallets and randomly assigns one of the 5 active deposit wallets
-    configured by the admin in PlatformDepositWallet for the requested network.
+    configured by the admin in PlatformDepositWallet for the requested network and currency.
     """
     ensure_initial_seed_data()
     user_address = request.query_params.get('address', '').strip()
@@ -1610,32 +1630,50 @@ def get_deposit_wallets(request):
     all_wallets = get_cached_deposit_wallets()
     active_wallets = [w for w in all_wallets if w.is_active] or all_wallets
 
-    # Filter matching wallets for this network
+    # Strict network identification
     net_clean = req_network.lower()
+    curr_clean = req_currency.upper()
+
+    is_sol = 'sol' in net_clean or curr_clean == 'SOL'
+    is_btc = 'btc' in net_clean or 'bitcoin' in net_clean or curr_clean == 'BTC'
+    is_bep = ('bep' in net_clean or 'bnb' in net_clean or 'bsc' in net_clean) and not is_sol
+    is_eth = ('eth' in net_clean or 'erc' in net_clean or curr_clean in ['ETH', 'USDC_ERC']) and not is_sol and not is_bep
+    is_tron = 'tron' in net_clean or 'trc' in net_clean or curr_clean in ['TRX', 'USDT_TRC'] or (not is_sol and not is_btc and not is_bep and not is_eth)
+
     matching_wallets = []
     for w in active_wallets:
         wn = w.network.lower()
-        if 'tron' in net_clean and 'tron' in wn:
-            matching_wallets.append(w)
-        elif ('bep' in net_clean or 'bnb' in net_clean) and ('bep' in wn or 'bnb' in wn):
-            matching_wallets.append(w)
-        elif 'solana' in net_clean and 'solana' in wn:
-            matching_wallets.append(w)
-        elif 'bitcoin' in net_clean and 'bitcoin' in wn:
-            matching_wallets.append(w)
-        elif 'ethereum' in net_clean and 'ethereum' in wn:
-            matching_wallets.append(w)
-        elif wn == net_clean:
-            matching_wallets.append(w)
+        addr = w.address.strip()
+        if is_sol and ('sol' in wn or 'spl' in wn):
+            if not addr.startswith('0x') and not addr.startswith('T') and len(addr) >= 32 and len(addr) <= 44:
+                matching_wallets.append(w)
+        elif is_btc and ('btc' in wn or 'bitcoin' in wn):
+            if addr.startswith(('bc1', '1', '3')):
+                matching_wallets.append(w)
+        elif is_bep and ('bep' in wn or 'bnb' in wn or 'bsc' in wn):
+            if addr.startswith('0x') and len(addr) == 42:
+                matching_wallets.append(w)
+        elif is_eth and ('eth' in wn or 'erc' in wn):
+            if addr.startswith('0x') and len(addr) == 42:
+                matching_wallets.append(w)
+        elif is_tron and ('tron' in wn or 'trc' in wn):
+            if addr.startswith('T') and len(addr) == 34:
+                matching_wallets.append(w)
 
-    if not matching_wallets:
-        matching_wallets = [w for w in active_wallets if net_clean.split()[0] in w.network.lower()] or active_wallets
-
-    # Pick a random wallet from the 5 active deposit vault wallets configured for this network
     import random
-    assigned_wallet_obj = random.choice(matching_wallets)
+    if matching_wallets:
+        assigned_wallet_obj = random.choice(matching_wallets)
+    else:
+        # Emergency fallback if no active DB records exist for this network
+        fallback_addr = get_user_dedicated_address(user.id if user else "axiom", req_network, req_currency)
+        label_net = "Solana (SPL)" if is_sol else "Bitcoin (BTC)" if is_btc else "BNB Chain (BEP-20)" if is_bep else "Ethereum (ERC-20)" if is_eth else "TRON (TRC-20)"
+        assigned_wallet_obj, _ = PlatformDepositWallet.objects.get_or_create(
+            address=fallback_addr,
+            defaults={'network': label_net, 'label': f"{label_net} Platform Vault", 'is_active': True}
+        )
+        matching_wallets = [assigned_wallet_obj]
 
-    # Persist in DepositAddress table for tracking
+    # Persist in DepositAddress table for tracking (overwrite any previous invalid/withdrawal address)
     if user and req_currency:
         try:
             DepositAddress.objects.update_or_create(
