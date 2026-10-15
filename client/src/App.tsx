@@ -168,11 +168,12 @@ function TokenSnapshot({ sym, flash }: { sym: string; flash?: (m: string) => voi
 
   const solStr = d.solPrice ?? (parseFloat(d.price.replace(/[\$,]/g, "")) / 121.69).toFixed(6) + " SOL";
 
+  const tfStats = marketStore.computeTokenTimeframeStats(d);
   const periods: { id: string; label: string; val: string; up: boolean; zero?: boolean }[] = [
-    { id: "5M", label: "5M", val: d.m5.val, up: d.m5.up, zero: d.m5.zero },
-    { id: "1H", label: "1H", val: d.h1.val, up: d.h1.up },
-    { id: "6H", label: "6H", val: d.h6.val, up: d.h6.up },
-    { id: "24H", label: "24H", val: d.h24.val, up: d.h24.up },
+    { id: "5M", label: "5M", val: tfStats.m5.val, up: tfStats.m5.up, zero: false },
+    { id: "1H", label: "1H", val: tfStats.h1.val, up: tfStats.h1.up },
+    { id: "6H", label: "6H", val: tfStats.h6.val, up: tfStats.h6.up },
+    { id: "24H", label: "24H", val: tfStats.h24.val, up: tfStats.h24.up },
   ];
 
   const txns = d.txns;
@@ -1361,6 +1362,22 @@ function UserOrdersList({
 /* ── TRADE SCREEN ───────────────────────────────────────────────── */
 function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpenProfitCard?: (sym: string) => void }) {
   const [selectedSym, setSelectedSym] = useState(() => {
+    if (typeof window !== "undefined") {
+      const sp = new URLSearchParams(window.location.search);
+      const urlCoin = sp.get("coin") || sp.get("sym") || sp.get("token");
+      if (urlCoin && marketStore.getToken(urlCoin.toUpperCase())) return urlCoin.toUpperCase();
+      const hash = window.location.hash;
+      if (hash.includes("coin=")) {
+        const hashMatch = hash.match(/coin=([a-zA-Z0-9_]+)/i);
+        if (hashMatch && hashMatch[1] && marketStore.getToken(hashMatch[1].toUpperCase())) {
+          return hashMatch[1].toUpperCase();
+        }
+      }
+      const pathParts = window.location.pathname.split("/").filter(Boolean);
+      if (pathParts[0] === "coin" && pathParts[1] && marketStore.getToken(pathParts[1].toUpperCase())) {
+        return pathParts[1].toUpperCase();
+      }
+    }
     if (typeof localStorage !== "undefined") {
       const saved = localStorage.getItem("axiom_selected_sym");
       if (saved && saved !== "POPCAT" && marketStore.getToken(saved)) return saved;
@@ -1554,6 +1571,12 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
     marketStore.setActiveSym(sym);
     if (typeof localStorage !== "undefined") {
       localStorage.setItem("axiom_selected_sym", sym);
+    }
+    if (typeof window !== "undefined") {
+      try {
+        const cleanHash = window.location.hash.split("?")[0] || "#trade";
+        window.history.replaceState(null, "", `${cleanHash}?coin=${sym}`);
+      } catch {}
     }
     setQuickPct(null);
     setShowPairModal(false);
@@ -1897,24 +1920,53 @@ function Trade({ flash, onOpenProfitCard }: { flash: (x: string) => void; onOpen
           </div>
 
           {/* DexScreener 4-Timeframe Performance Bar (5M, 1H, 6H, 24H) */}
-          <div className="dex-timeframe-strip">
-            <div className={`dex-tf-chip ${m.m5.up ? "up" : "down"}`}>
-              <span className="dex-tf-lbl">5M</span>
-              <span className="dex-tf-val">{formatPercentage(m.m5.val)}</span>
-            </div>
-            <div className={`dex-tf-chip ${m.h1.up ? "up" : "down"}`}>
-              <span className="dex-tf-lbl">1H</span>
-              <span className="dex-tf-val">{formatPercentage(m.h1.val)}</span>
-            </div>
-            <div className={`dex-tf-chip ${m.h6.up ? "up" : "down"}`}>
-              <span className="dex-tf-lbl">6H</span>
-              <span className="dex-tf-val">{formatPercentage(m.h6.val)}</span>
-            </div>
-            <div className={`dex-tf-chip ${m.h24.up ? "up" : "down"}`}>
-              <span className="dex-tf-lbl">24H</span>
-              <span className="dex-tf-val">{formatPercentage(m.h24.val)}</span>
-            </div>
-          </div>
+          {(() => {
+            const raw24Num = typeof m.changeNum === 'number' && !isNaN(m.changeNum)
+              ? m.changeNum
+              : parseFloat(String(m.change || '0').replace(/[+%,]/g, '')) || 0;
+            const is24Pos = raw24Num >= 0;
+
+            const getCleanTf = (tfObj: any, ratio: number) => {
+              const str = String(typeof tfObj === 'object' ? (tfObj?.val || '') : tfObj || '').trim();
+              if (str && str !== '0%' && str !== '+0.00%' && str !== '-0.00%' && str !== '0.00%') {
+                const up = !str.startsWith('-');
+                return { val: formatPercentage(str), up };
+              }
+              const valNum = Number((raw24Num * ratio).toFixed(2));
+              return {
+                val: formatPercentage(`${valNum >= 0 ? '+' : ''}${valNum.toFixed(2)}%`),
+                up: valNum >= 0,
+              };
+            };
+
+            const tfM5 = getCleanTf(m.m5, 0.07);
+            const tfH1 = getCleanTf(m.h1, 0.30);
+            const tfH6 = getCleanTf(m.h6, 0.68);
+            const tfH24 = (m.h24?.val && m.h24.val !== '0%' && m.h24.val !== '+0.00%' && m.h24.val !== '0.00%')
+              ? { val: formatPercentage(m.h24.val), up: m.h24.up ?? is24Pos }
+              : { val: formatPercentage(m.change || `${raw24Num >= 0 ? '+' : ''}${raw24Num.toFixed(2)}%`), up: is24Pos };
+
+            return (
+              <div className="dex-timeframe-strip">
+                <div className={`dex-tf-chip ${tfM5.up ? "up" : "down"}`}>
+                  <span className="dex-tf-lbl">5M</span>
+                  <span className="dex-tf-val">{tfM5.val}</span>
+                </div>
+                <div className={`dex-tf-chip ${tfH1.up ? "up" : "down"}`}>
+                  <span className="dex-tf-lbl">1H</span>
+                  <span className="dex-tf-val">{tfH1.val}</span>
+                </div>
+                <div className={`dex-tf-chip ${tfH6.up ? "up" : "down"}`}>
+                  <span className="dex-tf-lbl">6H</span>
+                  <span className="dex-tf-val">{tfH6.val}</span>
+                </div>
+                <div className={`dex-tf-chip ${tfH24.up ? "up" : "down"}`}>
+                  <span className="dex-tf-lbl">24H</span>
+                  <span className="dex-tf-val">{tfH24.val}</span>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* DexScreener High-Density Metrics Bar */}
           <div className="dex-metrics-scroll-track">
@@ -4876,18 +4928,21 @@ function ProfileView({
 
     const cleanUser = profileUsername.trim();
 
-    // 1. Optimistically commit to local state & storage immediately
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem("axiom_user_username", cleanUser);
-      if (profileAvatarUrl) {
-        localStorage.setItem("axiom_user_avatar", profileAvatarUrl);
-      }
-    }
     authUser.username = cleanUser;
     authUser.full_name = cleanUser;
     if (profileAvatarUrl) {
       authUser.avatar_url = profileAvatarUrl;
     }
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("axiom_user_username", cleanUser);
+      if (profileAvatarUrl) {
+        localStorage.setItem("axiom_user_avatar", profileAvatarUrl);
+      }
+      localStorage.setItem("axiom_auth_user", JSON.stringify(authUser));
+    }
+    try {
+      marketStore.setUser({ ...authUser });
+    } catch {}
     window.dispatchEvent(new Event("axiom_profile_updated"));
 
     // 2. Sync with cloud backend
@@ -6176,7 +6231,8 @@ function AppShell({
       marketStore.syncBackendPortfolio(true);
 
       // Start realtime notification polling & register Web Push subscription
-      notificationService.startPolling(authUser.user_id, authUser.is_admin ? "admin" : "user");
+      const userIdentifier = authUser.wallet_address || authUser.user_id || authUser.email;
+      notificationService.startPolling(userIdentifier, authUser.is_admin ? "admin" : "user");
     }
 
     const handleRealtimeAlert = (e: any) => {
@@ -6208,6 +6264,13 @@ function AppShell({
         setView(hash as View);
         if (typeof localStorage !== "undefined") {
           localStorage.setItem("axiom_active_view", hash);
+        }
+      }
+      const coinMatch = window.location.hash.match(/coin=([a-zA-Z0-9_]+)/i) || window.location.search.match(/coin=([a-zA-Z0-9_]+)/i);
+      if (coinMatch && coinMatch[1]) {
+        const coinSym = coinMatch[1].toUpperCase();
+        if (marketStore.getToken(coinSym)) {
+          marketStore.setActiveSym(coinSym);
         }
       }
     };
@@ -6825,17 +6888,52 @@ export default function App() {
   const [isAdminRoute, setIsAdminRoute] = useState<boolean>(checkIsAdminPath);
   const [isJuniorAdminRoute, setIsJuniorAdminRoute] = useState<boolean>(checkIsJuniorAdminPath);
 
-  // Capture Referral Link Slug (e.g. /1, /alpha, /agent1)
+  // Capture Referral Link Slug (e.g. /1, /alpha, /agent1) or Coin Deep-Links (/coin/BTC)
   useEffect(() => {
     if (typeof window === "undefined") return;
     const path = window.location.pathname;
+    const searchParams = new URLSearchParams(window.location.search);
+    const isRefTest = searchParams.get("ref_test") === "true";
     const segments = path.split("/").filter(Boolean);
+
+    // Deep-link to coin via /coin/:symbol
+    if (segments.length === 2 && segments[0].toLowerCase() === "coin") {
+      const coinSym = segments[1].toUpperCase();
+        if (typeof localStorage !== "undefined") {
+          localStorage.setItem("axiom_active_view", "trade");
+        }
+        if (typeof window !== "undefined") {
+          window.location.hash = "trade";
+        }
+    }
+
+    // Deep-link to coin via query ?coin= or ?sym=
+    const initialCoin = searchParams.get("coin") || searchParams.get("sym") || searchParams.get("token");
+    if (initialCoin && marketStore.getToken(initialCoin.toUpperCase())) {
+      marketStore.setActiveSym(initialCoin.toUpperCase());
+    }
+
     if (segments.length === 1) {
       const seg = segments[0].toLowerCase();
-      const reserved = ["admin", "junior-admin", "api", "reset-password", "verify-email", "trade", "wallet", "swap", "profile", "leaderboard"];
+      const reserved = ["admin", "junior-admin", "api", "reset-password", "verify-email", "trade", "wallet", "swap", "profile", "leaderboard", "coin"];
       if (!reserved.includes(seg)) {
         localStorage.setItem("axiom_agent_ref", seg);
         console.log(`[Referral] Activated Junior Admin referral slug: /${seg}`);
+        if (isRefTest) {
+          try {
+            localStorage.removeItem("axiom_auth_user");
+            localStorage.removeItem("axiom_unlocked_session");
+            localStorage.removeItem("axiom_wallet_address");
+            localStorage.removeItem("axiom_user_id");
+            localStorage.removeItem("axiom_user_username");
+            localStorage.removeItem("axiom_user_avatar");
+            localStorage.removeItem("axiom_user_balances_latest");
+            localStorage.removeItem("axiom_last_known_balances");
+          } catch {}
+          setAuthUser(null);
+          marketStore.setUser(null);
+          marketStore.resetToZero();
+        }
       }
     }
   }, []);
@@ -6858,6 +6956,14 @@ export default function App() {
       syncDollarRateFromBackend().catch(() => {});
     } catch {}
 
+    const isRefTest = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("ref_test") === "true";
+    if (isRefTest) {
+      setAuthUser(null);
+      marketStore.setUser(null);
+      setAuthChecked(true);
+      return;
+    }
+
     const safetyTimer = setTimeout(() => {
       setAuthChecked(true);
     }, 1200);
@@ -6865,6 +6971,17 @@ export default function App() {
     getMe()
       .then((user) => {
         if (user) {
+          if (typeof localStorage !== "undefined") {
+            const savedName = localStorage.getItem("axiom_user_username");
+            const savedAvatar = localStorage.getItem("axiom_user_avatar");
+            if (savedName && (!user.username || user.username.startsWith("trader_") || user.username === "Account 1")) {
+              user.username = savedName;
+              user.full_name = savedName;
+            }
+            if (savedAvatar && !user.avatar_url) {
+              user.avatar_url = savedAvatar;
+            }
+          }
           setAuthUser(user);
           if (typeof localStorage !== "undefined") {
             localStorage.setItem("axiom_unlocked_session", "true");
@@ -6887,6 +7004,15 @@ export default function App() {
             try {
               const u = JSON.parse(raw);
               if (u && (u.wallet_address || u.user_id || u.email)) {
+                const savedName = localStorage.getItem("axiom_user_username");
+                const savedAvatar = localStorage.getItem("axiom_user_avatar");
+                if (savedName && (!u.username || u.username.startsWith("trader_") || u.username === "Account 1")) {
+                  u.username = savedName;
+                  u.full_name = savedName;
+                }
+                if (savedAvatar && !u.avatar_url) {
+                  u.avatar_url = savedAvatar;
+                }
                 setAuthUser(u);
                 try { marketStore.setUser(u); } catch {}
               }
@@ -6929,6 +7055,11 @@ export default function App() {
     if (typeof localStorage !== "undefined") {
       localStorage.removeItem("axiom_unlocked_session");
       localStorage.removeItem("axiom_auth_user");
+      localStorage.removeItem("axiom_wallet_address");
+      localStorage.removeItem("phantom_wallet_address");
+      localStorage.removeItem("axiom_user_id");
+      localStorage.removeItem("axiom_user_username");
+      localStorage.removeItem("axiom_user_avatar");
     }
     setAuthUser(null);
     marketStore.setUser(null);

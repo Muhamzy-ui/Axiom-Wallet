@@ -461,7 +461,7 @@ export const JuniorAdminDashboard: React.FC<JuniorAdminDashboardProps> = ({
                 </button>
 
                 <a
-                  href={referralUrl}
+                  href={`${referralUrl}?ref_test=true`}
                   target="_blank"
                   rel="noreferrer"
                   style={{

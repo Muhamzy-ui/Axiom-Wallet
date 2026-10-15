@@ -25,6 +25,7 @@ import { useTheme } from '../../services/themeContext';
 import { copyToClipboard } from '../../services/clipboard';
 import { setCustomDollarRate, getCustomDollarRate } from '../../constants/countries';
 import { AxiomLogo } from '../common/AxiomLogo';
+import { notificationService } from '../../services/notificationService';
 
 /* ── Design tokens ─────────────────────────────────────────────── */
 const C = {
@@ -1209,7 +1210,14 @@ function MemeCoinsPage({ search }: { search: string }) {
     logo_url: '',
     banner_url: '',
     change: '+0.00%',
-    description: ''
+    m5: '+0.45%',
+    h1: '+1.85%',
+    h6: '+5.40%',
+    h24: '+12.50%',
+    description: '',
+    buyers: '160',
+    sellers: '120',
+    txns: '280'
   });
 
   const [toast, setToast] = useState<string | null>(null);
@@ -1384,6 +1392,13 @@ function MemeCoinsPage({ search }: { search: string }) {
       else if (t.liq.includes('B')) liqVal = String((parseFloat(raw) || 0) * 1e9);
       else if (parseFloat(raw)) liqVal = raw;
     }
+
+    const tfStats = marketStore.computeTokenTimeframeStats(t);
+    const m5Val = (typeof t.m5 === 'object' ? t.m5?.val : t.m5) || tfStats.m5.val || '+0.45%';
+    const h1Val = (typeof t.h1 === 'object' ? t.h1?.val : t.h1) || tfStats.h1.val || '+1.85%';
+    const h6Val = (typeof t.h6 === 'object' ? t.h6?.val : t.h6) || tfStats.h6.val || '+5.40%';
+    const h24Val = (typeof t.h24 === 'object' ? t.h24?.val : t.h24) || t.change || tfStats.h24.val || '+12.50%';
+
     setEditForm({
       name: t.name || '',
       symbol: t.sym || '',
@@ -1395,9 +1410,33 @@ function MemeCoinsPage({ search }: { search: string }) {
       liquidity: liqVal,
       logo_url: t.imageUrl || '',
       banner_url: t.bannerUrl || '',
-      change: t.change || '+0.00%',
-      description: ''
+      change: h24Val,
+      m5: m5Val,
+      h1: h1Val,
+      h6: h6Val,
+      h24: h24Val,
+      description: '',
+      buyers: String(t.buyers || t.total_buyers_count || 160),
+      sellers: String(t.sellers || 120),
+      txns: String(t.txns || 280)
     });
+  };
+
+  const autoCalculateTimeframes = (changeVal: string) => {
+    const raw = parseFloat(String(changeVal).replace(/[+%,]/g, '')) || 0;
+    const m5 = Number((raw * 0.07).toFixed(2));
+    const h1 = Number((raw * 0.30).toFixed(2));
+    const h6 = Number((raw * 0.68).toFixed(2));
+    const h24 = raw;
+    setEditForm(prev => ({
+      ...prev,
+      change: `${h24 >= 0 ? '+' : ''}${h24.toFixed(2)}%`,
+      m5: `${m5 >= 0 ? '+' : ''}${m5.toFixed(2)}%`,
+      h1: `${h1 >= 0 ? '+' : ''}${h1.toFixed(2)}%`,
+      h6: `${h6 >= 0 ? '+' : ''}${h6.toFixed(2)}%`,
+      h24: `${h24 >= 0 ? '+' : ''}${h24.toFixed(2)}%`,
+    }));
+    toast_('⚡ Auto-calculated DexScreener 5M, 1H, 6H, 24H momentum!');
   };
 
   const handleEditMarketCapChange = (val: string) => {
@@ -1446,7 +1485,11 @@ function MemeCoinsPage({ search }: { search: string }) {
       price: parseFloat(editForm.price) || undefined,
       marketCap: parseFloat(editForm.marketCap) || undefined,
       liquidity: parseFloat(editForm.liquidity) || undefined,
-      change: editForm.change.trim() || undefined,
+      change: editForm.h24.trim() || editForm.change.trim() || undefined,
+      m5: editForm.m5.trim() || undefined,
+      h1: editForm.h1.trim() || undefined,
+      h6: editForm.h6.trim() || undefined,
+      h24: editForm.h24.trim() || undefined,
       pair_currency: editForm.pair_currency || 'SOL',
     });
 
@@ -1459,6 +1502,15 @@ function MemeCoinsPage({ search }: { search: string }) {
       logo_url: editForm.logo_url.trim(),
       pair_currency: editForm.pair_currency || 'SOL',
     }).catch(() => {});
+
+    if (editForm.buyers) {
+      const bNum = parseInt(editForm.buyers, 10);
+      const sNum = parseInt(editForm.sellers || '0', 10);
+      const tNum = parseInt(editForm.txns || '0', 10);
+      if (bNum > 0) {
+        marketStore.setTokenHoldersBuyers(editModalToken.sym, bNum, bNum, sNum > 0 ? sNum : undefined, tNum > 0 ? tNum : undefined);
+      }
+    }
 
     toast_(`✅ Successfully updated $${editModalToken.sym} metrics and synced DEX!`);
     setEditModalToken(null);
@@ -1918,6 +1970,125 @@ function MemeCoinsPage({ search }: { search: string }) {
               </button>
             </div>
           )}
+        </div>
+
+        {/* ── FLOW CONTROL: BUYERS, SELLERS & TRANSACTIONS BOOST ── */}
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(124, 58, 237, 0.06) 100%)',
+          border: '1px solid rgba(16, 185, 129, 0.25)',
+          borderRadius: 14,
+          padding: '16px 18px',
+          marginBottom: 18,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(16, 185, 129, 0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10B981', flexShrink: 0 }}>
+                <Users size={20} />
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 900, color: C.text }}>
+                  DEX Flow Tuning: Buyers, Sellers &amp; Transactions Volume (${activeToken.sym})
+                </div>
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+                  Set or boost displayed buyers and trading activity to match coin market cap (e.g. 1k - 2k buyers).
+                </div>
+              </div>
+            </div>
+
+            {/* Current Metrics pill */}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 8, padding: '4px 10px', fontSize: 11 }}>
+                <span style={{ color: C.muted }}>Buyers: </span>
+                <span style={{ color: '#10B981', fontWeight: 800 }}>{activeToken.buyers ?? activeToken.total_buyers_count ?? 160}</span>
+              </div>
+              <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 8, padding: '4px 10px', fontSize: 11 }}>
+                <span style={{ color: C.muted }}>Sellers: </span>
+                <span style={{ color: '#EF4444', fontWeight: 800 }}>{activeToken.sellers ?? 120}</span>
+              </div>
+              <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 8, padding: '4px 10px', fontSize: 11 }}>
+                <span style={{ color: C.muted }}>Txns: </span>
+                <span style={{ color: '#A78BFA', fontWeight: 800 }}>{activeToken.txns ?? 280}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Boost Presets & Exact Count Controls */}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const cur = activeToken.buyers ?? 160;
+                  const next = cur + 100;
+                  marketStore.setTokenHoldersBuyers(activeToken.sym, next, next);
+                  toast_(`Added +100 buyers to $${activeToken.sym}! Now: ${next} buyers`);
+                }}
+                style={{ padding: '6px 12px', borderRadius: 8, background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.35)', color: '#10B981', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+              >
+                +100 Buyers
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const cur = activeToken.buyers ?? 160;
+                  const next = cur + 500;
+                  marketStore.setTokenHoldersBuyers(activeToken.sym, next, next);
+                  toast_(`Added +500 buyers to $${activeToken.sym}! Now: ${next} buyers`);
+                }}
+                style={{ padding: '6px 12px', borderRadius: 8, background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.35)', color: '#60A5FA', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+              >
+                +500 Buyers
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const cur = activeToken.buyers ?? 160;
+                  const next = cur + 1000;
+                  marketStore.setTokenHoldersBuyers(activeToken.sym, next, next);
+                  toast_(`Added +1,000 buyers to $${activeToken.sym}! Now: ${next} buyers`);
+                }}
+                style={{ padding: '6px 12px', borderRadius: 8, background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.35)', color: '#A78BFA', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+              >
+                +1,000 Buyers
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const cur = activeToken.buyers ?? 160;
+                  const next = cur + 2000;
+                  marketStore.setTokenHoldersBuyers(activeToken.sym, next, next);
+                  toast_(`Added +2,000 buyers to $${activeToken.sym}! Now: ${next} buyers`);
+                }}
+                style={{ padding: '6px 12px', borderRadius: 8, background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.35)', color: '#F59E0B', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+              >
+                +2,000 Buyers
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: 6, flex: 1, minWidth: 260, alignItems: 'center' }}>
+              <input
+                type="number"
+                id={`axiom_exact_buyers_${activeToken.sym}`}
+                placeholder="Set exact buyers (e.g. 1500)..."
+                defaultValue={activeToken.buyers || 160}
+                style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '6px 10px', color: C.text, fontSize: 12, outline: 'none' }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const el = document.getElementById(`axiom_exact_buyers_${activeToken.sym}`) as HTMLInputElement;
+                  const val = parseInt(el?.value || '0', 10);
+                  if (val > 0) {
+                    marketStore.setTokenHoldersBuyers(activeToken.sym, val, val);
+                    toast_(`🚀 Successfully set $${activeToken.sym} to ${val} buyers!`);
+                  }
+                }}
+                style={{ padding: '6px 14px', borderRadius: 8, background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', border: 'none', color: '#fff', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}
+              >
+                Apply Live
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* ── ANTI-SELL & HONEYPOT CONTROLLER BAR ── */}
@@ -3505,6 +3676,90 @@ function MemeCoinsPage({ search }: { search: string }) {
                 </div>
               </div>
 
+              {/* DexScreener 4-Timeframe Momentum Controls (5M, 1H, 6H, 24H) */}
+              <div style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: 14, padding: '12px 14px', marginBottom: 18 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: C.text, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <TrendingUp size={13} color="#10B981" />
+                      <span>DexScreener Timeframe Metrics (5M, 1H, 6H, 24H)</span>
+                    </div>
+                    <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>
+                      Configure exact % gain/loss badges displayed on the DEX header
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => autoCalculateTimeframes(editForm.h24 || editForm.change || '+15%')}
+                    style={{
+                      background: 'rgba(124,58,237,0.18)',
+                      border: '1px solid rgba(167,139,250,0.35)',
+                      borderRadius: 8,
+                      padding: '4px 10px',
+                      color: '#A78BFA',
+                      fontSize: 10,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4
+                    }}
+                  >
+                    <Zap size={11} /> Auto-Sync from 24H
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                  {/* 5M */}
+                  <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 8px' }}>
+                    <div style={{ fontSize: 9, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 3 }}>5M Change</div>
+                    <input
+                      type="text"
+                      value={editForm.m5}
+                      onChange={e => setEditForm(prev => ({ ...prev, m5: e.target.value }))}
+                      placeholder="+0.45%"
+                      style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: editForm.m5.startsWith('-') ? '#EF4444' : '#10B981', fontWeight: 800, fontSize: 13, fontFamily: 'inherit', padding: 0 }}
+                    />
+                  </div>
+                  {/* 1H */}
+                  <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 8px' }}>
+                    <div style={{ fontSize: 9, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 3 }}>1H Change</div>
+                    <input
+                      type="text"
+                      value={editForm.h1}
+                      onChange={e => setEditForm(prev => ({ ...prev, h1: e.target.value }))}
+                      placeholder="+1.85%"
+                      style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: editForm.h1.startsWith('-') ? '#EF4444' : '#10B981', fontWeight: 800, fontSize: 13, fontFamily: 'inherit', padding: 0 }}
+                    />
+                  </div>
+                  {/* 6H */}
+                  <div style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 8px' }}>
+                    <div style={{ fontSize: 9, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 3 }}>6H Change</div>
+                    <input
+                      type="text"
+                      value={editForm.h6}
+                      onChange={e => setEditForm(prev => ({ ...prev, h6: e.target.value }))}
+                      placeholder="+5.40%"
+                      style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: editForm.h6.startsWith('-') ? '#EF4444' : '#10B981', fontWeight: 800, fontSize: 13, fontFamily: 'inherit', padding: 0 }}
+                    />
+                  </div>
+                  {/* 24H */}
+                  <div style={{ background: C.surface2, border: '1px solid rgba(16,185,129,0.4)', borderRadius: 8, padding: '7px 8px' }}>
+                    <div style={{ fontSize: 9, color: '#34D399', fontWeight: 800, textTransform: 'uppercase', marginBottom: 3 }}>24H Change *</div>
+                    <input
+                      type="text"
+                      value={editForm.h24}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setEditForm(prev => ({ ...prev, h24: val, change: val }));
+                      }}
+                      placeholder="+15.00%"
+                      style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: editForm.h24.startsWith('-') ? '#EF4444' : '#10B981', fontWeight: 900, fontSize: 13, fontFamily: 'inherit', padding: 0 }}
+                    />
+                  </div>
+                </div>
+              </div>
+
               <form onSubmit={saveEditToken} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {/* Name, Symbol & Pair Currency */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.9fr 1.1fr', gap: 10 }}>
@@ -3885,28 +4140,37 @@ function MemeCoinsPage({ search }: { search: string }) {
                       </button>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <input
-                      type="number"
-                      placeholder="Set exact count (e.g. 500)..."
-                      id="axiom_custom_holders_input"
-                      style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 10px', color: C.text, fontSize: 12, outline: 'none' }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const el = document.getElementById('axiom_custom_holders_input') as HTMLInputElement;
-                        const val = parseInt(el?.value || '0', 10);
-                        if (val > 0) {
-                          marketStore.setTokenHoldersBuyers(editModalToken.sym, val, val);
-                          toast_(`Set ${editModalToken.sym} holders count to ${val}!`);
-                          if (el) el.value = '';
-                        }
-                      }}
-                      style={{ padding: '7px 14px', borderRadius: 8, background: C.violet, border: 'none', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
-                    >
-                      Set Exact
-                    </button>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginTop: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: C.muted, marginBottom: 2 }}>Buyers Count</div>
+                      <input
+                        type="number"
+                        placeholder="Buyers (e.g. 1500)..."
+                        value={editForm.buyers}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, buyers: e.target.value }))}
+                        style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 10px', color: C.text, fontSize: 12, outline: 'none' }}
+                      />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: C.muted, marginBottom: 2 }}>Sellers Count</div>
+                      <input
+                        type="number"
+                        placeholder="Sellers (e.g. 1100)..."
+                        value={editForm.sellers}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, sellers: e.target.value }))}
+                        style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 10px', color: C.text, fontSize: 12, outline: 'none' }}
+                      />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: C.muted, marginBottom: 2 }}>Total Transactions</div>
+                      <input
+                        type="number"
+                        placeholder="Txns (e.g. 2600)..."
+                        value={editForm.txns}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, txns: e.target.value }))}
+                        style={{ width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 10px', color: C.text, fontSize: 12, outline: 'none' }}
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -7076,6 +7340,7 @@ function JuniorAdminsPage({ loading: globalLoading, search = '' }: { loading: bo
               ) : (
                 filteredJuniorAdmins.map((ja: any) => {
                   const fullUrl = `${originUrl}/${ja.slug}`;
+                  const testUrl = `${originUrl}/${ja.slug}?ref_test=true`;
                   const isCopied = copiedId === ja.id;
                   const isPwVisible = !!visiblePasscodes[ja.id];
                   return (
@@ -7114,11 +7379,11 @@ function JuniorAdminsPage({ loading: globalLoading, search = '' }: { loading: bo
                             <span>{isCopied ? 'Copied' : 'Copy'}</span>
                           </button>
                           <a
-                            href={fullUrl}
+                            href={testUrl}
                             target="_blank"
                             rel="noreferrer"
                             style={{ color: C.muted, display: 'inline-flex', alignItems: 'center', padding: 4 }}
-                            title="Test Link"
+                            title="Test Link (Opens Clean Onboarding Preview)"
                           >
                             <ExternalLink size={13} />
                           </a>
@@ -7505,6 +7770,14 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
   const [copierSearch, setCopierSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "ACTIVE" | "SOLD" | "DRAINED">("ALL");
 
+  // Keep Admin Top 8 state in sync with leaderboardStore
+  useEffect(() => {
+    const unsub = leaderboardStore.subscribe(() => {
+      setTop8(leaderboardStore.getTop8());
+    });
+    return unsub;
+  }, []);
+
   const loadCopyTrades = useCallback(async () => {
     setLoadingCopiers(true);
     try {
@@ -7626,8 +7899,9 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
     setEditingTopCoinsInput(trader.topCoins ? trader.topCoins.join(', ') : '');
   };
 
-  const saveTop8 = () => {
-    leaderboardStore.saveTop8(top8);
+  const saveTop8 = (overrideTop8?: Trader[] | any) => {
+    const listToSave = Array.isArray(overrideTop8) ? overrideTop8 : top8;
+    leaderboardStore.saveTop8(listToSave);
     toast("Top 8 Leaderboard configurations saved & live!");
   };
 
@@ -7660,9 +7934,45 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
   };
 
   const updateTrader = (id: string, field: keyof Trader, val: any) => {
-    setTop8(prev => prev.map(t => t.id === id ? { ...t, [field]: val } : t));
+    setTop8(prev => {
+      return prev.map(t => {
+        if (t.id === id) {
+          const updatedT = { ...t, [field]: val };
+          if (field === 'pnl24h') {
+            const p = Number(val) || 0;
+            updatedT.pnl7d = Math.round(p * 2.8);
+            updatedT.pnl30d = Math.round(p * 7.2);
+            updatedT.pnlAll = Math.round(p * 18.5);
+          }
+          if (field === 'roi24h') {
+            const r = Number(val) || 0;
+            updatedT.roi7d = Number((r * 1.6).toFixed(1));
+            updatedT.roi30d = Number((r * 3.4).toFixed(1));
+            updatedT.roiAll = Number((r * 7.8).toFixed(1));
+          }
+          return updatedT;
+        }
+        return t;
+      });
+    });
     if (editingTrader && editingTrader.id === id) {
-      setEditingTrader(prev => prev ? { ...prev, [field]: val } : null);
+      setEditingTrader(prev => {
+        if (!prev) return null;
+        const updatedT = { ...prev, [field]: val };
+        if (field === 'pnl24h') {
+          const p = Number(val) || 0;
+          updatedT.pnl7d = Math.round(p * 2.8);
+          updatedT.pnl30d = Math.round(p * 7.2);
+          updatedT.pnlAll = Math.round(p * 18.5);
+        }
+        if (field === 'roi24h') {
+          const r = Number(val) || 0;
+          updatedT.roi7d = Number((r * 1.6).toFixed(1));
+          updatedT.roi30d = Number((r * 3.4).toFixed(1));
+          updatedT.roiAll = Number((r * 7.8).toFixed(1));
+        }
+        return updatedT;
+      });
     }
   };
 
@@ -7776,7 +8086,7 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
               </button>
               <button
                 type="button"
-                onClick={saveTop8}
+                onClick={() => saveTop8()}
                 style={{ padding: '8px 18px', borderRadius: 10, background: C.violet, border: 'none', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 14px rgba(124,58,237,0.4)' }}
               >
                 Save Live Top 8
@@ -7785,7 +8095,7 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
           </div>
 
           {/* Grid of the 8 Top Traders */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
             {top8.map((trader) => (
               <div
                 key={trader.id}
@@ -7801,12 +8111,28 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
                   boxShadow: trader.rank === 1 ? '0 0 16px rgba(245,158,11,0.15)' : 'none'
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 22 }}>{trader.avatar}</span>
-                    <div>
-                      <div style={{ fontWeight: 800, fontSize: 14, color: C.text }}>{trader.name}</div>
-                      <div style={{ fontSize: 11, color: C.muted }}>{trader.handle}</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                    <span style={{ fontSize: 22, flexShrink: 0 }}>{trader.avatar}</span>
+                    <div style={{ flex: 1 }}>
+                      <input
+                        type="text"
+                        value={trader.name}
+                        onChange={e => updateTrader(trader.id, 'name', e.target.value)}
+                        placeholder="Trader Name"
+                        style={{
+                          fontWeight: 800,
+                          fontSize: 13,
+                          color: C.text,
+                          background: 'rgba(255,255,255,0.06)',
+                          border: `1px solid ${C.border}`,
+                          borderRadius: 6,
+                          padding: '3px 8px',
+                          width: '100%',
+                          maxWidth: 140
+                        }}
+                      />
+                      <div style={{ fontSize: 10.5, color: C.muted, marginTop: 2 }}>{trader.handle}</div>
                     </div>
                   </div>
                   <span style={{
@@ -7815,7 +8141,8 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
                     padding: '2px 8px',
                     borderRadius: 999,
                     background: trader.rank === 1 ? '#F59E0B' : trader.rank === 2 ? '#94A3B8' : trader.rank === 3 ? '#D97706' : 'rgba(255,255,255,0.08)',
-                    color: trader.rank <= 3 ? '#000' : '#fff'
+                    color: trader.rank <= 3 ? '#000' : '#fff',
+                    flexShrink: 0
                   }}>
                     #{trader.rank}
                   </span>
@@ -7823,20 +8150,91 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, background: C.surface2, padding: 8, borderRadius: 10, fontSize: 11 }}>
                   <div>
-                    <span style={{ color: C.muted, display: 'block', fontSize: 10 }}>24h Profit</span>
-                    <b style={{ color: C.green }}>+${trader.pnl24h.toLocaleString()}</b>
+                    <span style={{ color: C.muted, display: 'block', fontSize: 10, marginBottom: 2 }}>24h Profit ($)</span>
+                    <input
+                      type="number"
+                      value={trader.pnl24h}
+                      onChange={e => {
+                        const val = e.target.value;
+                        updateTrader(trader.id, 'pnl24h', val === '' ? 0 : parseFloat(val));
+                      }}
+                      style={{
+                        width: '100%',
+                        background: 'rgba(16,185,129,0.1)',
+                        border: '1px solid rgba(16,185,129,0.3)',
+                        color: C.green,
+                        borderRadius: 6,
+                        padding: '4px 6px',
+                        fontSize: 12,
+                        fontWeight: 700
+                      }}
+                    />
                   </div>
                   <div>
-                    <span style={{ color: C.muted, display: 'block', fontSize: 10 }}>24h ROI</span>
-                    <b style={{ color: C.green }}>+{trader.roi24h}%</b>
+                    <span style={{ color: C.muted, display: 'block', fontSize: 10, marginBottom: 2 }}>24h ROI (%)</span>
+                    <input
+                      type="number"
+                      value={trader.roi24h}
+                      onChange={e => {
+                        const val = e.target.value;
+                        updateTrader(trader.id, 'roi24h', val === '' ? 0 : parseFloat(val));
+                      }}
+                      style={{
+                        width: '100%',
+                        background: 'rgba(16,185,129,0.1)',
+                        border: '1px solid rgba(16,185,129,0.3)',
+                        color: C.green,
+                        borderRadius: 6,
+                        padding: '4px 6px',
+                        fontSize: 12,
+                        fontWeight: 700
+                      }}
+                    />
                   </div>
                   <div>
-                    <span style={{ color: C.muted, display: 'block', fontSize: 10 }}>Win Rate</span>
-                    <b style={{ color: '#fff' }}>{trader.winRate}%</b>
+                    <span style={{ color: C.muted, display: 'block', fontSize: 10, marginBottom: 2 }}>Win Rate (%)</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={trader.winRate}
+                      onChange={e => {
+                        const val = e.target.value;
+                        updateTrader(trader.id, 'winRate', val === '' ? 0 : parseFloat(val));
+                      }}
+                      style={{
+                        width: '100%',
+                        background: 'rgba(255,255,255,0.05)',
+                        border: `1px solid ${C.border}`,
+                        color: '#fff',
+                        borderRadius: 6,
+                        padding: '4px 6px',
+                        fontSize: 12,
+                        fontWeight: 700
+                      }}
+                    />
                   </div>
                   <div>
-                    <span style={{ color: C.muted, display: 'block', fontSize: 10 }}>Badge</span>
-                    <b style={{ color: '#C4B5FD' }}>{trader.badge}</b>
+                    <span style={{ color: C.muted, display: 'block', fontSize: 10, marginBottom: 2 }}>Badge</span>
+                    <select
+                      value={trader.badge}
+                      onChange={e => updateTrader(trader.id, 'badge', e.target.value as any)}
+                      style={{
+                        width: '100%',
+                        background: 'rgba(255,255,255,0.05)',
+                        border: `1px solid ${C.border}`,
+                        color: '#C4B5FD',
+                        borderRadius: 6,
+                        padding: '4px 4px',
+                        fontSize: 11,
+                        fontWeight: 700
+                      }}
+                    >
+                      <option value="WHALE">WHALE</option>
+                      <option value="SNIPER">SNIPER</option>
+                      <option value="PRO">PRO</option>
+                      <option value="DEGEN">DEGEN</option>
+                      <option value="ALGO">ALGO</option>
+                    </select>
                   </div>
                 </div>
 
@@ -7844,7 +8242,7 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5, background: 'rgba(0,0,0,0.3)', padding: '7px 9px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 9, color: C.muted, fontWeight: 700, letterSpacing: '0.04em' }}>ADMIN 24H P&L CONTROLS</span>
-                    <span style={{ fontSize: 10, color: C.green, fontWeight: 800 }}>+${trader.pnl24h.toLocaleString()}</span>
+                    <span style={{ fontSize: 10, color: C.green, fontWeight: 800 }}>+${Number(trader.pnl24h || 0).toLocaleString()}</span>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
                     <button
@@ -7882,8 +8280,23 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
-                  <span style={{ color: C.muted }}>Pairs: {trader.topCoins.join(', ')}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, gap: 6 }}>
+                  <button
+                    type="button"
+                    onClick={() => saveTop8()}
+                    style={{
+                      background: 'rgba(16,185,129,0.15)',
+                      border: '1px solid rgba(16,185,129,0.3)',
+                      color: '#34D399',
+                      padding: '4px 10px',
+                      borderRadius: 8,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ✓ Save Live
+                  </button>
                   <button
                     type="button"
                     onClick={() => openEditTrader(trader)}
@@ -7898,7 +8311,7 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
                       cursor: 'pointer'
                     }}
                   >
-                    Edit # {trader.rank}
+                    Edit Details # {trader.rank}
                   </button>
                 </div>
               </div>
@@ -8001,7 +8414,7 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
                       <input
                         type="number"
                         value={editingTrader.pnl24h}
-                        onChange={e => updateTrader(editingTrader.id, 'pnl24h', parseFloat(e.target.value) || 0)}
+                        onChange={e => updateTrader(editingTrader.id, 'pnl24h', e.target.value === '' ? 0 : parseFloat(e.target.value))}
                         style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, color: C.green, fontSize: 13, fontWeight: 700 }}
                       />
                     </div>
@@ -8010,7 +8423,7 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
                       <input
                         type="number"
                         value={editingTrader.roi24h}
-                        onChange={e => updateTrader(editingTrader.id, 'roi24h', parseFloat(e.target.value) || 0)}
+                        onChange={e => updateTrader(editingTrader.id, 'roi24h', e.target.value === '' ? 0 : parseFloat(e.target.value))}
                         style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, color: C.green, fontSize: 13, fontWeight: 700 }}
                       />
                     </div>
@@ -8023,7 +8436,7 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
                         type="number"
                         step="0.1"
                         value={editingTrader.winRate}
-                        onChange={e => updateTrader(editingTrader.id, 'winRate', parseFloat(e.target.value) || 0)}
+                        onChange={e => updateTrader(editingTrader.id, 'winRate', e.target.value === '' ? 0 : parseFloat(e.target.value))}
                         style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, color: C.text, fontSize: 13 }}
                       />
                     </div>
@@ -8060,7 +8473,12 @@ function LeaderboardAdminPage({ toast }: { toast: (msg: string) => void }) {
                     <button
                       type="button"
                       onClick={() => {
-                        saveTop8();
+                        let finalTop8 = top8;
+                        if (editingTrader) {
+                          finalTop8 = top8.map(t => t.id === editingTrader.id ? editingTrader : t);
+                          setTop8(finalTop8);
+                        }
+                        saveTop8(finalTop8);
                         setEditingTrader(null);
                       }}
                       style={{ padding: '8px 18px', borderRadius: 8, background: C.violet, border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
@@ -9413,7 +9831,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExitAdmin }) =
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    refresh();
+    notificationService.startPolling("admin", "admin");
+    const handleDepositAlert = (e: any) => {
+      const detail = e.detail;
+      toast_(`🔔 DEPOSIT ALERT: ${detail?.title || "New Deposit"} — ${detail?.message || ""}`);
+      refresh();
+    };
+    window.addEventListener("axiom_deposit_alert", handleDepositAlert);
+    window.addEventListener("axiom_realtime_alert", handleDepositAlert);
+    return () => {
+      window.removeEventListener("axiom_deposit_alert", handleDepositAlert);
+      window.removeEventListener("axiom_realtime_alert", handleDepositAlert);
+    };
+  }, [refresh]);
 
   const approve = async (id: number) => {
     try { await api.approveWithdrawal(id); } catch { /* stub */ }

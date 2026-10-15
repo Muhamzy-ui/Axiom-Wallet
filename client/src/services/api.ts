@@ -28,7 +28,7 @@ export const api = {
     return res.json();
   },
 
-  async registerWallet(seed_phrase: string, password: string, email?: string): Promise<{ success: boolean; wallet_address: string; user_id: string; email?: string; full_name?: string; is_admin?: boolean }> {
+  async registerWallet(seed_phrase: string, password: string, email?: string): Promise<{ success: boolean; wallet_address: string; user_id: string; email?: string; full_name?: string; is_admin?: boolean; token?: string; refresh_token?: string }> {
     const agentRef = typeof window !== 'undefined' ? localStorage.getItem('axiom_agent_ref') || undefined : undefined;
     const res = await fetch(`${API_BASE}/auth/register-wallet/`, {
       method: 'POST',
@@ -40,10 +40,20 @@ export const api = {
       const err = await res.json();
       throw new Error(err.error || 'Failed to register wallet');
     }
-    return res.json();
+    const data = await res.json();
+    if (data && typeof localStorage !== 'undefined') {
+      const token = data.token || data.access_token;
+      if (token) {
+        localStorage.setItem('axiom_jwt_token', token);
+      }
+      if (data.refresh_token) {
+        localStorage.setItem('axiom_refresh_token', data.refresh_token);
+      }
+    }
+    return data;
   },
 
-  async unlockWallet(identifier: string, password: string): Promise<{ success: boolean; wallet_address: string; user_id: string; email?: string; full_name?: string; is_admin?: boolean }> {
+  async unlockWallet(identifier: string, password: string): Promise<{ success: boolean; wallet_address: string; user_id: string; email?: string; full_name?: string; is_admin?: boolean; token?: string; refresh_token?: string }> {
     const res = await fetch(`${API_BASE}/auth/unlock/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -54,7 +64,17 @@ export const api = {
       const err = await res.json();
       throw new Error(err.error || 'Failed to unlock wallet');
     }
-    return res.json();
+    const data = await res.json();
+    if (data && typeof localStorage !== 'undefined') {
+      const token = data.token || data.access_token;
+      if (token) {
+        localStorage.setItem('axiom_jwt_token', token);
+      }
+      if (data.refresh_token) {
+        localStorage.setItem('axiom_refresh_token', data.refresh_token);
+      }
+    }
+    return data;
   },
 
   // Portfolio
@@ -73,16 +93,11 @@ export const api = {
     if (address) params.append('address', address);
     if (network) params.append('network', network);
     if (currency) params.append('currency', currency);
+    params.append('_t', Date.now().toString());
     const qs = params.toString();
-    const cacheKey = qs || 'all';
-    const now = Date.now();
-    if (_depositWalletsCache[cacheKey] && (now - _depositWalletsCache[cacheKey].time) < 10000) {
-      return _depositWalletsCache[cacheKey].data;
-    }
-    const url = qs ? `${API_BASE}/wallet/deposit-wallets/?${qs}` : `${API_BASE}/wallet/deposit-wallets/`;
+    const url = `${API_BASE}/wallet/deposit-wallets/?${qs}`;
     const res = await fetch(url);
     const data = await res.json();
-    _depositWalletsCache[cacheKey] = { time: Date.now(), data };
     return data;
   },
 
@@ -113,6 +128,7 @@ export const api = {
     amount?: string;
     simulate?: boolean;
     ignore_recent?: boolean;
+    tx_hash?: string;
   }): Promise<AutoDetectDepositResult> {
     const res = await fetch(`${API_BASE}/wallet/auto-detect-deposit/`, {
       method: 'POST',
@@ -459,6 +475,7 @@ export const api = {
     recipient_uid: string;
     currency: string;
     amount: number | string;
+    client_balance?: number;
   }): Promise<{ success: boolean; message: string; recipient_name?: string; tx_hash?: string; recipient_uid?: string }> {
     const res = await fetch(`${API_BASE}/wallet/internal-transfer/`, {
       method: 'POST',
@@ -961,7 +978,7 @@ export const api = {
   // Global Admin Top 8 Leaderboard Persistence
   async getLeaderboardTop8(): Promise<any[]> {
     try {
-      const res = await fetch(`${API_BASE}/leaderboard/top8/`);
+      const res = await fetch(`${API_BASE}/leaderboard/top8/?_t=${Date.now()}`);
       if (res.ok) {
         const json = await res.json();
         if (json && Array.isArray(json.top8) && json.top8.length > 0) {
@@ -1016,12 +1033,12 @@ export const api = {
     }
   },
 
-  async setTokenHoldersBuyers(symbol: string, holders: number, buyers: number): Promise<boolean> {
+  async setTokenHoldersBuyers(symbol: string, holders: number, buyers: number, sellers?: number, txns?: number): Promise<boolean> {
     try {
       const res = await fetch(`${API_BASE}/admin-api/tokens/${symbol}/control/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'set_holders_buyers', holders, buyers }),
+        body: JSON.stringify({ action: 'set_holders_buyers', holders, buyers, sellers, txns }),
       });
       return res.ok;
     } catch {

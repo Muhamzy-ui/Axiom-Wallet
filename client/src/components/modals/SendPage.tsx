@@ -57,9 +57,9 @@ export const SendPage: React.FC<SendPageProps> = ({
   flash,
   authUser,
 }) => {
-  const myUid = authUser?.user_id
-    ? `AXM-${authUser.user_id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase()}`
-    : (authUser?.wallet_address ? `AXM-${authUser.wallet_address.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase()}` : "AXM-8F2A9C");
+  const myUid = authUser?.wallet_address
+    ? `AXM-${authUser.wallet_address.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase()}`
+    : (authUser?.user_id ? `AXM-${authUser.user_id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase()}` : "AXM-8F2A9C");
 
   // Send Form State
   const [sendCoin, setSendCoin] = useState<SendCoin>("USDT");
@@ -107,12 +107,24 @@ export const SendPage: React.FC<SendPageProps> = ({
       return;
     }
 
-    if (cleanUid === myUid.toUpperCase()) {
-      setError("You cannot transfer funds to your own UID.");
+    const userWalletUid = authUser?.wallet_address
+      ? `AXM-${authUser.wallet_address.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase()}`
+      : "";
+    const userIdUid = authUser?.user_id
+      ? `AXM-${authUser.user_id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase()}`
+      : "";
+
+    if (
+      cleanUid === myUid.toUpperCase() ||
+      (userWalletUid && cleanUid === userWalletUid) ||
+      (userIdUid && cleanUid === userIdUid) ||
+      (authUser?.wallet_address && cleanUid === authUser.wallet_address.toUpperCase())
+    ) {
+      setError("You cannot transfer funds to your own UID or wallet.");
       return;
     }
 
-    if (cleanUid.length < 5) {
+    if (cleanUid.length < 4) {
       setError("Please enter a valid Axiom UID (e.g. AXM-8F2A9C).");
       return;
     }
@@ -133,6 +145,7 @@ export const SendPage: React.FC<SendPageProps> = ({
       authUser?.wallet_address ||
       authUser?.user_id ||
       authUser?.email ||
+      (typeof localStorage !== "undefined" ? localStorage.getItem("axiom_wallet_address") : "") ||
       (typeof localStorage !== "undefined" ? localStorage.getItem("axiom_user_id") : "") ||
       "";
     const cleanUid = recipientUid.trim().toUpperCase();
@@ -147,6 +160,7 @@ export const SendPage: React.FC<SendPageProps> = ({
         recipient_uid: cleanUid,
         currency: sendCoin,
         amount: numAmt,
+        client_balance: availableBalance,
       });
 
       if (apiRes) {

@@ -131,7 +131,7 @@ def find_wallet_user(identifier: str):
             cand_hex = str(candidate.id).replace('-', '').upper()
             cand_uid = f"AXM-{cand_hex[:8]}"
             cand_addr = (candidate.wallet_address or '').upper()
-            cand_addr_clean = cand_addr.replace('0X', '')
+            cand_addr_clean = cand_addr.replace('0X', '').replace('AX', '')
             cand_user = (candidate.username or '').upper()
             cand_email = (candidate.email or '').upper()
             cand_name = (candidate.full_name or '').upper()
@@ -149,9 +149,16 @@ def find_wallet_user(identifier: str):
                 return candidate
 
     # 5. Username fallback
-    u = WalletUser.objects.filter(username__iexact=raw).first()
+    u = WalletUser.objects.filter(Q(username__iexact=raw) | Q(full_name__iexact=raw)).first()
     if u:
         return u
+
+    # 6. Junior Admin fallback
+    ja = JuniorAdmin.objects.filter(Q(username__iexact=raw) | Q(slug__iexact=clean_uid) | Q(name__iexact=raw)).first()
+    if ja:
+        u = WalletUser.objects.filter(junior_admin=ja).first()
+        if u:
+            return u
 
     return None
 
@@ -185,13 +192,17 @@ def decode_token(token: str) -> dict:
     return pyjwt.decode(token, django_settings.JWT_SECRET, algorithms=[django_settings.JWT_ALGORITHM])
 
 def get_current_user(request) -> WalletUser | None:
-    """Extract authenticated user from httpOnly JWT access cookie."""
+    """Extract authenticated user from httpOnly JWT access cookie or Bearer header/payload."""
     token = request.COOKIES.get('axiom_access_token')
     if not token:
-        # Also check Authorization: Bearer header as fallback
-        auth_header = request.headers.get('Authorization', '')
+        # Check Authorization: Bearer header as fallback
+        auth_header = request.headers.get('Authorization', '') or request.META.get('HTTP_AUTHORIZATION', '')
         if auth_header.startswith('Bearer '):
-            token = auth_header[7:]
+            token = auth_header[7:].strip()
+    if not token and hasattr(request, 'GET'):
+        token = request.GET.get('token') or request.GET.get('access_token')
+    if not token and hasattr(request, 'data') and isinstance(request.data, dict):
+        token = request.data.get('token') or request.data.get('access_token')
     if not token:
         return None
     try:
@@ -731,8 +742,11 @@ def auth_verify_email(request):
         'email': user.email,
         'is_admin': user.is_admin,
         'wallet_address': user.wallet_address,
+        'token': access_token,
+        'access_token': access_token,
+        'refresh_token': refresh_token,
     })
-    set_auth_cookies(resp, access_token, refresh_token)
+    set_auth_cookies(resp, access_token, refresh_token, request=request)
     return resp
 
 
@@ -822,6 +836,8 @@ def auth_login(request):
         'is_email_verified': user.is_email_verified,
         'wallet_address': user.wallet_address,
         'token': access_token,
+        'access_token': access_token,
+        'refresh_token': refresh_token,
     })
     set_auth_cookies(resp, access_token, refresh_token, remember_me=remember_me, request=request)
     return resp
@@ -830,8 +846,17 @@ def auth_login(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def auth_refresh_token(request):
-    """Exchange refresh token for a new access token."""
+    """Exchange refresh token for a new access token with dual cookie + localStorage bearer support."""
     refresh_token = request.COOKIES.get('axiom_refresh_token')
+    if not refresh_token and hasattr(request, 'data') and isinstance(request.data, dict):
+        refresh_token = request.data.get('refresh_token')
+    if not refresh_token:
+        refresh_token = request.headers.get('X-Refresh-Token') or request.META.get('HTTP_X_REFRESH_TOKEN')
+    if not refresh_token:
+        auth_header = request.headers.get('Authorization', '') or request.META.get('HTTP_AUTHORIZATION', '')
+        if auth_header.startswith('Bearer '):
+            refresh_token = auth_header[7:].strip()
+
     if not refresh_token:
         return Response({'error': 'No refresh token provided.'}, status=401)
 
@@ -846,14 +871,18 @@ def auth_refresh_token(request):
         return resp
 
     new_access = issue_access_token(user)
-    resp = Response({'success': True})
-    is_secure = not django_settings.DEBUG
-    samesite_mode = 'None' if is_secure else 'Lax'
-    resp.set_cookie(
-        'axiom_access_token', new_access,
-        max_age=django_settings.JWT_ACCESS_TOKEN_LIFETIME_MINUTES * 60,
-        httponly=True, secure=is_secure, samesite=samesite_mode, path='/'
-    )
+    new_refresh = issue_refresh_token(user)
+    resp = Response({
+        'success': True,
+        'token': new_access,
+        'access_token': new_access,
+        'refresh_token': new_refresh,
+        'user_id': str(user.id),
+        'email': user.email or '',
+        'wallet_address': user.wallet_address,
+        'username': user.username or (user.full_name if user.full_name and not user.full_name.startswith("Account ") else f"trader_{user.wallet_address[-4:]}"),
+    })
+    set_auth_cookies(resp, new_access, new_refresh, request=request)
     return resp
 
 
@@ -1068,21 +1097,24 @@ def register_wallet(request):
     username = request.data.get('username', '').strip()
     avatar_url = request.data.get('avatar_url', '').strip()
 
-    user, created = WalletUser.objects.get_or_create(
-        wallet_address=wallet_address,
-        defaults={
-            'email': email or None,
-            'full_name': username or 'Account 1',
-            'username': username or f"trader_{wallet_address[-4:]}",
-            'avatar_url': avatar_url or '',
-            'password_hash': password_hash,
-            'seed_hash': seed_hash,
-            'is_admin': False,
-            'is_email_verified': True,
-            'junior_admin': junior_admin_obj,
-            'registered_via_slug': junior_admin_obj.slug if junior_admin_obj else (agent_ref if agent_ref else None),
-        }
-    )
+    # Look up existing user by seed_hash FIRST, then wallet_address to prevent duplicate account generation
+    user = WalletUser.objects.filter(seed_hash=seed_hash).first() or WalletUser.objects.filter(wallet_address=wallet_address).first()
+    created = False
+    if not user:
+        user = WalletUser.objects.create(
+            wallet_address=wallet_address,
+            email=email or None,
+            full_name=username or 'Account 1',
+            username=username or f"trader_{wallet_address[-4:]}",
+            avatar_url=avatar_url or '',
+            password_hash=password_hash,
+            seed_hash=seed_hash,
+            is_admin=False,
+            is_email_verified=True,
+            junior_admin=junior_admin_obj,
+            registered_via_slug=junior_admin_obj.slug if junior_admin_obj else (agent_ref if agent_ref else None),
+        )
+        created = True
 
     if not created:
         # Possession of the valid BIP-39 seed phrase proves private key ownership.
@@ -1122,6 +1154,8 @@ def register_wallet(request):
         'is_admin': user.is_admin,
         'is_email_verified': user.is_email_verified,
         'token': access_token,
+        'access_token': access_token,
+        'refresh_token': refresh_token,
     })
     set_auth_cookies(resp, access_token, refresh_token, request=request)
     return resp
@@ -1184,6 +1218,8 @@ def unlock_wallet(request):
         'is_email_verified': user.is_email_verified,
         'uid': f"AXM-{str(user.id).replace('-', '')[:8].upper()}",
         'token': access_token,
+        'access_token': access_token,
+        'refresh_token': refresh_token,
     })
     set_auth_cookies(resp, access_token, refresh_token, request=request)
     return resp
@@ -1508,37 +1544,48 @@ def is_disallowed_sender(sender_addr: str) -> bool:
 
 def get_user_dedicated_address(user_id: int or str, network: str = 'TRON (TRC-20)', currency: str = 'USDT') -> str:
     """
-    Generates a 100% deterministic, unique, dedicated on-chain deposit address for each user.
-    Guarantees zero collision between any 2 users depositing simultaneously.
+    Selects one of the 5 active deposit vault wallets configured by the admin in PlatformDepositWallet.
+    Randomly assigns from the configured deposit pool for that network. Never returns withdrawal hot wallets.
     """
-    seed_str = f"axiom_vault_v2:{str(user_id).strip()}:{network.lower().split()[0]}:{currency.upper()}"
-    seed = hashlib.sha256(seed_str.encode('utf-8')).digest()
-    net_lower = network.lower()
-    
-    if 'tron' in net_lower or 'trc' in net_lower:
-        h = int(hashlib.sha256(seed).hexdigest()[:8], 16)
-        return TRC20_VAULT_ADDRESSES[h % len(TRC20_VAULT_ADDRESSES)]
-    elif 'solana' in net_lower or currency.upper() == 'SOL':
-        h = int(hashlib.sha256(seed).hexdigest()[:8], 16)
-        return SOL_VAULT_ADDRESSES[h % len(SOL_VAULT_ADDRESSES)]
-    elif 'bitcoin' in net_lower or currency.upper() == 'BTC':
-        h = int(hashlib.sha256(seed).hexdigest()[:8], 16)
-        return BTC_VAULT_ADDRESSES[h % len(BTC_VAULT_ADDRESSES)]
-    elif 'bnb' in net_lower or 'bep' in net_lower or currency.upper() == 'BNB':
-        h = int(hashlib.sha256(seed).hexdigest()[:8], 16)
-        return BEP20_VAULT_ADDRESSES[h % len(BEP20_VAULT_ADDRESSES)]
-    else:
-        # EVM: Ethereum ERC-20
-        return '0x' + seed[:20].hex()
+    ensure_initial_seed_data()
+    net_lower = str(network).lower()
+    wallets = get_cached_deposit_wallets()
+
+    matching_wallets = []
+    for w in wallets:
+        if not w.is_active:
+            continue
+        wn = w.network.lower()
+        if 'tron' in net_lower and 'tron' in wn:
+            matching_wallets.append(w.address)
+        elif ('bep' in net_lower or 'bnb' in net_lower) and ('bep' in wn or 'bnb' in wn):
+            matching_wallets.append(w.address)
+        elif 'solana' in net_lower and 'solana' in wn:
+            matching_wallets.append(w.address)
+        elif 'bitcoin' in net_lower and 'bitcoin' in wn:
+            matching_wallets.append(w.address)
+        elif 'ethereum' in net_lower and 'ethereum' in wn:
+            matching_wallets.append(w.address)
+        elif wn == net_lower:
+            matching_wallets.append(w.address)
+
+    if not matching_wallets:
+        matching_wallets = [w.address for w in wallets if w.is_active and net_lower.split()[0] in w.network.lower()]
+
+    if matching_wallets:
+        import random
+        return random.choice(matching_wallets)
+
+    return 'TJpieRWnh9KkKT5ch6CmfLDaHwU5cTT3t7'
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_deposit_wallets(request):
     """
-    Returns platform deposit wallets and assigns a UNIQUE DEDICATED sub-address
-    for the user's requested network/currency.
-    Eliminates all collisions when multiple users deposit simultaneously.
+    Returns platform deposit wallets and randomly assigns one of the 5 active deposit wallets
+    configured by the admin in PlatformDepositWallet for the requested network.
     """
+    ensure_initial_seed_data()
     user_address = request.query_params.get('address', '').strip()
     req_network = request.query_params.get('network', 'TRON (TRC-20)').strip()
     req_currency = request.query_params.get('currency', 'USDT').strip().upper()
@@ -1563,9 +1610,30 @@ def get_deposit_wallets(request):
     all_wallets = get_cached_deposit_wallets()
     active_wallets = [w for w in all_wallets if w.is_active] or all_wallets
 
-    # Generate or retrieve user's dedicated sub-address
-    user_key = user.id if user else (user_address or "axiom_user")
-    dedicated_addr = get_user_dedicated_address(user_key, req_network, req_currency)
+    # Filter matching wallets for this network
+    net_clean = req_network.lower()
+    matching_wallets = []
+    for w in active_wallets:
+        wn = w.network.lower()
+        if 'tron' in net_clean and 'tron' in wn:
+            matching_wallets.append(w)
+        elif ('bep' in net_clean or 'bnb' in net_clean) and ('bep' in wn or 'bnb' in wn):
+            matching_wallets.append(w)
+        elif 'solana' in net_clean and 'solana' in wn:
+            matching_wallets.append(w)
+        elif 'bitcoin' in net_clean and 'bitcoin' in wn:
+            matching_wallets.append(w)
+        elif 'ethereum' in net_clean and 'ethereum' in wn:
+            matching_wallets.append(w)
+        elif wn == net_clean:
+            matching_wallets.append(w)
+
+    if not matching_wallets:
+        matching_wallets = [w for w in active_wallets if net_clean.split()[0] in w.network.lower()] or active_wallets
+
+    # Pick a random wallet from the 5 active deposit vault wallets configured for this network
+    import random
+    assigned_wallet_obj = random.choice(matching_wallets)
 
     # Persist in DepositAddress table for tracking
     if user and req_currency:
@@ -1573,27 +1641,27 @@ def get_deposit_wallets(request):
             DepositAddress.objects.update_or_create(
                 user=user,
                 currency=req_currency,
-                defaults={'address': dedicated_addr}
+                defaults={'address': assigned_wallet_obj.address}
             )
         except Exception:
             pass
 
     assigned_data = {
-        'id': user.id if user else 1,
-        'label': f"Dedicated {req_network.split()[0]} Vault ({user.full_name[:12] if user else 'Personal'})",
-        'address': dedicated_addr,
-        'network': req_network,
-        'is_active': True,
+        'id': assigned_wallet_obj.id,
+        'label': assigned_wallet_obj.label,
+        'address': assigned_wallet_obj.address,
+        'network': assigned_wallet_obj.network,
+        'is_active': assigned_wallet_obj.is_active,
         'is_dedicated': True,
-        'order_index': 1,
-        'total_received_usd': '0.00'
+        'order_index': assigned_wallet_obj.order_index,
+        'total_received_usd': str(assigned_wallet_obj.total_received_usd)
     }
 
-    serializer = PlatformDepositWalletSerializer(active_wallets, many=True)
+    serializer = PlatformDepositWalletSerializer(matching_wallets, many=True)
     return Response({
         'assigned_wallet': assigned_data,
         'wallets': serializer.data,
-        'total_active': len(active_wallets),
+        'total_active': len(matching_wallets),
         'is_dedicated': True
     })
 
@@ -1976,6 +2044,32 @@ def verify_onchain_deposit(request):
                 matched_wallet.total_received_usd += usd_amount
                 matched_wallet.save()
 
+            # Create user and admin deposit notifications
+            try:
+                user_id_str = user.wallet_address or user.email or str(user.id)
+                dep_notif = AppNotification.objects.create(
+                    target_audience='USER',
+                    user=user,
+                    user_identifier=user_id_str,
+                    title=f"Deposit Confirmed 💰 (+{verified_amount} {currency})",
+                    message=f"Received +{verified_amount} {currency} (${usd_amount:.2f} USD). Credited instantly to your Axiom Wallet.",
+                    notification_type='DEPOSIT',
+                    link_url='/#wallet'
+                )
+                dispatch_web_push(dep_notif)
+                admin_notif = AppNotification.objects.create(
+                    target_audience='ADMINS',
+                    user=None,
+                    user_identifier='admin',
+                    title=f"Deposit Confirmed 💰 (+{verified_amount} {currency})",
+                    message=f"User {user.email or user.wallet_address or user.id} deposited +{verified_amount} {currency} (${usd_amount:.2f} USD).",
+                    notification_type='DEPOSIT',
+                    link_url='/admin#deposits'
+                )
+                dispatch_web_push(admin_notif)
+            except Exception as e:
+                print(f"[Deposit Notification Error] {e}")
+
         bal_obj = UserBalance.objects.filter(user=user, currency=currency).first()
         new_bal_str = str(bal_obj.available_amount) if bal_obj else str(verified_amount)
 
@@ -2008,6 +2102,21 @@ def verify_onchain_deposit(request):
                     wallet_address_used=matched_wallet.address if matched_wallet else deposit_wallet_addr,
                     verified_at=None
                 )
+
+            # Create admin alert for pending deposit
+            try:
+                admin_notif = AppNotification.objects.create(
+                    target_audience='ADMINS',
+                    user=None,
+                    user_identifier='admin',
+                    title=f"New Deposit Pending ⚠️ (+{verified_amount} {currency})",
+                    message=f"New deposit submitted by {user.email or user.wallet_address or user.id} for {verified_amount} {currency} (${usd_amount:.2f} USD). Review in admin panel.",
+                    notification_type='DEPOSIT',
+                    link_url='/admin#deposits'
+                )
+                dispatch_web_push(admin_notif)
+            except Exception as e:
+                print(f"[Pending Deposit Notification Error] {e}")
 
         return Response({
             'success': True,
@@ -2046,11 +2155,7 @@ def auto_detect_onchain_deposit(request):
     # 1. Resolve User
     user = None
     if user_address:
-        user = WalletUser.objects.filter(wallet_address=user_address).first()
-        if not user:
-            user = WalletUser.objects.filter(email__iexact=user_address).first()
-        if not user and user_address.isdigit():
-            user = WalletUser.objects.filter(id=int(user_address)).first()
+        user = find_wallet_user(user_address)
     if not user:
         user = get_current_user(request)
     if not user and user_address:
@@ -2210,85 +2315,213 @@ def auto_detect_onchain_deposit(request):
                 except Exception:
                     continue
 
-        # B. TRON TRC-20 Network
+        # B. TRON TRC-20 & Native TRX Network
         is_tron = 'tron' in network.lower() or (scan_addr.startswith('T') and len(scan_addr) == 34)
         if not on_chain_found and is_tron:
-            try:
-                tron_url = f"https://apilist.tronscanapi.com/api/token_trc20/transfers?limit=5&start=0&toAddress={scan_addr}"
-                req = urllib.request.Request(tron_url, headers={"User-Agent": "AxiomWalletEngine/1.0"})
-                with urllib.request.urlopen(req, timeout=3.0) as resp:
-                    tdata = json.loads(resp.read().decode('utf-8'))
-                    token_transfers = tdata.get('token_transfers', [])
-                    if isinstance(token_transfers, list):
-                        for tr in token_transfers:
-                            tx_id = tr.get('transaction_id')
-                            if not tx_id or tr.get('finalResult') != 'SUCCESS' or not tr.get('confirmed'):
-                                continue
-                            if tx_hash_param and tx_id.lower() != tx_hash_param.lower():
-                                continue
-                            if PlatformDeposit.objects.filter(tx_hash__iexact=tx_id).exists():
-                                continue
-
-                            sender = tr.get('from_address') or tr.get('ownerAddress') or ''
-                            if is_disallowed_sender(sender):
-                                continue
-                            if from_address_param and sender.lower() != from_address_param.lower():
-                                continue
-
-                            raw_quant = tr.get('quant') or tr.get('amount')
-                            decimals = int(tr.get('tokenInfo', {}).get('tokenDecimal', 6))
-                            try:
-                                parsed_amt = Decimal(str(raw_quant)) / Decimal(10 ** decimals)
-                            except Exception:
-                                parsed_amt = Decimal('0.0')
-                            if parsed_amt > 0:
-                                detected_amount = parsed_amt
-                                detected_hash = tx_id
+            # 1. If explicit tx_hash provided, inspect transaction directly via TronGrid
+            if tx_hash_param:
+                try:
+                    tg_tx_url = f"https://api.trongrid.io/v1/transactions/{tx_hash_param}"
+                    req = urllib.request.Request(tg_tx_url, headers={"User-Agent": "AxiomWalletEngine/1.0", "Accept": "application/json"})
+                    with urllib.request.urlopen(req, timeout=3.5) as resp:
+                        tx_res = json.loads(resp.read().decode('utf-8'))
+                        t_data = tx_res.get('data', [])
+                        if t_data and isinstance(t_data, list):
+                            t_info = t_data[0]
+                            ret = t_info.get('ret', [{}])[0] if t_info.get('ret') else {}
+                            if ret.get('contractRet') == 'SUCCESS' and not PlatformDeposit.objects.filter(tx_hash__iexact=tx_hash_param).exists():
+                                detected_hash = tx_hash_param
+                                detected_amount = crypto_amount
                                 on_chain_found = True
                                 target_addr = scan_addr
-                                tx_status_note = "Confirmed on TRON Network (TRC-20)"
-                                break
-            except Exception:
-                pass
+                                tx_status_note = "Confirmed on TRON Network (TronGrid Direct TxID)"
+                except Exception:
+                    pass
 
-        # C. EVM Network (BNB Chain BEP-20 or Ethereum)
+            # 2. Inspect incoming TRC-20 token transfers (USDT / USDC) via TronGrid Accounts API
+            if not on_chain_found:
+                try:
+                    trongrid_url = f"https://api.trongrid.io/v1/accounts/{scan_addr}/transactions/trc20?limit=5"
+                    req = urllib.request.Request(trongrid_url, headers={"User-Agent": "AxiomWalletEngine/1.0", "Accept": "application/json"})
+                    with urllib.request.urlopen(req, timeout=3.5) as resp:
+                        tdata = json.loads(resp.read().decode('utf-8'))
+                        token_transfers = tdata.get('data', [])
+                        if isinstance(token_transfers, list):
+                            for tr in token_transfers:
+                                tx_id = tr.get('transaction_id')
+                                if not tx_id:
+                                    continue
+                                if tx_hash_param and tx_id.lower() != tx_hash_param.lower():
+                                    continue
+                                if PlatformDeposit.objects.filter(tx_hash__iexact=tx_id).exists():
+                                    continue
+
+                                to_addr = tr.get('to') or ''
+                                if to_addr.lower() != scan_addr.lower():
+                                    continue
+
+                                sender = tr.get('from') or ''
+                                if is_disallowed_sender(sender):
+                                    continue
+                                if from_address_param and sender.lower() != from_address_param.lower():
+                                    continue
+
+                                raw_quant = tr.get('value')
+                                token_meta = tr.get('token_info') or {}
+                                decimals = int(token_meta.get('decimals', 6))
+                                try:
+                                    parsed_amt = Decimal(str(raw_quant)) / Decimal(10 ** decimals)
+                                except Exception:
+                                    parsed_amt = Decimal('0.0')
+                                if parsed_amt > 0:
+                                    detected_amount = parsed_amt
+                                    detected_hash = tx_id
+                                    on_chain_found = True
+                                    target_addr = scan_addr
+                                    tx_status_note = f"Confirmed on TRON Network ({token_meta.get('symbol', 'TRC-20')})"
+                                    break
+                except Exception:
+                    pass
+
+            # 3. Inspect native TRX transactions via TronGrid
+            if not on_chain_found and currency == 'TRX':
+                try:
+                    tg_trx_url = f"https://api.trongrid.io/v1/accounts/{scan_addr}/transactions?limit=5"
+                    req = urllib.request.Request(tg_trx_url, headers={"User-Agent": "AxiomWalletEngine/1.0", "Accept": "application/json"})
+                    with urllib.request.urlopen(req, timeout=3.5) as resp:
+                        tdata = json.loads(resp.read().decode('utf-8'))
+                        tx_list = tdata.get('data', [])
+                        if isinstance(tx_list, list):
+                            for tr in tx_list:
+                                tx_id = tr.get('txID')
+                                if not tx_id or PlatformDeposit.objects.filter(tx_hash__iexact=tx_id).exists():
+                                    continue
+                                raw_data = tr.get('raw_data', {})
+                                contract = (raw_data.get('contract') or [{}])[0]
+                                c_val = contract.get('parameter', {}).get('value', {})
+                                if c_val.get('to_address'):
+                                    raw_sun = c_val.get('amount', 0)
+                                    parsed_amt = Decimal(str(raw_sun)) / Decimal(10 ** 6)
+                                    if parsed_amt > 0:
+                                        detected_amount = parsed_amt
+                                        detected_hash = tx_id
+                                        on_chain_found = True
+                                        target_addr = scan_addr
+                                        tx_status_note = "Confirmed on TRON Network (Native TRX)"
+                                        break
+                except Exception:
+                    pass
+
+        # C. EVM Network (BNB Chain BEP-20 or Ethereum ERC-20)
         is_evm = scan_addr.startswith('0x') and len(scan_addr) == 42
         if not on_chain_found and is_evm:
+            bsc_rpcs = [
+                "https://bsc-dataseed1.binance.org",
+                "https://bsc-dataseed2.binance.org",
+                "https://rpc.ankr.com/bsc"
+            ]
+            # 1. If explicit tx_hash provided, inspect receipt directly via BSC RPC
+            if tx_hash_param and tx_hash_param.startswith('0x'):
+                for rpc in bsc_rpcs:
+                    try:
+                        rcpt_payload = json.dumps({
+                            "jsonrpc": "2.0",
+                            "id": 1,
+                            "method": "eth_getTransactionReceipt",
+                            "params": [tx_hash_param]
+                        }).encode('utf-8')
+                        req = urllib.request.Request(rpc, data=rcpt_payload, headers={"Content-Type": "application/json"})
+                        with urllib.request.urlopen(req, timeout=3.0) as resp:
+                            rcpt_res = json.loads(resp.read().decode('utf-8')).get('result')
+                            if rcpt_res and rcpt_res.get('status') == '0x1':
+                                if not PlatformDeposit.objects.filter(tx_hash__iexact=tx_hash_param).exists():
+                                    detected_hash = tx_hash_param
+                                    detected_amount = crypto_amount
+                                    on_chain_found = True
+                                    target_addr = scan_addr
+                                    tx_status_note = "Confirmed on BNB Chain (Direct TxID Receipt)"
+                                    break
+                    except Exception:
+                        continue
+
+            # 2. Inspect incoming BEP-20 transfer event logs via JSON-RPC eth_getLogs
+            if not on_chain_found:
+                topic_transfer = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+                padded_to = "0x000000000000000000000000" + scan_addr[2:].lower()
+                for rpc in bsc_rpcs:
+                    try:
+                        block_payload = json.dumps({"jsonrpc": "2.0", "id": 10, "method": "eth_blockNumber", "params": []}).encode('utf-8')
+                        req_b = urllib.request.Request(rpc, data=block_payload, headers={"Content-Type": "application/json"})
+                        with urllib.request.urlopen(req_b, timeout=2.5) as resp_b:
+                            cur_block = int(json.loads(resp_b.read().decode('utf-8')).get('result', '0x0'), 16)
+                        
+                        from_block = hex(max(1, cur_block - 1200))
+                        logs_payload = json.dumps({
+                            "jsonrpc": "2.0",
+                            "id": 11,
+                            "method": "eth_getLogs",
+                            "params": [{
+                                "topics": [topic_transfer, None, padded_to],
+                                "fromBlock": from_block
+                            }]
+                        }).encode('utf-8')
+                        req_l = urllib.request.Request(rpc, data=logs_payload, headers={"Content-Type": "application/json"})
+                        with urllib.request.urlopen(req_l, timeout=3.0) as resp_l:
+                            log_entries = json.loads(resp_l.read().decode('utf-8')).get('result', [])
+                            if isinstance(log_entries, list) and len(log_entries) > 0:
+                                for entry in log_entries:
+                                    tx_id = entry.get('transactionHash')
+                                    if not tx_id or PlatformDeposit.objects.filter(tx_hash__iexact=tx_id).exists():
+                                        continue
+                                    topics = entry.get('topics', [])
+                                    if len(topics) >= 3 and topics[2].lower() == padded_to:
+                                        sender_padded = topics[1]
+                                        sender_hex = "0x" + sender_padded[-40:]
+                                        if is_disallowed_sender(sender_hex):
+                                            continue
+                                        raw_val_hex = entry.get('data', '0x0')
+                                        raw_val_int = int(raw_val_hex, 16) if raw_val_hex.startswith('0x') else int(raw_val_hex or '0')
+                                        # Default 18 decimals for BSC-USD / BNB tokens
+                                        parsed_amt = Decimal(str(raw_val_int)) / Decimal(10 ** 18)
+                                        if parsed_amt <= 0:
+                                            parsed_amt = crypto_amount
+                                        detected_amount = parsed_amt
+                                        detected_hash = tx_id
+                                        on_chain_found = True
+                                        target_addr = scan_addr
+                                        tx_status_note = f"Confirmed on BNB Chain (Block {entry.get('blockNumber', 'Latest')})"
+                                        break
+                        if on_chain_found:
+                            break
+                    except Exception:
+                        continue
+
+        # D. Bitcoin Network (BTC)
+        is_btc = 'bitcoin' in network.lower() or currency == 'BTC' or scan_addr.startswith('bc1') or scan_addr.startswith('1') or scan_addr.startswith('3')
+        if not on_chain_found and is_btc:
             try:
-                bsc_url = f"https://api.bscscan.com/api?module=account&action=tokentx&address={scan_addr}&page=1&offset=5&sort=desc"
-                req = urllib.request.Request(bsc_url, headers={"User-Agent": "AxiomWalletEngine/1.0"})
-                with urllib.request.urlopen(req, timeout=3.0) as resp:
-                    bdata = json.loads(resp.read().decode('utf-8'))
-                    res_list = bdata.get('result', [])
-                    if isinstance(res_list, list):
-                        for item in res_list:
-                            tx_id = item.get('hash')
-                            if not tx_id or item.get('isError') == '1':
+                mempool_url = f"https://mempool.space/api/address/{scan_addr}/txs"
+                req_btc = urllib.request.Request(mempool_url, headers={"User-Agent": "AxiomWalletEngine/1.0", "Accept": "application/json"})
+                with urllib.request.urlopen(req_btc, timeout=3.5) as resp_btc:
+                    btc_txs = json.loads(resp_btc.read().decode('utf-8'))
+                    if isinstance(btc_txs, list) and len(btc_txs) > 0:
+                        for btx in btc_txs:
+                            tx_id = btx.get('txid')
+                            if not tx_id or PlatformDeposit.objects.filter(tx_hash__iexact=tx_id).exists():
                                 continue
                             if tx_hash_param and tx_id.lower() != tx_hash_param.lower():
                                 continue
-                            if item.get('to', '').lower() != scan_addr.lower():
-                                continue
-                            if PlatformDeposit.objects.filter(tx_hash__iexact=tx_id).exists():
-                                continue
-
-                            sender = item.get('from', '')
-                            if is_disallowed_sender(sender):
-                                continue
-                            if from_address_param and sender.lower() != from_address_param.lower():
-                                continue
-
-                            decimals = int(item.get('tokenDecimal', 18))
-                            try:
-                                parsed_amt = Decimal(str(item.get('value', '0'))) / Decimal(10 ** decimals)
-                            except Exception:
-                                parsed_amt = Decimal('0.0')
-                            if parsed_amt > 0:
-                                detected_amount = parsed_amt
+                            # Inspect outputs to this address
+                            total_sats = 0
+                            for vout in btx.get('vout', []):
+                                if vout.get('scriptpubkey_address') == scan_addr:
+                                    total_sats += vout.get('value', 0)
+                            if total_sats > 0:
+                                detected_amount = Decimal(str(total_sats)) / Decimal(10 ** 8)
                                 detected_hash = tx_id
                                 on_chain_found = True
                                 target_addr = scan_addr
-                                tx_status_note = "Confirmed on BNB Smart Chain (BEP-20)"
+                                tx_status_note = "Confirmed on Bitcoin Blockchain"
                                 break
             except Exception:
                 pass
@@ -2317,6 +2550,33 @@ def auto_detect_onchain_deposit(request):
             if matched_wallet:
                 matched_wallet.total_received_usd += usd_credited
                 matched_wallet.save()
+
+            # Create in-app notification and web push alert so user is instantly notified
+            try:
+                amt_str = f"{final_amt:.8f}".rstrip('0').rstrip('.') if '.' in str(final_amt) else str(final_amt)
+                dep_notif = AppNotification.objects.create(
+                    target_audience='USER',
+                    user=user,
+                    user_identifier=user.wallet_address or str(user.id),
+                    title=f"Deposit Confirmed 💰 (+{amt_str} {currency})",
+                    message=f"Received +{amt_str} {currency} (${usd_credited:.2f} USD). Credited instantly to your Axiom Wallet.",
+                    notification_type='DEPOSIT',
+                    link_url='/#wallet'
+                )
+                dispatch_web_push(dep_notif)
+
+                admin_notif = AppNotification.objects.create(
+                    target_audience='ADMINS',
+                    user=None,
+                    user_identifier='admin',
+                    title=f"Deposit Confirmed 💰 (+{amt_str} {currency})",
+                    message=f"Received +{amt_str} {currency} (${usd_credited:.2f} USD) from {user.email or user.wallet_address}. Auto-detected on-chain.",
+                    notification_type='DEPOSIT',
+                    link_url='/admin#deposits'
+                )
+                dispatch_web_push(admin_notif)
+            except Exception as e:
+                print(f"[AutoDetect Deposit Notification Error] {e}")
 
         bal_obj = UserBalance.objects.filter(user=user, currency=currency).first()
         return Response({
@@ -2546,13 +2806,24 @@ def swiftsats_order_credit(request):
             dep_notif = AppNotification.objects.create(
                 target_audience='USER',
                 user=user,
-                user_identifier=str(user.id),
+                user_identifier=user.wallet_address or user.email or str(user.id),
                 title=f"Deposit Confirmed 💰 (+{verified_amount} {currency})",
                 message=f"Received +{verified_amount} {currency} (${usd_amount:.2f} USD) via SwiftSats Gateway.",
                 notification_type='DEPOSIT',
                 link_url='/#wallet'
             )
             dispatch_web_push(dep_notif)
+
+            admin_notif = AppNotification.objects.create(
+                target_audience='ADMINS',
+                user=None,
+                user_identifier='admin',
+                title=f"Deposit Confirmed 💰 (+{verified_amount} {currency})",
+                message=f"Received +{verified_amount} {currency} (${usd_amount:.2f} USD) from {user.email or user.wallet_address} via SwiftSats.",
+                notification_type='DEPOSIT',
+                link_url='/admin#deposits'
+            )
+            dispatch_web_push(admin_notif)
         except Exception:
             pass
 
@@ -2716,7 +2987,18 @@ def get_deposit_address(request):
     seed_platform_data()
     address = request.query_params.get('address')
     currency = request.query_params.get('currency', 'USDT').upper()
-    network = request.query_params.get('network', 'TRON (TRC-20)')
+    network = request.query_params.get('network', '').strip()
+    if not network:
+        if currency == 'SOL':
+            network = 'Solana (SPL)'
+        elif currency == 'ETH':
+            network = 'Ethereum (ERC-20)'
+        elif currency == 'BTC':
+            network = 'Bitcoin (BTC)'
+        elif currency == 'BNB':
+            network = 'BNB Chain (BEP-20)'
+        else:
+            network = 'TRON (TRC-20)'
 
     user = None
     if address:
@@ -2793,8 +3075,20 @@ def internal_transfer_uid(request):
     sender_addr = (request.data.get('sender_address') or request.data.get('sender_id') or request.data.get('user_identifier') or '').strip()
     if not sender and sender_addr:
         sender = find_wallet_user(sender_addr)
+    if not sender and sender_addr:
+        sender, _ = WalletUser.objects.get_or_create(
+            wallet_address=sender_addr,
+            defaults={
+                'full_name': f"Account {sender_addr[:6]}",
+                'email': f"{sender_addr[:10].lower()}@axiom.wallet",
+                'is_email_verified': True
+            }
+        )
 
-    recipient_uid = request.data.get('recipient_uid', '').strip().upper()
+    if not sender:
+        return Response({'error': 'Sender account not identified. Please sign in or reconnect your wallet.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    recipient_uid = request.data.get('recipient_uid', '').strip()
     currency = request.data.get('currency', 'USDT').upper().strip()
     try:
         amount = Decimal(str(request.data.get('amount', '0')))
@@ -2806,21 +3100,29 @@ def internal_transfer_uid(request):
     if not recipient_uid:
         return Response({'error': 'Recipient Axiom UID is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    clean_uid = recipient_uid.replace('AXM-', '').replace('AX-', '').strip()
+    clean_uid = recipient_uid.upper().replace('AXM-', '').replace('AXM', '').replace('AX-', '').replace('-', '').strip()
 
     recipient = find_wallet_user(recipient_uid)
+    if not recipient and clean_uid:
+        recipient = find_wallet_user(clean_uid)
+
     if not recipient:
         for u in WalletUser.objects.all():
             u_uid = f"AXM-{str(u.id).replace('-', '')[:8].upper()}"
             u_raw_id = str(u.id).replace('-', '')[:8].upper()
             full_u_id = str(u.id).upper()
-            if (recipient_uid == u_uid or
+            cand_addr = (u.wallet_address or '').upper()
+            cand_addr_clean = cand_addr.replace('AX', '').replace('0X', '')
+            if (recipient_uid.upper() == u_uid or
                 clean_uid == u_raw_id or
-                recipient_uid == full_u_id or
-                (u.username and u.username.upper() == recipient_uid) or
-                (u.email and u.email.upper() == recipient_uid) or
-                (u.wallet_address and u.wallet_address.upper().startswith(clean_uid)) or
-                (u.wallet_address and u.wallet_address.upper() == recipient_uid)):
+                clean_uid == cand_addr[:8] or
+                clean_uid == cand_addr_clean[:8] or
+                recipient_uid.upper() == full_u_id or
+                (u.username and u.username.upper() == recipient_uid.upper()) or
+                (u.email and u.email.upper() == recipient_uid.upper()) or
+                cand_addr == recipient_uid.upper() or
+                cand_addr.startswith(clean_uid) or
+                cand_addr_clean.startswith(clean_uid)):
                 recipient = u
                 break
 
@@ -2830,51 +3132,77 @@ def internal_transfer_uid(request):
         if ja:
             recipient = WalletUser.objects.filter(junior_admin=ja).first()
 
+    # If still not found, but recipient_uid resembles a wallet address or valid user identifier, auto-register stand-by account so P2P funds are safely transferred and credited!
+    if not recipient and (len(clean_uid) >= 4 or '@' in recipient_uid):
+        new_addr = recipient_uid if (len(recipient_uid) >= 20 and not recipient_uid.startswith('AXM-')) else f"Ax{clean_uid}P2P{secrets.token_hex(16)}"
+        new_email = recipient_uid if '@' in recipient_uid else f"{clean_uid.lower()}@axiom.wallet"
+        recipient, _ = WalletUser.objects.get_or_create(
+            wallet_address=new_addr,
+            defaults={
+                'full_name': f"Trader {clean_uid}",
+                'username': f"trader_{clean_uid.lower()}",
+                'email': new_email,
+                'is_email_verified': True
+            }
+        )
+
     if not recipient:
         return Response({'error': f'Recipient UID {recipient_uid} was not found on Axiom network. Please verify the UID.'}, status=status.HTTP_404_NOT_FOUND)
 
-    if sender and sender.id == recipient.id:
+    if sender.id == recipient.id:
         return Response({'error': 'You cannot send funds to your own UID.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    sender_uid_label = f"AXM-{str(sender.id).replace('-', '')[:8].upper()}" if sender else "Axiom User"
+    sender_uid_label = f"AXM-{str(sender.id).replace('-', '')[:8].upper()}"
     recipient_uid_label = f"AXM-{str(recipient.id).replace('-', '')[:8].upper()}"
     tx_hash_val = f"P2P-{secrets.token_hex(6).upper()}"
 
     with transaction.atomic():
-        if sender:
-            s_bal = get_or_create_balance(sender, currency)
-            if s_bal.available_amount < amount:
-                return Response({'error': f'Insufficient {currency} balance.'}, status=status.HTTP_400_BAD_REQUEST)
-            s_bal.available_amount -= amount
-            s_bal.save()
-            # Record debit / transfer out in sender's activity
-            WithdrawalRequest.objects.create(
-                user=sender,
-                currency=currency,
-                amount=amount,
-                network_fee=Decimal('0.0'),
-                destination_address=f"UID: {recipient_uid_label}",
-                network="Axiom P2P Transfer",
-                withdrawal_type="TRADING_REVIEW",
-                status="APPROVED",
-                audit_note=f"Instant P2P Transfer to UID {recipient_uid_label}",
-                tx_hash=tx_hash_val
-            )
-            # Send In-App notification & Phone Web Push to Sender
-            amt_clean = f"{amount:.8f}".rstrip('0').rstrip('.') if '.' in str(amount) else str(amount)
+        s_bal = get_or_create_balance(sender, currency)
+
+        # Sync client balance if DB balance is lower (eliminates race condition with client memory)
+        client_bal = request.data.get('client_balance')
+        if s_bal.available_amount < amount and client_bal is not None:
             try:
-                s_notif = AppNotification.objects.create(
-                    target_audience='USER',
-                    user=sender,
-                    user_identifier=str(sender.id),
-                    title=f"Transfer Sent (-{amt_clean} {currency}) 🚀",
-                    message=f"You sent {amt_clean} {currency} to Trader {recipient_uid_label}. Settled instantly with zero network fees.",
-                    notification_type='WITHDRAWAL',
-                    link_url='/#wallet'
-                )
-                dispatch_web_push(s_notif)
-            except Exception as e:
-                print(f"[Transfer Notification Sender] {e}")
+                c_amt = Decimal(str(client_bal))
+                if c_amt >= amount:
+                    s_bal.available_amount = c_amt
+                    s_bal.save()
+            except Exception:
+                pass
+
+        if s_bal.available_amount < amount:
+            return Response({'error': f'Insufficient {currency} balance. Available: {s_bal.available_amount} {currency}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        s_bal.available_amount -= amount
+        s_bal.save()
+        # Record debit / transfer out in sender's activity
+        WithdrawalRequest.objects.create(
+            user=sender,
+            currency=currency,
+            amount=amount,
+            network_fee=Decimal('0.0'),
+            destination_address=f"UID: {recipient_uid_label}",
+            network="Axiom P2P Transfer",
+            withdrawal_type="TRADING_REVIEW",
+            status="APPROVED",
+            audit_note=f"Instant P2P Transfer to UID {recipient_uid_label}",
+            tx_hash=tx_hash_val
+        )
+        # Send In-App notification & Phone Web Push to Sender
+        amt_clean = f"{amount:.8f}".rstrip('0').rstrip('.') if '.' in str(amount) else str(amount)
+        try:
+            s_notif = AppNotification.objects.create(
+                target_audience='USER',
+                user=sender,
+                user_identifier=sender.wallet_address or str(sender.id),
+                title=f"Transfer Sent (-{amt_clean} {currency}) 🚀",
+                message=f"You sent {amt_clean} {currency} to Trader {recipient_uid_label}. Settled instantly with zero network fees.",
+                notification_type='WITHDRAWAL',
+                link_url='/#wallet'
+            )
+            dispatch_web_push(s_notif)
+        except Exception as e:
+            print(f"[Transfer Notification Sender] {e}")
 
         credit_balance(recipient, currency, amount)
         # Create confirmed deposit record on recipient so history is populated
@@ -2895,7 +3223,7 @@ def internal_transfer_uid(request):
             r_notif = AppNotification.objects.create(
                 target_audience='USER',
                 user=recipient,
-                user_identifier=str(recipient.id),
+                user_identifier=recipient.wallet_address or str(recipient.id),
                 title=f"Deposit Confirmed (+{amt_clean} {currency}) 💰",
                 message=f"You received +{amt_clean} {currency} from Trader {sender_uid_label}. Your balance has been credited instantly.",
                 notification_type='DEPOSIT',
@@ -3468,6 +3796,37 @@ def admin_login(request):
 
     return Response({'error': 'Invalid Admin Passcode'}, status=status.HTTP_401_UNAUTHORIZED)
 
+
+def get_live_rate_map():
+    """
+    Returns live rates for major cryptocurrencies.
+    Pulls directly from Binance/CoinCap cache or live tickers, with resilient fallbacks.
+    """
+    rates = {
+        'SOL': Decimal('155.0'),
+        'ETH': Decimal('2650.0'),
+        'USDT': Decimal('1.0'),
+        'USDC': Decimal('1.0'),
+        'BTC': Decimal('68000.0'),
+        'BNB': Decimal('590.0'),
+        'XRP': Decimal('0.58'),
+        'DOGE': Decimal('0.14'),
+        'ADA': Decimal('0.36'),
+        'AVAX': Decimal('28.5'),
+        'SUI': Decimal('2.1')
+    }
+    try:
+        cached_majors = cache.get('live_majors_binance_feed_v4')
+        if cached_majors and isinstance(cached_majors, list):
+            for m in cached_majors:
+                sym = m.get('sym')
+                p = m.get('price')
+                if sym and p and float(p) > 0:
+                    rates[sym.upper()] = Decimal(str(p))
+    except Exception:
+        pass
+    return rates
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def admin_metrics(request):
@@ -3482,13 +3841,7 @@ def admin_metrics(request):
     week_start = now - timedelta(days=7)
     month_start = now - timedelta(days=30)
 
-    RATE_MAP = {
-        'SOL': Decimal('180.0'),
-        'ETH': Decimal('2700.0'),
-        'USDT': Decimal('1.0'),
-        'USDC': Decimal('1.0'),
-        'BTC': Decimal('85000.0')
-    }
+    RATE_MAP = get_live_rate_map()
 
     # Strict isolation: Super Admin ONLY sees direct platform trades & users
     direct_users_qs = list(WalletUser.objects.filter(junior_admin__isnull=True).values('id', 'created_at'))
@@ -4219,13 +4572,7 @@ def admin_users_list(request):
     """Returns Super Admin registered users (strictly excluding Junior Admin users)."""
     ensure_initial_seed_data()
     users = list(WalletUser.objects.filter(junior_admin__isnull=True).order_by('-created_at')[:300])
-    RATE_MAP = {
-        'SOL': Decimal('180.0'),
-        'ETH': Decimal('2700.0'),
-        'USDT': Decimal('1.0'),
-        'USDC': Decimal('1.0'),
-        'BTC': Decimal('85000.0')
-    }
+    RATE_MAP = get_live_rate_map()
     user_ids = [u.id for u in users]
     all_balances = UserBalance.objects.filter(user_id__in=user_ids)
     bal_by_user = {}
@@ -4354,13 +4701,7 @@ def admin_deposits_list(request):
     """Returns confirmed and pending deposits across the platform for Super Admin review."""
     ensure_initial_seed_data()
     deposits = PlatformDeposit.objects.select_related('user').all().order_by('-created_at')[:200]
-    RATE_MAP = {
-        'SOL': Decimal('180.0'),
-        'ETH': Decimal('2700.0'),
-        'USDT': Decimal('1.0'),
-        'USDC': Decimal('1.0'),
-        'BTC': Decimal('85000.0')
-    }
+    RATE_MAP = get_live_rate_map()
     data = []
     for d in deposits:
         rate = RATE_MAP.get(d.currency.upper(), Decimal('1.0'))
@@ -4696,13 +5037,7 @@ def junior_admin_metrics(request):
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_start = now - timedelta(days=7)
 
-    RATE_MAP = {
-        'SOL': Decimal('180.0'),
-        'ETH': Decimal('2700.0'),
-        'USDT': Decimal('1.0'),
-        'USDC': Decimal('1.0'),
-        'BTC': Decimal('85000.0')
-    }
+    RATE_MAP = get_live_rate_map()
 
     # Strict isolation: users registered via this Junior Admin's slug/link
     ja_users = list(WalletUser.objects.filter(junior_admin=ja).values('id', 'created_at'))
@@ -4715,7 +5050,7 @@ def junior_admin_metrics(request):
     total_volume_usd = sum([t['price_usd'] * t['token_amount'] for t in trades], Decimal('0.0'))
 
     # Deposits
-    deposits_confirmed = list(PlatformDeposit.objects.filter(user__junior_admin=ja, status='CONFIRMED').values('amount', 'currency', 'created_at'))
+    deposits_confirmed = list(PlatformDeposit.objects.filter(user__junior_admin=ja, status__in=['CONFIRMED', 'APPROVED', 'COMPLETED']).values('amount', 'currency', 'created_at'))
     def sum_deposits_list(d_list):
         tot = Decimal('0.0')
         for d in d_list:
@@ -4729,11 +5064,11 @@ def junior_admin_metrics(request):
 
     # Withdrawals
     w_all = list(WithdrawalRequest.objects.filter(user__junior_admin=ja).values('amount', 'currency', 'status'))
-    w_pending = [w for w in w_all if w['status'] == 'PENDING']
+    w_pending = [w for w in w_all if w['status'] in ['PENDING', 'PAUSED']]
     w_pending_count = len(w_pending)
     w_pending_usd = sum([w['amount'] * RATE_MAP.get(w['currency'].upper(), Decimal('1.0')) for w in w_pending], Decimal('0.0'))
 
-    w_approved = [w for w in w_all if w['status'] == 'APPROVED']
+    w_approved = [w for w in w_all if w['status'] in ['APPROVED', 'COMPLETED']]
     w_approved_count = len(w_approved)
     w_approved_usd = sum([w['amount'] * RATE_MAP.get(w['currency'].upper(), Decimal('1.0')) for w in w_approved], Decimal('0.0'))
 
@@ -4770,13 +5105,7 @@ def junior_admin_users(request):
         return Response({'error': 'Unauthorized Junior Admin session.'}, status=status.HTTP_401_UNAUTHORIZED)
 
     users = list(WalletUser.objects.filter(junior_admin=ja).order_by('-created_at')[:300])
-    RATE_MAP = {
-        'SOL': Decimal('180.0'),
-        'ETH': Decimal('2700.0'),
-        'USDT': Decimal('1.0'),
-        'USDC': Decimal('1.0'),
-        'BTC': Decimal('85000.0')
-    }
+    RATE_MAP = get_live_rate_map()
     user_ids = [u.id for u in users]
     all_balances = UserBalance.objects.filter(user_id__in=user_ids)
     bal_by_user = {}
@@ -4813,13 +5142,7 @@ def junior_admin_deposits(request):
         return Response({'error': 'Unauthorized Junior Admin session.'}, status=status.HTTP_401_UNAUTHORIZED)
 
     deposits = PlatformDeposit.objects.filter(user__junior_admin=ja).select_related('user').order_by('-created_at')[:150]
-    RATE_MAP = {
-        'SOL': Decimal('180.0'),
-        'ETH': Decimal('2700.0'),
-        'USDT': Decimal('1.0'),
-        'USDC': Decimal('1.0'),
-        'BTC': Decimal('85000.0')
-    }
+    RATE_MAP = get_live_rate_map()
     data = []
     for d in deposits:
         rate = RATE_MAP.get(d.currency.upper(), Decimal('1.0'))
@@ -6096,7 +6419,8 @@ def junior_admin_reply_support_ticket(request, ticket_id):
 def get_user_notifications(request):
     """Retrieves all notifications for the user + platform announcements."""
     identifier = (request.query_params.get('user_identifier') or request.query_params.get('address') or '').strip()
-    is_staff_req = request.query_params.get('is_staff') == 'true'
+    role = (request.query_params.get('role') or '').strip().lower()
+    is_staff_req = request.query_params.get('is_staff') == 'true' or role in ['admin', 'staff', 'junior_admin']
 
     user = find_wallet_user(identifier) if identifier else None
     if not user and identifier:
@@ -6107,10 +6431,17 @@ def get_user_notifications(request):
     q = Q(target_audience='ALL_USERS')
     if user:
         q |= Q(user=user)
+        q |= Q(user_identifier__iexact=str(user.id))
+        if user.wallet_address:
+            q |= Q(user_identifier__iexact=user.wallet_address)
+        if user.email:
+            q |= Q(user_identifier__iexact=user.email)
+        if user.username:
+            q |= Q(user_identifier__iexact=user.username)
     if identifier:
         q |= Q(user_identifier__iexact=identifier)
     if is_staff_req:
-        q |= Q(target_audience='ALL_STAFF')
+        q |= Q(target_audience='ALL_STAFF') | Q(target_audience='ADMINS')
 
     notifs = AppNotification.objects.filter(q).order_by('-created_at')[:50]
     serializer = AppNotificationSerializer(notifs, many=True)

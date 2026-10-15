@@ -43,6 +43,27 @@ export function playNotificationChime() {
   }
 }
 
+// Pre-unlock Web Audio API on initial user interaction so subsequent notification sounds are never blocked
+if (typeof window !== "undefined") {
+  const unlockAudio = () => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        const dummyCtx = new AudioContextClass();
+        dummyCtx.resume().then(() => {
+          dummyCtx.close();
+        });
+      }
+    } catch {}
+    window.removeEventListener("click", unlockAudio);
+    window.removeEventListener("touchstart", unlockAudio);
+    window.removeEventListener("keydown", unlockAudio);
+  };
+  window.addEventListener("click", unlockAudio, { passive: true });
+  window.addEventListener("touchstart", unlockAudio, { passive: true });
+  window.addEventListener("keydown", unlockAudio, { passive: true });
+}
+
 // Convert VAPID public key base64 to Uint8Array for PushManager
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -107,9 +128,17 @@ class NotificationManager {
             title,
             message,
             link: linkUrl || "/#wallet",
+            tag,
           },
         })
       );
+      if (title.toLowerCase().includes("deposit") || message.toLowerCase().includes("deposit")) {
+        window.dispatchEvent(
+          new CustomEvent("axiom_deposit_alert", {
+            detail: { title, message, link: linkUrl || "/#wallet", tag },
+          })
+        );
+      }
     }
 
     // 2. Dispatch native OS / phone notification via Service Worker
@@ -200,16 +229,42 @@ class NotificationManager {
   }
 
   public triggerImmediateSync = async () => {
-    if (typeof window === "undefined" || !this.currentUserIdentifier) return;
+    if (typeof window === "undefined") return;
+    const isExplicitAdmin = this.currentRole === "admin" ||
+      (typeof localStorage !== "undefined" && localStorage.getItem("axiom_admin_auth") === "true") ||
+      (typeof sessionStorage !== "undefined" && sessionStorage.getItem("axiom_admin_auth") === "true");
+
+    const activeId = this.currentUserIdentifier ||
+      (typeof localStorage !== "undefined" ? (localStorage.getItem("axiom_wallet_address") || localStorage.getItem("axiom_user_id") || "") : "") ||
+      (isExplicitAdmin ? "admin" : "");
+    if (!activeId && !isExplicitAdmin) return;
+
     try {
-      const res = await api.getUserNotifications(this.currentUserIdentifier, this.currentRole);
+      const res = await api.getUserNotifications(activeId || "admin", isExplicitAdmin ? "admin" : this.currentRole);
       if (res && res.notifications && Array.isArray(res.notifications)) {
-        // If this is the initial load upon opening the app, ingest existing backlog as known
-        // without spamming the user with a storm of audio bells and phone lockscreen notifications!
+        // If this is the initial load upon opening the app, alert for any genuinely unread
+        // recent notifications (last 30 minutes) that haven't been shown yet!
         if (this.isFirstSync) {
           this.isFirstSync = false;
+          const cutoff = Date.now() - 30 * 60 * 1000;
+          let alertedFirstSync = 0;
           for (const notif of res.notifications) {
-            this.lastKnownIds.add(notif.id);
+            const nTime = new Date(notif.created_at || Date.now()).getTime();
+            if (!notif.is_read && nTime > cutoff && !this.lastKnownIds.has(notif.id)) {
+              this.lastKnownIds.add(notif.id);
+              if (alertedFirstSync < 2) {
+                alertedFirstSync++;
+                this.showNativePhoneNotification(
+                  notif.title || "Axiom Wallet Alert",
+                  notif.message || "You have a new transaction update.",
+                  notif.link_url || "/#wallet",
+                  notif.id
+                );
+              }
+              if (this.onNewNotificationCallback) this.onNewNotificationCallback(notif);
+            } else {
+              this.lastKnownIds.add(notif.id);
+            }
           }
           this.saveSeenIds();
           return;
@@ -222,12 +277,12 @@ class NotificationManager {
             // Only genuinely new unread notifications that arrive while the user is using the app trigger alerts
             if (!notif.is_read) {
               newAlertsCount++;
-              // Only chime/push for the latest incoming notification if multiple arrive in the same tick
-              if (newAlertsCount <= 1) {
+              // Chime & notify for incoming alerts
+              if (newAlertsCount <= 2) {
                 this.showNativePhoneNotification(
                   notif.title || "Axiom Wallet Alert",
                   notif.message || "You have a new transaction update.",
-                  notif.link_url || "/#wallet",
+                  notif.link_url || (isExplicitAdmin ? "/admin#deposits" : "/#wallet"),
                   notif.id
                 );
               }
@@ -248,19 +303,28 @@ class NotificationManager {
     if (typeof window === "undefined") return;
     this.stopPolling();
 
-    const newId = userIdentifier || "";
+    const isAdmin = role === "admin" ||
+      (typeof window !== "undefined" && (
+        localStorage.getItem("axiom_admin_auth") === "true" ||
+        sessionStorage.getItem("axiom_admin_auth") === "true" ||
+        window.location.pathname.includes("/admin") ||
+        window.location.hash.includes("#admin")
+      ));
+
+    const fallbackId = (typeof localStorage !== "undefined" ? (localStorage.getItem("axiom_wallet_address") || localStorage.getItem("axiom_user_id") || "") : "") || (isAdmin ? "admin" : "");
+    const newId = userIdentifier || fallbackId;
     if (this.currentUserIdentifier !== newId) {
       this.isFirstSync = true;
     }
     this.currentUserIdentifier = newId;
-    this.currentRole = role || "user";
+    this.currentRole = isAdmin ? "admin" : (role || "user");
     this.onNewNotificationCallback = onNewNotification;
 
     // First fetch immediately
     this.triggerImmediateSync();
 
     // Try background push auto-sync if granted
-    this.autoSyncPushSubscription(userIdentifier, role === "admin");
+    this.autoSyncPushSubscription(newId, isAdmin);
 
     // Continuous ultra-fast polling every 2.0s
     this.pollingInterval = setInterval(this.triggerImmediateSync, 2000);

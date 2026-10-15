@@ -272,6 +272,8 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
   // If stored wallet exists on device, start on unlock; otherwise welcome
   const [view, setView] = useState<PhantomView>(() => {
     if (initialView) return initialView;
+    const isRefTest = typeof window !== "undefined" && window.location.search.includes("ref_test=true");
+    if (isRefTest) return "welcome";
     const stored = getStoredWalletAddress();
     return stored ? "unlock" : "welcome";
   });
@@ -348,9 +350,15 @@ export function PhantomAuth({ onAuth, initialView }: PhantomAuthProps) {
 
   // Check stored wallet and referral on mount
   useEffect(() => {
-    const stored = getStoredWalletAddress();
-    if (stored) {
-      setStoredAddress(stored);
+    const isRefTest = typeof window !== "undefined" && window.location.search.includes("ref_test=true");
+    if (isRefTest) {
+      clearStoredWalletAddress();
+      setStoredAddress("");
+    } else {
+      const stored = getStoredWalletAddress();
+      if (stored) {
+        setStoredAddress(stored);
+      }
     }
     const ref = localStorage.getItem("axiom_agent_ref") || "";
     if (ref) {

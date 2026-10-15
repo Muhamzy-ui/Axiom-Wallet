@@ -46,7 +46,11 @@ function notify() {
 if (typeof window !== "undefined") {
   // Capture beforeinstallprompt event on Chromium browsers
   window.addEventListener("beforeinstallprompt", (e: any) => {
-    e.preventDefault();
+    try {
+      if (e && typeof e.preventDefault === "function") {
+        e.preventDefault();
+      }
+    } catch {}
     deferredPrompt = e;
     notify();
   });

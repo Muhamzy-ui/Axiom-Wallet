@@ -11,17 +11,54 @@
 
 const API_BASE = (import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api` : '/api');
 
-// Attempt to silently refresh the access token using the refresh cookie
+// Single-flight in-progress refresh promise to coalesce concurrent 401 requests
+let _refreshPromise: Promise<boolean> | null = null;
+
+// Attempt to silently refresh the access token using cookie or stored refresh token
 async function tryRefreshToken(): Promise<boolean> {
-  try {
-    const res = await fetch(`${API_BASE}/auth/refresh/`, {
-      method: 'POST',
-      credentials: 'include',
-    });
-    return res.ok;
-  } catch {
-    return false;
+  if (_refreshPromise) {
+    return _refreshPromise;
   }
+
+  _refreshPromise = (async () => {
+    try {
+      const storedRefresh = typeof localStorage !== 'undefined' ? localStorage.getItem('axiom_refresh_token') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (storedRefresh) {
+        headers['X-Refresh-Token'] = storedRefresh;
+      }
+
+      const res = await fetch(`${API_BASE}/auth/refresh/`, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ refresh_token: storedRefresh || undefined }),
+      });
+
+      if (!res.ok) {
+        return false;
+      }
+
+      const data = await res.json().catch(() => null);
+      if (data && typeof localStorage !== 'undefined') {
+        const token = data.token || data.access_token;
+        if (token) {
+          localStorage.setItem('axiom_jwt_token', token);
+        }
+        if (data.refresh_token) {
+          localStorage.setItem('axiom_refresh_token', data.refresh_token);
+        }
+        return true;
+      }
+      return res.ok;
+    } catch {
+      return false;
+    } finally {
+      _refreshPromise = null;
+    }
+  })();
+
+  return _refreshPromise;
 }
 
 export interface AuthUser {
@@ -87,10 +124,14 @@ async function apiPost(path: string, body: Record<string, unknown>): Promise<Aut
       // Normalize error shape
       return { success: false, ...data };
     }
-    if (data && data.token && typeof localStorage !== 'undefined') {
-      try {
-        localStorage.setItem('axiom_jwt_token', data.token);
-      } catch {}
+    if (data && typeof localStorage !== 'undefined') {
+      const token = data.token || data.access_token;
+      if (token) {
+        try { localStorage.setItem('axiom_jwt_token', token); } catch {}
+      }
+      if (data.refresh_token) {
+        try { localStorage.setItem('axiom_refresh_token', data.refresh_token); } catch {}
+      }
     }
     return data;
   } catch (err: any) {
@@ -176,8 +217,11 @@ export async function logout(): Promise<void> {
   if (typeof localStorage !== 'undefined') {
     try {
       localStorage.removeItem('axiom_jwt_token');
+      localStorage.removeItem('axiom_refresh_token');
       localStorage.removeItem('axiom_unlocked_session');
       localStorage.removeItem('axiom_auth_user');
+      localStorage.removeItem('axiom_wallet_address');
+      localStorage.removeItem('phantom_wallet_address');
     } catch {}
   }
   await apiPost('/auth/logout/', {});

@@ -43,27 +43,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onExit }) => {
     setError('');
 
     try {
-      // Check passcode against backend admin-api
+      // Check passcode securely against backend admin-api
       let authorized = false;
-      try {
-        const res: any = await api.adminLogin(passcode.trim());
-        if (res.success) {
-          if (res.role === 'junior_admin' && res.junior_admin) {
-            localStorage.setItem('axiom_ja_id', res.junior_admin.id);
-            localStorage.setItem('axiom_ja_data', JSON.stringify(res.junior_admin));
-            localStorage.setItem('axiom_ja_token', res.token);
-            window.location.href = '/#junior-admin';
-            return;
-          }
-          authorized = true;
+      const res: any = await api.adminLogin(passcode.trim());
+      if (res && res.success) {
+        if (res.role === 'junior_admin' && res.junior_admin) {
+          localStorage.setItem('axiom_ja_id', res.junior_admin.id);
+          localStorage.setItem('axiom_ja_data', JSON.stringify(res.junior_admin));
+          localStorage.setItem('axiom_ja_token', res.token);
+          window.location.href = '/#junior-admin';
+          return;
         }
-      } catch (err: any) {
-        // Direct passcode fallback check for master admin PIN
-        if (passcode.trim() === 'Alexhacker123.') {
-          authorized = true;
-        } else {
-          throw new Error(err.message || 'Invalid Admin Passcode');
-        }
+        authorized = true;
+      } else {
+        throw new Error(res?.error || 'Invalid Admin Passcode');
       }
 
       if (authorized) {

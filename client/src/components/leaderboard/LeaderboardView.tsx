@@ -1134,10 +1134,12 @@ export function LeaderboardView({
     return filtered;
   }, [traders, timeframe, category, search, sortBy, matchedCoinInfo, holderFilter, realUsers, currentUserTrader]);
 
-  // Top 3 for Podium Showcase - Guaranteed strictly descending PnL: Rank 1 > Rank 2 > Rank 3 ALWAYS
+  // Top 3 for Podium Showcase - Strictly honors Admin Top 8 ranks #1, #2, and #3
   const sortedTop3 = useMemo(() => {
-    const sorted = [...traders].sort((a, b) => b.pnl24h - a.pnl24h);
-    return [sorted[0], sorted[1], sorted[2]];
+    const t1 = traders.find(t => t.rank === 1) || traders[0];
+    const t2 = traders.find(t => t.rank === 2) || traders[1];
+    const t3 = traders.find(t => t.rank === 3) || traders[2];
+    return [t1, t2, t3];
   }, [traders]);
   const top1 = sortedTop3[0];
   const top2 = sortedTop3[1];

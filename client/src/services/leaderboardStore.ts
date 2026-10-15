@@ -681,7 +681,7 @@ class LeaderboardStore {
           t.winRate = Math.min(99.2, Math.max(76.5, Number((t.winRate + winDrift).toFixed(1))));
           t.pnl24h = Math.round(t.pnl24h + pnlDelta);
           t.volume += pnlDelta * 2;
-          this.saveTop8(top8);
+          this.notify();
         }
       } else {
         // Nudge one of ranks 9 to 50
@@ -772,56 +772,40 @@ class LeaderboardStore {
     return { hours, minutes, seconds, formatted };
   }
 
-  // ── Top 50 Traders with 24-Hour Daily Epoch Rotation ───────────────────────
-  // Top 8 Accounts: ALWAYS stay at the top (never leave ranks 1-8), but change positions and 24h P&L every 24h
-  // Ranks 9 to 50: Deterministically shuffle positions and 24h P&L every 24h
+  // ── Top 50 Traders: Admin Top 8 strictly honored at ranks 1-8; Ranks 9-50 drift smoothly ──
   public getAll50Traders(): Trader[] {
     const top8 = this.getTop8();
     const epoch = getDailyEpoch();
     const prevEpoch = epoch - 1;
 
-    // Guaranteed strictly descending tiers for Top 8 (Rank 1 > Rank 2 > ... > Rank 8 ALWAYS!)
-    const TOP8_BASE_TIERS = [186500, 152000, 124500, 98200, 81400, 66800, 54200, 44500];
-
-    // Determine order of Top 8 traders for current epoch and previous epoch
-    // Shuffled deterministically so they rotate ranks among themselves every 24h, but never leave top 8
-    const currentTop8Shifted = seededShuffle([...top8], epoch * 1337);
-    const prevTop8Shifted = seededShuffle([...top8], prevEpoch * 1337);
-
-    const prevTop8RankMap = new Map<string, number>();
-    prevTop8Shifted.forEach((trader, idx) => {
-      prevTop8RankMap.set(trader.id, idx + 1);
+    // Respect Admin Top 8 configuration directly.
+    // Ensure strict ranking #1 to #8 ordered by their configured rank or pnl24h:
+    const sortedTop8 = [...top8].sort((a, b) => {
+      if (a.rank && b.rank && a.rank !== b.rank) return a.rank - b.rank;
+      return (b.pnl24h || 0) - (a.pnl24h || 0);
     });
 
-    const shiftedTop8: Trader[] = currentTop8Shifted.map((t, idx) => {
-      const currentRank = idx + 1; // 1 to 8
-      const prevRank = prevTop8RankMap.get(t.id) ?? currentRank;
-      const rankDelta = prevRank - currentRank;
-
-      // Assign PnL that is strictly higher for Rank 1 than Rank 2, Rank 2 than Rank 3, etc.
-      // Small epoch drift that never exceeds tier boundaries:
-      const tierBase = TOP8_BASE_TIERS[idx];
-      const drift = ((epoch * 41 + (idx + 1) * 67) % 2400) - 1200;
-      const dailyPnl = Math.round(tierBase + drift);
-      const roiRatio = t.volume > 0 ? (dailyPnl / (t.volume * 0.05)) * 100 : 850;
-      const dailyRoi = Number((Math.max(120, roiRatio)).toFixed(1));
-
+    const shiftedTop8: Trader[] = sortedTop8.map((t, idx) => {
+      const currentRank = idx + 1;
+      const configuredPnl = typeof t.pnl24h === "number" && !isNaN(t.pnl24h) ? t.pnl24h : (180000 - idx * 15000);
+      const configuredRoi = typeof t.roi24h === "number" && !isNaN(t.roi24h) ? t.roi24h : Number((1200 - idx * 80).toFixed(1));
       return {
         ...t,
         rank: currentRank,
-        rankDelta,
-        pnl24h: dailyPnl,
-        roi24h: dailyRoi
+        rankDelta: t.rankDelta ?? (idx === 0 ? 0 : idx % 2 === 0 ? 1 : -1),
+        pnl24h: configuredPnl,
+        roi24h: configuredRoi,
+        pnl7d: t.pnl7d || Math.round(configuredPnl * 2.8),
+        roi7d: t.roi7d || Number((configuredRoi * 1.6).toFixed(1)),
+        pnl30d: t.pnl30d || Math.round(configuredPnl * 7.2),
+        roi30d: t.roi30d || Number((configuredRoi * 3.4).toFixed(1)),
+        pnlAll: t.pnlAll || Math.round(configuredPnl * 18.5),
+        roiAll: t.roiAll || Number((configuredRoi * 7.8).toFixed(1)),
       };
     });
 
-    // Sort Top 8 strictly descending by pnl24h to guarantee Rank 1 is always the highest profit
-    shiftedTop8.sort((a, b) => b.pnl24h - a.pnl24h);
-    shiftedTop8.forEach((t, idx) => {
-      t.rank = idx + 1;
-    });
-
-    // 2. Ranks 9 to 50: Deterministically rotate and drift, strictly below Rank 8
+    // 2. Ranks 9 to 50: Deterministically rotate and drift, strictly below Rank 8's PnL
+    const minTop8Pnl = Math.max(10000, shiftedTop8[shiftedTop8.length - 1]?.pnl24h || 40000);
     const currentShifted = seededShuffle([...this.baseRanks9to50], epoch * 7919);
     const prevShifted = seededShuffle([...this.baseRanks9to50], prevEpoch * 7919);
 

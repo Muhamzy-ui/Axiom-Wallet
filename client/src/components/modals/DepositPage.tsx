@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from "react";
 import {
   ChevronLeft, Copy, Check, ShieldCheck, RefreshCw,
-  ExternalLink, AlertTriangle, Clock, ChevronDown, ChevronUp, ArrowRight, Sparkles
+  ExternalLink, AlertTriangle, Clock, ChevronDown, ChevronUp, ArrowRight, Sparkles, Zap
 } from "lucide-react";
 import { api } from "../../services/api";
 import { type PlatformDepositWallet } from "../../types";
 import { marketStore } from "../../services/marketStore";
 import { copyToClipboard } from "../../services/clipboard";
 import { type AuthUser } from "../../services/authService";
+import { notificationService } from "../../services/notificationService";
 import "./Modals.css";
 
 interface DepositPageProps {
@@ -50,20 +51,57 @@ const COIN_NETWORKS: Record<DepositCoin, { label: string; networkKey: string; no
 };
 
 const BTC_VAULT_ADDRESSES = [
-  "bc1qxapwprlf0pj45hns28tnl9ypyx9tdkllv05tc6",
+  "bc1qejrhpwau5kw5yuv5mg6grvny2ezzd06xqvdrh3",
+  "bc1qc3gpaf9ve3crg7p92q55m5afar8v5rqck3ldxj",
+  "bc1q7ngavwcymaw6vyywxc7dffpntjv73cfqy7mjkz",
+  "bc1ql2vreymfjvm2tgsh8ymlclehr0yz46hdklcjt2",
+  "bc1qeswlarfqyaf8kgnjqa5ct3jayap3lmt7v32zag",
 ];
 
 const BEP20_VAULT_ADDRESSES = [
-  "0x9BB36fFdFa5f690737383Da53AE2BE7299461bC6",
+  "0x8425659A85b2d3fbea3866b4d87E5411076Ee86C",
+  "0x12511C86b0613F6eF26Db0A685Bc012E70D0bD80",
+  "0x20fFA10142c7DD6f3382A8fe037FFC48C510DAD5",
+  "0xE1Af5D79f9F29F5ACa0Efa3FA40bA2AcAd823eC1",
+  "0x1AB8ab2CD87E4F09140ced079cC62d0bAe83CA6F",
 ];
 
 const TRC20_VAULT_ADDRESSES = [
-  "TNxHEYoMDatWEJUhfokj9B5eKef9CaNb8K",
+  "TJpieRWnh9KkKT5ch6CmfLDaHwU5cTT3t7",
+  "TP8adsNSxAtr6Er7FgcGKR99EgxKj4n5sw",
+  "THUqWqgov8Pi4Bc5ByMc3PaidGnLr5U9Sf",
+  "TP8adsNSxAtr6Er7FgcGKR99EgxKj4n5sw",
+  "TJpieRWnh9KkKT5ch6CmfLDaHwU5cTT3t7",
 ];
 
 const SOL_VAULT_ADDRESSES = [
-  "5u2GTECg1ArKZANpXQ7t6ekzxDEyKDwCXPpEFrNxGJNo",
+  "BPFJfq7jYCeu7vAo1PJx9GDLnoJo6BNnkhPCGTrRvJWi",
+  "8hLG4k5K8y5k39xX6owJXkDnu1ScnsW7tfGenPp9cV8k",
+  "DiYfaZxHnC4Hf48E8qHxSA4dLe9gRwey6NdFmMiCy11G",
+  "AE5g1aVsRAoWAqTaFQVxC3uomWNCsAyauQesPVcn4RVc",
+  "7xzCEtZzywDimHzbNNSjaRRaPEbpJkztT5JdhhaQmwVk",
 ];
+
+const ERC20_VAULT_ADDRESSES = [
+  "0x36b25000587762425F2682d721A57eD7d74671F0",
+  "0x28C6c06298d514Db089934071355E5743bf21d60",
+  "0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549",
+  "0x8425659A85b2d3fbea3866b4d87E5411076Ee86C",
+  "0x12511C86b0613F6eF26Db0A685Bc012E70D0bD80",
+];
+
+export const isMatchingNetwork = (walletNet?: string, targetNet?: string) => {
+  if (!walletNet || !targetNet) return false;
+  const w = walletNet.toLowerCase();
+  const t = targetNet.toLowerCase();
+  if (w === t) return true;
+  if (t.includes("tron") && w.includes("tron")) return true;
+  if ((t.includes("bep") || t.includes("bnb")) && (w.includes("bep") || w.includes("bnb"))) return true;
+  if (t.includes("sol") && w.includes("sol")) return true;
+  if ((t.includes("btc") || t.includes("bitcoin")) && (w.includes("btc") || w.includes("bitcoin"))) return true;
+  if ((t.includes("erc") || t.includes("eth") || t.includes("ethereum")) && (w.includes("erc") || w.includes("eth") || w.includes("ethereum"))) return true;
+  return false;
+};
 
 export const DepositPage: React.FC<DepositPageProps> = ({
   onClose,
@@ -87,7 +125,7 @@ export const DepositPage: React.FC<DepositPageProps> = ({
   } | null>(null);
   const [copiedAddr, setCopiedAddr] = useState<boolean>(false);
   const [timeLeft, setTimeLeft] = useState<number>(300); // 5 minutes window
-  const [, setAvailableWallets] = useState<PlatformDepositWallet[]>([]);
+  const [availableWallets, setAvailableWallets] = useState<PlatformDepositWallet[]>([]);
 
   // Automatically assign 1 wallet address from the 5-wallet pool to each individual user
   const userIdentifier =
@@ -98,39 +136,36 @@ export const DepositPage: React.FC<DepositPageProps> = ({
     "axiom_user_default";
 
   const getFallbackAddress = (net: string) => {
-    const seed = `axiom_vault_v2:${userIdentifier}:${net.toLowerCase().split(' ')[0]}:${depositCoin.toUpperCase()}`;
-    let h1 = 0xdeadbeef;
-    let h2 = 0x41c6ce57;
-    for (let i = 0; i < seed.length; i++) {
-      const ch = seed.charCodeAt(i);
-      h1 = Math.imul(h1 ^ ch, 2654435761);
-      h2 = Math.imul(h2 ^ ch, 1597334677);
-    }
-    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
     const netLower = net.toLowerCase();
-    if (netLower.includes('tron') || netLower.includes('trc')) {
-      const idx = Math.abs(h1) % TRC20_VAULT_ADDRESSES.length;
+    if (netLower.includes("tron") || netLower.includes("trc")) {
+      const idx = Math.floor(Math.random() * TRC20_VAULT_ADDRESSES.length);
       return TRC20_VAULT_ADDRESSES[idx];
-    } else if (netLower.includes('solana') || depositCoin === 'SOL') {
-      const idx = Math.abs(h2) % SOL_VAULT_ADDRESSES.length;
+    } else if (netLower.includes("solana") || netLower.includes("spl") || depositCoin === "SOL") {
+      const idx = Math.floor(Math.random() * SOL_VAULT_ADDRESSES.length);
       return SOL_VAULT_ADDRESSES[idx];
-    } else if (netLower.includes('bitcoin') || depositCoin === 'BTC') {
-      const idx = Math.abs(h1) % BTC_VAULT_ADDRESSES.length;
+    } else if (netLower.includes("bitcoin") || netLower.includes("btc") || depositCoin === "BTC") {
+      const idx = Math.floor(Math.random() * BTC_VAULT_ADDRESSES.length);
       return BTC_VAULT_ADDRESSES[idx];
-    } else if (netLower.includes('bnb') || netLower.includes('bep')) {
-      const idx = Math.abs(h1) % BEP20_VAULT_ADDRESSES.length;
+    } else if (netLower.includes("bnb") || netLower.includes("bep")) {
+      const idx = Math.floor(Math.random() * BEP20_VAULT_ADDRESSES.length);
       return BEP20_VAULT_ADDRESSES[idx];
-    } else {
-      const hex = `${Math.abs(h1).toString(16).padStart(8, '0')}${Math.abs(h2).toString(16).padStart(8, '0')}${Math.abs(h1 ^ h2).toString(16).padStart(8, '0')}`;
-      return `0x${hex.repeat(3).slice(0, 40)}`;
+    } else if (netLower.includes("eth") || netLower.includes("erc") || depositCoin === "ETH") {
+      const idx = Math.floor(Math.random() * ERC20_VAULT_ADDRESSES.length);
+      return ERC20_VAULT_ADDRESSES[idx];
     }
+    return TRC20_VAULT_ADDRESSES[Math.floor(Math.random() * TRC20_VAULT_ADDRESSES.length)];
   };
 
+  const [fallbackAddress, setFallbackAddress] = useState<string>(() => getFallbackAddress(depositNetwork));
+
+  useEffect(() => {
+    setFallbackAddress(getFallbackAddress(depositNetwork));
+  }, [depositNetwork, depositCoin]);
+
   const activeDepositAddress =
-    assignedWallet && assignedWallet.network === depositNetwork
+    assignedWallet && isMatchingNetwork(assignedWallet.network, depositNetwork)
       ? assignedWallet.address
-      : getFallbackAddress(depositNetwork);
+      : fallbackAddress;
 
   useEffect(() => {
     if (depositStep !== "address") return;
@@ -165,6 +200,9 @@ export const DepositPage: React.FC<DepositPageProps> = ({
           });
           setDepositStep("success");
           flash(`🎉 Deposit auto-detected! +$${depositAmt} USD credited to your wallet!`);
+          try {
+            notificationService.triggerImmediateSync();
+          } catch {}
           setTimeout(() => {
             onDone(`✅ Credited +$${depositAmt} USD to your Axiom Wallet!`);
           }, 1800);
@@ -176,12 +214,75 @@ export const DepositPage: React.FC<DepositPageProps> = ({
     return () => clearInterval(detector);
   }, [depositStep, timeLeft, userIdentifier, activeDepositAddress, depositCoin, depositNetwork, depositAmt, onDone, flash]);
 
+  const [manualTxHash, setManualTxHash] = useState<string>("");
+  const [isVerifyingManual, setIsVerifyingManual] = useState<boolean>(false);
+  const [manualVerifyError, setManualVerifyError] = useState<string | null>(null);
+
+  const handleManualVerify = async () => {
+    setIsVerifyingManual(true);
+    setManualVerifyError(null);
+    try {
+      const res = await api.autoDetectDeposit({
+        address: userIdentifier,
+        deposit_wallet: activeDepositAddress,
+        currency: depositCoin,
+        network: depositNetwork,
+        amount: depositAmt,
+        tx_hash: manualTxHash.trim() || undefined,
+      });
+
+      if (res && res.detected && (res.status === "CONFIRMED" || res.status === "COMPLETED")) {
+        const creditedTokenAmt = parseFloat(res.credited_amount || depositAmt);
+        marketStore.depositFunds(depositCoin, creditedTokenAmt);
+        setVerifySuccess({
+          amount: res.credited_amount || depositAmt,
+          usdAmount: res.usd_amount || depositAmt,
+          currency: res.currency || depositCoin,
+          newBalance: res.new_balance || "",
+          txHash: res.tx_hash || manualTxHash.trim() || "on-chain-verified",
+        });
+        setDepositStep("success");
+        flash(`🎉 Deposit verified & credited! +$${depositAmt} USD to your wallet!`);
+        try {
+          notificationService.triggerImmediateSync();
+        } catch {}
+        setTimeout(() => {
+          onDone(`✅ Credited +$${depositAmt} USD to your Axiom Wallet!`);
+        }, 1800);
+      } else {
+        setManualVerifyError(res?.message || "No matching deposit detected yet on the blockchain. If you recently sent it, please wait ~15 seconds for block confirmation.");
+      }
+    } catch (err: any) {
+      setManualVerifyError(err.message || "Failed to verify deposit. Please try again.");
+    } finally {
+      setIsVerifyingManual(false);
+    }
+  };
+
   const handleRefreshOrder = () => {
     setTimeLeft(300);
+    if (availableWallets.length > 0) {
+      const matching = availableWallets.filter((w) => isMatchingNetwork(w.network, depositNetwork) && w.is_active);
+      if (matching.length > 0) {
+        setAssignedWallet(matching[Math.floor(Math.random() * matching.length)]);
+      }
+    } else {
+      setFallbackAddress(getFallbackAddress(depositNetwork));
+    }
     api
       .getDepositWallets(userIdentifier, depositNetwork, depositCoin)
       .then((res) => {
-        if (res?.assigned_wallet) setAssignedWallet(res.assigned_wallet);
+        if (res?.wallets && res.wallets.length > 0) {
+          setAvailableWallets(res.wallets);
+          const matching = res.wallets.filter((w) => isMatchingNetwork(w.network, depositNetwork) && w.is_active);
+          if (matching.length > 0) {
+            setAssignedWallet(matching[Math.floor(Math.random() * matching.length)]);
+          } else if (res.assigned_wallet) {
+            setAssignedWallet(res.assigned_wallet);
+          }
+        } else if (res?.assigned_wallet) {
+          setAssignedWallet(res.assigned_wallet);
+        }
       })
       .catch(() => {});
     flash("🔄 Generated new 5-minute deposit order window!");
@@ -227,10 +328,15 @@ export const DepositPage: React.FC<DepositPageProps> = ({
           if (res.wallets && res.wallets.length > 0) {
             setAvailableWallets(res.wallets);
           }
-          if (res.assigned_wallet) {
+          if (res.assigned_wallet && isMatchingNetwork(res.assigned_wallet.network, depositNetwork)) {
             setAssignedWallet(res.assigned_wallet);
           } else if (res.wallets && res.wallets.length > 0) {
-            setAssignedWallet(res.wallets[0]);
+            const matching = res.wallets.filter((w) => isMatchingNetwork(w.network, depositNetwork) && w.is_active);
+            if (matching.length > 0) {
+              setAssignedWallet(matching[Math.floor(Math.random() * matching.length)]);
+            } else {
+              setAssignedWallet(res.wallets[0]);
+            }
           }
         }
       })
@@ -253,6 +359,14 @@ export const DepositPage: React.FC<DepositPageProps> = ({
     if (isNaN(amtNum) || amtNum < 5.0) {
       flash("⚠️ Minimum deposit is $5.00 USD");
       return;
+    }
+    if (availableWallets.length > 0) {
+      const matching = availableWallets.filter((w) => isMatchingNetwork(w.network, depositNetwork) && w.is_active);
+      if (matching.length > 0) {
+        setAssignedWallet(matching[Math.floor(Math.random() * matching.length)]);
+      }
+    } else {
+      setFallbackAddress(getFallbackAddress(depositNetwork));
     }
     setTimeLeft(300);
     setDepositStep("address");
@@ -803,6 +917,113 @@ export const DepositPage: React.FC<DepositPageProps> = ({
                   <span style={{ color: "var(--muted)", display: "flex", alignItems: "center", gap: 4 }}>
                     <ShieldCheck size={13} color="#10B981" /> Multi-Sig Vault
                   </span>
+                </div>
+
+                {/* Live Blockchain Scanner Active Card */}
+                <div
+                  style={{
+                    marginTop: 14,
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    background: "rgba(16, 185, 129, 0.06)",
+                    border: "1px solid rgba(16, 185, 129, 0.22)",
+                    textAlign: "left",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          background: "#10B981",
+                          display: "inline-block",
+                          boxShadow: "0 0 8px #10B981",
+                          animation: "pulse 1.8s infinite ease-in-out",
+                        }}
+                      />
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#10B981" }}>
+                        Live Blockchain Auto-Detection Active
+                      </span>
+                    </div>
+                    <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600 }}>Scanning nodes...</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.4 }}>
+                    Axiom nodes monitor incoming {depositCoin} transfers on {depositNetwork}. Your balance will credit automatically within ~10 seconds of broadcast.
+                  </div>
+
+                  {/* Optional Manual TxID verification */}
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-sub)", marginBottom: 6 }}>
+                      Sent funds already? Enter TxID / Hash (Optional):
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input
+                        type="text"
+                        value={manualTxHash}
+                        onChange={(e) => setManualTxHash(e.target.value)}
+                        placeholder="Paste Transaction Hash (TxID)..."
+                        style={{
+                          flex: 1,
+                          background: "rgba(0, 0, 0, 0.25)",
+                          border: "1px solid rgba(255, 255, 255, 0.12)",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          color: "white",
+                          fontSize: 11.5,
+                          outline: "none",
+                          fontFamily: "monospace",
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleManualVerify}
+                        disabled={isVerifyingManual}
+                        style={{
+                          background: "var(--primary, #6366F1)",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: 8,
+                          padding: "0 12px",
+                          fontSize: 11.5,
+                          fontWeight: 700,
+                          cursor: isVerifyingManual ? "not-allowed" : "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 5,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {isVerifyingManual ? (
+                          <>
+                            <RefreshCw size={12} className="spin" />
+                            <span>Verifying...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Zap size={12} />
+                            <span>Verify Now</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    {manualVerifyError && (
+                      <div
+                        style={{
+                          marginTop: 6,
+                          fontSize: 11,
+                          color: "#EF4444",
+                          background: "rgba(239, 68, 68, 0.08)",
+                          padding: "6px 8px",
+                          borderRadius: 6,
+                          border: "1px solid rgba(239, 68, 68, 0.2)",
+                        }}
+                      >
+                        {manualVerifyError}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Notice */}
